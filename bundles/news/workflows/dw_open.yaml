@@ -1,0 +1,20 @@
+schema_version: 1
+version: "1.0.0"
+id: dw_open
+title: "DW: Open Homepage"
+description: "Navigate to Deutsche Welle English homepage and wait for content to load"
+category:
+  level: primitive
+  domain: research
+  reusable: true
+policies:
+  allowed_domains:
+    - dw.com
+    - "*.dw.com"
+steps:
+  - type: browser.navigate
+    url: "https://www.dw.com/en"
+
+  - type: browser.wait
+    selector: ".teaser-data"
+    timeout: 10000

@@ -1,0 +1,86 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2025-12-21"
+id: github_pr_claude_review
+title: "GitHub: PR Review with Claude"
+description: "Review pull requests with Claude Code"
+category:
+  level: process
+  domain: engineering
+  reusable: true
+params:
+  org: string
+  repo: string
+  pr_number: string
+policies:
+  allowed_domains:
+    - github.com
+
+# Embed V2: Button on each PR row in the PR list
+embed:
+  selector: "[id^='issue_'][id$='_link']"
+  position: after
+  when: "#js-issues-search"
+  label: "Claude Code Review"
+
+  extract:
+    pr_number:
+      selector: "self"
+      attribute: "href"
+      pattern: "/pull/(\\d+)"
+
+  param_map:
+    pr_number: "{{pr_number}}"
+    org: "{{_path.0}}"
+    repo: "{{_path.1}}"
+
+steps:
+  - type: browser.navigate
+    url: "https://github.com/{{org}}/{{repo}}/pull/{{pr_number}}"
+
+  - type: browser.wait
+    selector: ".gh-header-title"
+    timeout: 15000
+
+  # Extract PR title
+  - type: browser.extract
+    selector: ".gh-header-title .js-issue-title"
+    as: title
+
+  # Extract PR author
+  - type: browser.extract
+    selector: ".gh-header-meta .author"
+    as: author
+
+  # Extract branch info
+  - type: browser.extract
+    selector: ".commit-ref.head-ref"
+    as: head_branch
+
+  - type: browser.extract
+    selector: ".commit-ref.base-ref"
+    as: base_branch
+
+  # Extract PR description (first comment body)
+  - type: browser.exists
+    selector: ".comment-body"
+    as: has_description
+    timeout: 2000
+
+  - type: control.if
+    condition: "{{has_description}} == 'true'"
+    then:
+      - type: browser.extract
+        selector: ".comment-body"
+        as: description
+
+  # Launch Claude Code with PR context
+  # Uses {{_repo:org/repo}} to look up local path from settings
+  - type: workflow.call
+    workflow: claude_code_work
+    params:
+      task_title: "PR #{{pr_number}} - {{title}}"
+      cwd: "{{_repo:{{org}}/{{repo}}}}"
+      org: "{{org}}"
+      repo: "{{repo}}"
+      task_context: "Review PR #{{pr_number}}: {{title}}\nRepo: {{org}}/{{repo}}\nAuthor: {{author}}\nBranch: {{head_branch}} → {{base_branch}}\n\nDescription:\n{{description}}\n\nPlease review this PR for:\n1. Code quality and best practices\n2. Potential bugs or edge cases\n3. Security concerns\n4. Test coverage\n5. Documentation needs"

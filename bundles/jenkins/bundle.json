@@ -1,0 +1,15 @@
+{
+  "name": "sidebutton/jenkins",
+  "version": "1.0.0",
+  "title": "Jenkins CI/CD",
+  "description": "Workflows for Jenkins build automation and tag-based deployments",
+  "workflows": [
+    "jenkins_tag_build.yaml"
+  ],
+  "requires": {
+    "llm": false,
+    "browser": true
+  },
+  "tos_warning": false,
+  "tags": ["jenkins", "ci-cd", "devops"]
+}

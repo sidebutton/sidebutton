@@ -1,0 +1,68 @@
+schema_version: 1
+version: "1.1.0"
+id: news_daily_all
+title: "News: Multi-Source Daily Summary"
+description: "Get a combined news summary from BBC, DW, and CNN. Optionally filter by topics."
+category:
+  level: pipeline
+  domain: research
+params:
+  topics: string
+  style: string
+steps:
+  # Extract from BBC
+  - type: workflow.call
+    workflow: bbc_open
+
+  - type: workflow.call
+    workflow: bbc_extract
+    as: bbc
+
+  # Extract from DW
+  - type: workflow.call
+    workflow: dw_open
+
+  - type: workflow.call
+    workflow: dw_extract
+    as: dw
+
+  # Extract from CNN
+  - type: workflow.call
+    workflow: cnn_open
+
+  - type: workflow.call
+    workflow: cnn_extract
+    as: cnn
+
+  # Generate combined summary with filtering
+  - type: llm.generate
+    prompt: |
+      You are a global news analyst. Create a unified summary of today's news from multiple international sources.
+
+      TOPICS FILTER: {{topics}}
+      - If topics are specified above, ONLY include news related to those topics in your summary
+      - If no topics specified (empty), summarize all major headlines
+
+      SUMMARY STYLE: {{style}}
+      - If "tldr": Write 4-6 bullet points covering the biggest global stories
+      - If "detailed": Write a comprehensive summary organized by topic (politics, world, business, technology, etc.)
+      - Otherwise (default "concise"): Write 2-3 paragraphs highlighting the major stories across all sources
+
+      === BBC HEADLINES ===
+      {{bbc.headlines}}
+
+      === DW HEADLINES ===
+      {{dw.headlines}}
+
+      === CNN HEADLINES ===
+      {{cnn.headlines}}
+
+      GLOBAL NEWS SUMMARY:
+    as: summary
+
+  - type: control.stop
+    message: |
+      === Global News Summary ===
+      Sources: BBC, DW, CNN
+
+      {{summary}}

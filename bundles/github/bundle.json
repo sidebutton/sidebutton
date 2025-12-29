@@ -1,0 +1,18 @@
+{
+  "name": "sidebutton/github",
+  "version": "1.0.0",
+  "title": "GitHub Automation",
+  "description": "Workflows for GitHub releases, PR reviews, and repository management",
+  "workflows": [
+    "open_release_page.yaml",
+    "decide_next_tag.yaml",
+    "create_release.yaml",
+    "github_pr_claude_review.yaml"
+  ],
+  "requires": {
+    "llm": true,
+    "browser": true
+  },
+  "tos_warning": false,
+  "tags": ["github", "releases", "ci-cd"]
+}

@@ -1,0 +1,21 @@
+schema_version: 1
+version: "1.0.0"
+id: cnn_open
+title: "CNN: Open Homepage"
+description: "Navigate to CNN homepage and wait for content to load"
+category:
+  level: primitive
+  domain: research
+  reusable: true
+policies:
+  allowed_domains:
+    - cnn.com
+    - "*.cnn.com"
+    - edition.cnn.com
+steps:
+  - type: browser.navigate
+    url: "https://www.cnn.com"
+
+  - type: browser.wait
+    selector: ".container__headline-text"
+    timeout: 10000

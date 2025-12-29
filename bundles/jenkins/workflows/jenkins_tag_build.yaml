@@ -1,0 +1,29 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2025-12-21"
+
+id: jenkins_tag_build
+title: Open Jenkins Tag Build
+description: "Navigates to a Jenkins tag build page and extracts build version"
+category:
+  level: task
+  domain: engineering
+  reusable: true
+params:
+  jenkins_url: string
+  org: string
+  repo_name: string
+  tag_name: string
+steps:
+- type: browser.navigate
+  url: "{{jenkins_url}}/job/{{org}}/job/{{repo_name}}/view/tags/job/{{tag_name}}"
+
+# Wait for Jenkins build page to load
+- type: browser.wait
+  selector: h1.job-index-headline
+  timeout: 10000
+
+# Extract the build version to confirm correct page
+- type: browser.extract
+  selector: h1.job-index-headline
+  as: build_version

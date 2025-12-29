@@ -1,0 +1,23 @@
+schema_version: 1
+version: "1.0.0"
+id: bbc_extract
+title: "BBC: Extract Headlines"
+description: "Extract article headlines and descriptions from BBC homepage"
+category:
+  level: task
+  domain: research
+  reusable: true
+policies:
+  allowed_domains:
+    - bbc.com
+    - "*.bbc.com"
+steps:
+  - type: browser.extractAll
+    selector: "[data-testid=\"card-headline\"]"
+    as: headlines
+    separator: "\n"
+
+  - type: browser.extractAll
+    selector: "[data-testid=\"card-description\"]"
+    as: descriptions
+    separator: "\n"

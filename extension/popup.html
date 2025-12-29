@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      width: 280px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      color: #1a1a1a;
+      background: #fff;
+    }
+    .header {
+      background: linear-gradient(135deg, #15C39A 0%, #0EA87D 100%);
+      color: white;
+      padding: 16px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .header .subtitle {
+      font-size: 11px;
+      opacity: 0.85;
+    }
+    .content {
+      padding: 16px;
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+    .status.connected {
+      background: #dcfce7;
+      color: #166534;
+    }
+    .status.disconnected {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status.connected .status-dot {
+      background: #22c55e;
+    }
+    .status.disconnected .status-dot {
+      background: #ef4444;
+    }
+    .status-text {
+      flex: 1;
+    }
+    .status-label {
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+    .status-detail {
+      font-size: 11px;
+      opacity: 0.8;
+    }
+    button {
+      width: 100%;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    button.primary {
+      background: #15C39A;
+      color: white;
+    }
+    button.primary:hover {
+      background: #0EA87D;
+    }
+    button.secondary {
+      background: #f3f4f6;
+      color: #374151;
+    }
+    button.secondary:hover {
+      background: #e5e7eb;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .info {
+      margin-top: 12px;
+      padding: 10px;
+      background: #f8fafc;
+      border-radius: 6px;
+      font-size: 11px;
+      color: #64748b;
+    }
+    .info strong {
+      color: #334155;
+    }
+    .recording-section {
+      margin-top: 12px;
+    }
+    .divider {
+      height: 1px;
+      background: #e5e7eb;
+      margin-bottom: 12px;
+    }
+    .record-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: #fef2f2;
+      color: #dc2626;
+      border: 1px solid #fecaca;
+    }
+    .record-btn:hover {
+      background: #fee2e2;
+    }
+    .record-btn.recording {
+      background: #dc2626;
+      color: white;
+      border-color: #dc2626;
+    }
+    .record-btn.recording:hover {
+      background: #b91c1c;
+    }
+    .record-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #dc2626;
+    }
+    .record-btn.recording .record-dot {
+      background: white;
+      animation: pulse-record 1s ease-in-out infinite;
+    }
+    @keyframes pulse-record {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .recording-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 8px 12px;
+      background: #fef2f2;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #dc2626;
+    }
+    .recording-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #dc2626;
+      animation: pulse-record 1s ease-in-out infinite;
+    }
+    .settings-section {
+      margin-top: 12px;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .toggle-label {
+      flex: 1;
+      cursor: pointer;
+    }
+    .toggle-title {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+    .toggle-desc {
+      display: block;
+      font-size: 11px;
+      color: #64748b;
+    }
+    .toggle-switch {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #e5e7eb;
+      transition: 0.2s;
+      border-radius: 22px;
+    }
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.2s;
+      border-radius: 50%;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    input:checked + .toggle-slider {
+      background-color: #15C39A;
+    }
+    input:checked + .toggle-slider:before {
+      transform: translateX(18px);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>SideButton</h1>
+    <div class="subtitle">Browser Automation</div>
+  </div>
+
+  <div class="content">
+    <div id="status" class="status disconnected">
+      <div class="status-dot"></div>
+      <div class="status-text">
+        <div class="status-label">Disconnected</div>
+        <div class="status-detail" id="status-detail">Click to connect</div>
+      </div>
+    </div>
+
+    <button id="connect-btn" class="primary">Connect</button>
+    <button id="focus-btn" class="secondary focus-btn" style="display: none; margin-top: 8px;">Focus on Tab</button>
+
+    <div id="recording-section" class="recording-section" style="display: none;">
+      <div class="divider"></div>
+      <button id="record-btn" class="record-btn">
+        <span class="record-dot"></span>
+        Start Recording
+      </button>
+      <div id="recording-status" class="recording-status" style="display: none;">
+        <span class="recording-indicator"></span>
+        <span>Recording actions...</span>
+      </div>
+    </div>
+
+    <div id="settings-section" class="settings-section">
+      <div class="divider"></div>
+      <div class="toggle-row">
+        <label for="embed-toggle" class="toggle-label">
+          <span class="toggle-title">Embedded Buttons</span>
+          <span class="toggle-desc">Show workflow buttons in pages</span>
+        </label>
+        <label class="toggle-switch">
+          <input type="checkbox" id="embed-toggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="info">
+      <strong>How it works:</strong><br>
+      1. Open the SideButton app<br>
+      2. Click "Connect"<br>
+      3. Run workflows from the app
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

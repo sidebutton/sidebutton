@@ -1,0 +1,18 @@
+schema_version: 1
+version: "1.0.0"
+id: cnn_extract
+title: "CNN: Extract Headlines"
+description: "Extract article headlines from CNN homepage"
+category:
+  level: task
+  domain: research
+  reusable: true
+policies:
+  allowed_domains:
+    - cnn.com
+    - "*.cnn.com"
+steps:
+  - type: browser.extractAll
+    selector: ".container__headline-text"
+    as: headlines
+    separator: "\n"

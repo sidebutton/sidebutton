@@ -1,0 +1,45 @@
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+# VitePress cache and dist (config is tracked)
+.vitepress/cache/
+.vitepress/dist/
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+packages/*/dist/
+packages/server/dashboard/
+*.tsbuildinfo
+
+# Turbo
+.turbo/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime artifacts
+~/.assistant/
+.sidebutton/
+
+# Run logs (local execution history)
+run_logs/
+
+# Actions (user-created workflows, installed bundles)
+actions/*.yaml
+actions/.installed/
+actions/recordings/
+
+# Note: settings.json is tracked but API keys should be empty
+# Use environment variables or local config for secrets
+
+# pnpm
+.pnpm-store/

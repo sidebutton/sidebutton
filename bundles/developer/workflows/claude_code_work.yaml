@@ -1,0 +1,23 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2025-12-21"
+id: claude_code_work
+title: "Claude Code: Work on Task"
+description: "Opens terminal and launches Claude Code with task context"
+category:
+  level: primitive
+  domain: engineering
+  reusable: true
+params:
+  task_title: string
+  task_context: string
+  cwd: string
+  repo: string
+  org: string
+steps:
+  - type: shell.run
+    cmd: "cd {{cwd}} && claude -p --dangerously-skip-permissions \"{{task_context}}\""
+    as: result
+
+  - type: control.stop
+    message: "{{result}}"

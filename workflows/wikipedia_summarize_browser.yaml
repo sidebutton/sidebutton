@@ -1,0 +1,41 @@
+schema_version: 1
+version: "1.1.0"
+last_verified: "2025-12-21"
+id: wikipedia_summarize_browser
+title: "Wikipedia: Summarize (Browser)"
+description: "Opens a Wikipedia article, extracts its content, and generates an LLM-powered summary. Supports tldr, concise (default), or detailed styles."
+category:
+  level: workflow
+  domain: research
+  reusable: true
+params:
+  topic: string
+  style: string  # Optional: tldr | concise | detailed (default: concise)
+policies:
+  allowed_domains:
+    - wikipedia.org
+    - "*.wikipedia.org"
+# Note: Embed button is now in wikipedia_summarize_embed.yaml (works without browser connection)
+steps:
+  # Step 1: Open the Wikipedia article
+  - type: workflow.call
+    workflow: wikipedia_open
+    params:
+      topic: "{{topic}}"
+
+  # Step 2: Extract content from the page
+  - type: workflow.call
+    workflow: wikipedia_extract_content
+    as: article
+
+  # Step 3: Generate LLM summary with style
+  - type: workflow.call
+    workflow: llm_summarize
+    params:
+      content: "{{article.content}}"
+      style: "{{style}}"
+    as: result
+
+  # Output the summary
+  - type: control.stop
+    message: "{{result.summary}}"

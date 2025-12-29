@@ -1,0 +1,26 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2025-12-21"
+
+id: open_release_page
+title: Open GitHub Release Page
+description: "Opens the GitHub new release page for a repository"
+hotkey: null
+category:
+  level: primitive
+  domain: engineering
+  reusable: true
+params:
+  org: string
+  repo: string
+policies:
+  allowed_domains:
+  - github.com
+steps:
+- type: browser.navigate
+  url: https://github.com/{{org}}/{{repo}}/releases/new
+  new_tab: false
+- type: browser.wait
+  selector: button:has-text('Select tag')
+  ms: null
+  timeout: 5000

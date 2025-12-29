@@ -1,0 +1,28 @@
+schema_version: 1
+version: "1.1.0"
+last_verified: "2025-12-21"
+id: llm_summarize
+title: "LLM: Summarize Content"
+description: "Uses LLM to create a summary of any text content. Supports different summary styles: tldr (shortest), concise (default), or detailed (longest)."
+category:
+  level: primitive
+  domain: research
+  reusable: true
+params:
+  content: string
+  style: string  # Optional: tldr | concise | detailed (default: concise)
+steps:
+  - type: llm.generate
+    prompt: |
+      Summarize the following content.
+
+      Summary style: {{style}}
+      - If "tldr": Write a 1-2 sentence TL;DR capturing only the essential point.
+      - If "detailed": Write a comprehensive summary including all relevant details, organized by topic.
+      - Otherwise (default "concise"): Write 2-3 concise paragraphs focusing on key facts and main ideas.
+
+      Content:
+      {{content}}
+
+      Summary:
+    as: summary

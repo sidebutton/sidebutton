@@ -1,0 +1,30 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2025-12-21"
+id: wikipedia_extract_content
+title: "Wikipedia: Extract Content"
+description: "Extract article title, first paragraph, and main content from the current Wikipedia page"
+category:
+  level: task
+  domain: research
+  reusable: true
+policies:
+  allowed_domains:
+    - wikipedia.org
+    - "*.wikipedia.org"
+steps:
+  # Extract article title
+  - type: browser.extract
+    selector: "#firstHeading"
+    as: title
+
+  # Extract first paragraph (the lead/summary)
+  - type: browser.extract
+    selector: "#mw-content-text .mw-parser-output > p:not([class])"
+    as: first_paragraph
+
+  # Extract main content (multiple paragraphs)
+  - type: browser.extractAll
+    selector: "#mw-content-text .mw-parser-output > p:not([class])"
+    as: content
+    separator: "\n\n"

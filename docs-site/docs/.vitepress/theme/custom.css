@@ -1,0 +1,281 @@
+/**
+ * Sidebutton Color Schema
+ *
+ * Unified teal brand across website, docs, app & extension.
+ * Inspired by: Grammarly, Canva, HubSpot
+ *
+ * Design Principles:
+ * 1. Cross-Platform: Full semantic palette
+ * 2. Theme-Aware Code: Light bg in light mode, dark terminal in dark mode
+ * 3. WCAG Compliant: AA+ contrast ratios
+ */
+
+:root {
+  /* === Brand Colors === */
+  --vp-c-brand-1: #15C39A;
+  --vp-c-brand-2: #12A886;
+  --vp-c-brand-3: #0E8D72;
+  --vp-c-brand-soft: rgba(21, 195, 154, 0.16);
+
+  /* === Accent (Orange) === */
+  --vp-c-accent: #F97316;
+  --vp-c-accent-soft: rgba(249, 115, 22, 0.16);
+
+  /* === Semantic Colors === */
+  /* Tip - uses accent orange for action emphasis */
+  --vp-c-tip-1: #F97316;
+  --vp-c-tip-2: #EA580C;
+  --vp-c-tip-3: #C2410C;
+  --vp-c-tip-soft: rgba(249, 115, 22, 0.16);
+
+  /* Warning */
+  --vp-c-warning-1: #EAB308;
+  --vp-c-warning-2: #CA8A04;
+  --vp-c-warning-3: #A16207;
+  --vp-c-warning-soft: rgba(234, 179, 8, 0.16);
+
+  /* Danger/Error */
+  --vp-c-danger-1: #EF4444;
+  --vp-c-danger-2: #DC2626;
+  --vp-c-danger-3: #B91C1C;
+  --vp-c-danger-soft: rgba(239, 68, 68, 0.16);
+
+  /* === Background Colors === */
+  --vp-c-bg: #FFFFFF;
+  --vp-c-bg-alt: #F8FAFC;
+  --vp-c-bg-elv: #FFFFFF;
+  --vp-c-bg-soft: #F8FAFC;
+
+  /* === Text Colors === */
+  --vp-c-text-1: #0F172A;
+  --vp-c-text-2: #475569;
+  --vp-c-text-3: #64748B;
+
+  /* === Border Colors === */
+  --vp-c-border: #E2E8F0;
+  --vp-c-divider: #E2E8F0;
+  --vp-c-gutter: #E2E8F0;
+
+  /* === Code Block (Light theme) === */
+  --vp-code-block-bg: #F8FAFC;
+  --vp-code-block-divider-color: #E2E8F0;
+  --vp-code-line-highlight-color: rgba(21, 195, 154, 0.12);
+  --vp-code-line-number-color: #64748B;
+  --vp-code-line-diff-add-color: rgba(34, 197, 94, 0.16);
+  --vp-code-line-diff-remove-color: rgba(239, 68, 68, 0.16);
+  --vp-code-line-warning-color: rgba(234, 179, 8, 0.16);
+  --vp-code-line-error-color: rgba(239, 68, 68, 0.16);
+  --vp-code-copy-code-bg: #E2E8F0;
+  --vp-code-copy-code-hover-bg: #CBD5E1;
+  --vp-code-copy-code-active-text: #15C39A;
+  --vp-code-tab-text-color: #475569;
+  --vp-code-tab-active-text-color: #0F172A;
+  --vp-code-tab-hover-text-color: #0F172A;
+  --vp-code-tab-active-bar-color: #15C39A;
+
+  /* === Inline Code === */
+  --vp-c-mute: #F1F5F9;
+  --vp-c-mute-dark: #E2E8F0;
+
+  /* === Button === */
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-text: #FFFFFF;
+  --vp-button-brand-bg: #15C39A;
+  --vp-button-brand-hover-border: transparent;
+  --vp-button-brand-hover-text: #FFFFFF;
+  --vp-button-brand-hover-bg: #12A886;
+  --vp-button-brand-active-border: transparent;
+  --vp-button-brand-active-text: #FFFFFF;
+  --vp-button-brand-active-bg: #0E8D72;
+
+  /* Alt button */
+  --vp-button-alt-border: #E2E8F0;
+  --vp-button-alt-text: #0F172A;
+  --vp-button-alt-bg: #F8FAFC;
+  --vp-button-alt-hover-border: #CBD5E1;
+  --vp-button-alt-hover-text: #0F172A;
+  --vp-button-alt-hover-bg: #F1F5F9;
+  --vp-button-alt-active-border: #CBD5E1;
+  --vp-button-alt-active-text: #0F172A;
+  --vp-button-alt-active-bg: #E2E8F0;
+
+  /* === Home Page === */
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(135deg, #15C39A 0%, #0E8D72 50%, #F97316 100%);
+  --vp-home-hero-image-background-image: linear-gradient(135deg, rgba(21, 195, 154, 0.3) 0%, rgba(249, 115, 22, 0.3) 100%);
+  --vp-home-hero-image-filter: blur(56px);
+
+  /* === Sidebar === */
+  --vp-sidebar-bg-color: #FFFFFF;
+
+  /* === Nav === */
+  --vp-nav-bg-color: #FFFFFF;
+
+  /* === Local Search === */
+  --vp-local-search-highlight-bg: rgba(21, 195, 154, 0.2);
+  --vp-local-search-highlight-text: #0E8D72;
+}
+
+/* === Dark Mode === */
+.dark {
+  /* Brand colors stay vibrant in dark mode */
+  --vp-c-brand-1: #15C39A;
+  --vp-c-brand-2: #1DD9AC;
+  --vp-c-brand-3: #2EEDC0;
+  --vp-c-brand-soft: rgba(21, 195, 154, 0.2);
+
+  /* Accent */
+  --vp-c-accent: #FB923C;
+  --vp-c-accent-soft: rgba(251, 146, 60, 0.2);
+
+  /* Tip */
+  --vp-c-tip-1: #FB923C;
+  --vp-c-tip-2: #FDBA74;
+  --vp-c-tip-3: #FED7AA;
+  --vp-c-tip-soft: rgba(251, 146, 60, 0.2);
+
+  /* Warning */
+  --vp-c-warning-1: #FACC15;
+  --vp-c-warning-2: #FDE047;
+  --vp-c-warning-3: #FEF08A;
+  --vp-c-warning-soft: rgba(250, 204, 21, 0.2);
+
+  /* Danger */
+  --vp-c-danger-1: #F87171;
+  --vp-c-danger-2: #FCA5A5;
+  --vp-c-danger-3: #FECACA;
+  --vp-c-danger-soft: rgba(248, 113, 113, 0.2);
+
+  /* Backgrounds */
+  --vp-c-bg: #0F172A;
+  --vp-c-bg-alt: #1E293B;
+  --vp-c-bg-elv: #1E293B;
+  --vp-c-bg-soft: #1E293B;
+
+  /* Text */
+  --vp-c-text-1: #F8FAFC;
+  --vp-c-text-2: #94A3B8;
+  --vp-c-text-3: #64748B;
+
+  /* Borders */
+  --vp-c-border: #334155;
+  --vp-c-divider: #334155;
+  --vp-c-gutter: #334155;
+
+  /* Code blocks (Terminal dark) */
+  --vp-code-block-bg: #1E293B;
+  --vp-code-block-divider-color: #334155;
+  --vp-code-line-highlight-color: rgba(21, 195, 154, 0.15);
+  --vp-code-line-number-color: #64748B;
+  --vp-code-copy-code-bg: #334155;
+  --vp-code-copy-code-hover-bg: #475569;
+  --vp-code-tab-text-color: #94A3B8;
+  --vp-code-tab-active-text-color: #F8FAFC;
+  --vp-code-tab-hover-text-color: #F8FAFC;
+
+  /* Inline code */
+  --vp-c-mute: #1E293B;
+  --vp-c-mute-dark: #334155;
+
+  /* Button alt */
+  --vp-button-alt-border: #334155;
+  --vp-button-alt-text: #F8FAFC;
+  --vp-button-alt-bg: #1E293B;
+  --vp-button-alt-hover-border: #475569;
+  --vp-button-alt-hover-text: #F8FAFC;
+  --vp-button-alt-hover-bg: #334155;
+
+  /* Sidebar & Nav */
+  --vp-sidebar-bg-color: #0F172A;
+  --vp-nav-bg-color: #0F172A;
+
+  /* Home hero gradient - brighter in dark mode */
+  --vp-home-hero-name-background: linear-gradient(135deg, #15C39A 0%, #2EEDC0 50%, #FB923C 100%);
+  --vp-home-hero-image-background-image: linear-gradient(135deg, rgba(21, 195, 154, 0.4) 0%, rgba(251, 146, 60, 0.4) 100%);
+}
+
+/* === Custom Block Styling === */
+.custom-block.tip {
+  border-color: var(--vp-c-tip-1);
+}
+
+.custom-block.tip .custom-block-title {
+  color: var(--vp-c-tip-1);
+}
+
+.custom-block.warning {
+  border-color: var(--vp-c-warning-1);
+}
+
+.custom-block.warning .custom-block-title {
+  color: var(--vp-c-warning-1);
+}
+
+.custom-block.danger {
+  border-color: var(--vp-c-danger-1);
+}
+
+.custom-block.danger .custom-block-title {
+  color: var(--vp-c-danger-1);
+}
+
+/* === Focus States with Glow === */
+.VPButton:focus-visible,
+.VPNavBarMenuLink:focus-visible,
+.VPSidebarItem a:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--vp-c-brand-soft);
+}
+
+/* === Link Styling === */
+.vp-doc a {
+  color: var(--vp-c-brand-1);
+  text-decoration-color: var(--vp-c-brand-soft);
+}
+
+.vp-doc a:hover {
+  color: var(--vp-c-brand-2);
+  text-decoration-color: var(--vp-c-brand-1);
+}
+
+/* === Feature Card Hover === */
+.VPFeature:hover {
+  border-color: var(--vp-c-brand-1);
+}
+
+/* === Code Block Title Bar === */
+.vp-code-group .tabs label.active {
+  color: var(--vp-c-brand-1);
+}
+
+/* === Scrollbar (WebKit) === */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--vp-c-bg-soft);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vp-c-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vp-c-text-3);
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: var(--vp-c-bg);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: var(--vp-c-border);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: var(--vp-c-text-3);
+}

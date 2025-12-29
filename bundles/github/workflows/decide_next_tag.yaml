@@ -1,0 +1,24 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2025-12-21"
+
+id: decide_next_tag
+title: Decide Next Release Tag
+description: "Uses LLM to analyze existing tags and determine the next semantic version"
+category:
+  level: primitive
+  domain: engineering
+  reusable: true
+params:
+  tags: string
+steps:
+- type: llm.generate
+  prompt: |
+    Given this sequence of recent release tags (newest first):
+    {{tags}}
+
+    Analyze the versioning pattern and determine what the next release tag should be.
+    Consider: semantic versioning, patch/minor increments, any patterns.
+
+    Respond with ONLY the next tag (e.g., "v2.2.36"), no explanation.
+  as: next_tag

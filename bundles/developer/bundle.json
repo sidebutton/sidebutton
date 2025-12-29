@@ -1,0 +1,15 @@
+{
+  "name": "sidebutton/developer",
+  "version": "1.0.0",
+  "title": "Developer Tools",
+  "description": "Workflows for developer productivity with Claude Code and terminal automation",
+  "workflows": [
+    "claude_code_work.yaml"
+  ],
+  "requires": {
+    "llm": false,
+    "browser": false
+  },
+  "tos_warning": false,
+  "tags": ["developer", "terminal", "claude"]
+}

@@ -1,0 +1,33 @@
+schema_version: 1
+version: "1.1.0"
+id: news_summarize_headlines
+title: "News: Summarize Headlines"
+description: "Creates a concise summary of today's news from extracted headlines. Supports tldr, concise, and detailed styles. Can optionally filter by topics."
+category:
+  level: task
+  domain: research
+  reusable: true
+params:
+  headlines: string
+  source: string
+  style: string
+  topics: string
+steps:
+  - type: llm.generate
+    prompt: |
+      You are a news analyst. Create a summary of today's news based on headlines from {{source}}.
+
+      TOPICS FILTER: {{topics}}
+      - If topics are specified above, ONLY include news related to those topics in your summary
+      - If no topics specified (empty), summarize all major headlines
+
+      SUMMARY STYLE: {{style}}
+      - If "tldr": Write 3-5 bullet points covering the most important stories only
+      - If "detailed": Write a comprehensive summary organized by topic/category (politics, business, world, tech, etc.)
+      - Otherwise (default "concise"): Write a brief 3-5 sentence paragraph highlighting the key stories
+
+      HEADLINES:
+      {{headlines}}
+
+      SUMMARY:
+    as: summary

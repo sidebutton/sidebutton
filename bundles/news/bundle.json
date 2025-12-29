@@ -1,0 +1,22 @@
+{
+  "name": "sidebutton/news",
+  "version": "1.0.0",
+  "title": "News Summarization",
+  "description": "Extract and summarize news headlines from BBC, CNN, and DW",
+  "workflows": [
+    "bbc_open.yaml",
+    "bbc_extract.yaml",
+    "cnn_open.yaml",
+    "cnn_extract.yaml",
+    "dw_open.yaml",
+    "dw_extract.yaml",
+    "news_summarize_headlines.yaml",
+    "news_daily_all.yaml"
+  ],
+  "requires": {
+    "llm": true,
+    "browser": true
+  },
+  "tos_warning": true,
+  "tags": ["news", "research", "summarization"]
+}

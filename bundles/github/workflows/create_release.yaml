@@ -1,0 +1,113 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2025-12-21"
+
+id: create_release
+title: Create GitHub Release
+description: "Creates a new GitHub release with automatic tag versioning based on existing tags"
+hotkey: null
+category:
+  level: process
+  domain: engineering
+  reusable: true
+params:
+  org: string
+  repo: string
+policies:
+  allowed_domains:
+  - github.com
+
+# Embed button next to "Releases" heading on GitHub repo pages
+embed:
+  selector: "h2.h4.mb-3:has(a[href$='/releases'])"
+  position: append
+  when: ".BorderGrid-cell a[href$='/releases']"
+  label: "Create Release"
+  param_map:
+    org: "{{_path.0}}"
+    repo: "{{_path.1}}"
+
+steps:
+- type: workflow.call
+  workflow: open_release_page
+  params:
+    org: '{{org}}'
+    repo: '{{repo}}'
+- type: browser.wait
+  ms: 3000
+
+# Click "Select tag" and wait for dropdown - retry if it doesn't open
+- type: control.retry
+  max_attempts: 3
+  delay_ms: 500
+  steps:
+    - type: browser.click
+      selector: button:has-text('Select tag')
+    - type: browser.wait
+      selector: input[placeholder="Search or create a new tag"]
+      timeout: 2000
+
+# Now extract the menu content while dropdown is confirmed open
+- type: browser.extract
+  selector: '[role="menu"]'
+  as: dropdown_content
+
+# Capture the current latest tag (will become old_tag after release)
+- type: data.first
+  input: "{{dropdown_content}}"
+  as: old_tag
+  separator: "\n"
+
+# Check if dropdown shows "Nothing to show" (empty string also means no tags)
+- type: control.if
+  condition: "{{dropdown_content}} == 'Nothing to show'"
+  then:
+    - type: browser.type
+      selector: input[placeholder="Search or create a new tag"]
+      text: v1.0.0
+  else_steps:
+    - type: control.if
+      condition: "{{dropdown_content}} == ''"
+      then:
+        # Empty extraction - assume no tags, use v1.0.0
+        - type: browser.type
+          selector: input[placeholder="Search or create a new tag"]
+          text: v1.0.0
+      else_steps:
+        # Tags exist - use LLM to decide next tag
+        - type: workflow.call
+          workflow: decide_next_tag
+          params:
+            tags: '{{dropdown_content}}'
+        - type: browser.type
+          selector: input[placeholder="Search or create a new tag"]
+          text: '{{decide_next_tag.next_tag}}'
+
+# Common steps for creating release
+- type: browser.wait
+  ms: 500
+- type: browser.click
+  selector: button:has-text('Create new tag')
+- type: browser.wait
+  selector: '[role="dialog"] button[type="submit"]'
+  timeout: 3000
+- type: browser.click
+  selector: '[role="dialog"] button[type="submit"]'
+- type: browser.wait
+  ms: 1000
+- type: browser.click
+  selector: button:has-text('Generate release notes')
+- type: browser.wait
+  ms: 2000
+- type: browser.click
+  selector: button:has-text('Publish release')
+- type: browser.wait
+  ms: 5000
+- type: browser.wait
+  selector: h1.d-inline.mr-3
+  timeout: 10000
+
+# Extract the created tag for use by parent workflows
+- type: browser.extract
+  selector: h1.d-inline.mr-3
+  as: created_tag
