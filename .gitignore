@@ -33,11 +33,6 @@ Thumbs.db
 # Run logs (local execution history)
 run_logs/
 
-# Actions (user-created workflows, installed bundles)
-actions/*.yaml
-actions/.installed/
-actions/recordings/
-
 # Note: settings.json is tracked but API keys should be empty
 # Use environment variables or local config for secrets
 

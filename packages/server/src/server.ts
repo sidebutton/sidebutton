@@ -2,12 +2,13 @@
  * Fastify HTTP + WebSocket server
  */
 
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply } from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import * as crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { ExtensionClientImpl } from './extension.js';
 import { McpHandler } from './mcp/handler.js';
@@ -527,14 +528,124 @@ export async function startServer(config: ServerConfig): Promise<void> {
     broadcaster.addClient(socket);
   });
 
-  // MCP JSON-RPC endpoint
+  // MCP Streamable HTTP Transport (2024-11-05 spec)
+  // Session tracking for SSE streams
+  const mcpSessions = new Map<string, {
+    sseReply: FastifyReply | null;
+    pendingMessages: string[];
+  }>();
+
+  // MCP GET endpoint - Opens SSE stream for server-initiated messages
+  fastify.get('/mcp', async (request, reply) => {
+    const accept = request.headers.accept || '';
+
+    // Must accept text/event-stream
+    if (!accept.includes('text/event-stream')) {
+      reply.code(406).send({ error: 'Must accept text/event-stream' });
+      return;
+    }
+
+    // Get or create session from header
+    let sessionId = request.headers['mcp-session-id'] as string | undefined;
+
+    if (!sessionId) {
+      // New session - create one
+      sessionId = crypto.randomUUID();
+      mcpSessions.set(sessionId, { sseReply: null, pendingMessages: [] });
+    }
+
+    const session = mcpSessions.get(sessionId);
+    if (!session) {
+      reply.code(404).send({ error: 'Session not found' });
+      return;
+    }
+
+    // Set SSE headers
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Mcp-Session-Id': sessionId,
+    });
+
+    // Store SSE reply for this session
+    session.sseReply = reply;
+
+    // Send any pending messages
+    for (const msg of session.pendingMessages) {
+      reply.raw.write(`data: ${msg}\n\n`);
+    }
+    session.pendingMessages = [];
+
+    // Keep alive with pings
+    const pingInterval = setInterval(() => {
+      if (mcpSessions.has(sessionId!)) {
+        reply.raw.write(`: ping\n\n`);
+      }
+    }, 30000);
+
+    // Cleanup on close
+    request.raw.on('close', () => {
+      clearInterval(pingInterval);
+      const s = mcpSessions.get(sessionId!);
+      if (s) {
+        s.sseReply = null;
+      }
+      console.log(`MCP SSE stream closed for session ${sessionId}`);
+    });
+
+    console.log(`MCP SSE stream opened for session ${sessionId}`);
+  });
+
+  // MCP POST endpoint - Send JSON-RPC messages
   fastify.post('/mcp', async (request, reply) => {
+    const accept = request.headers.accept || '';
+    const wantsSSE = accept.includes('text/event-stream');
+
     const body = typeof request.body === 'string'
       ? request.body
       : JSON.stringify(request.body);
 
+    // Parse to check if it's an initialize request
+    let parsedBody: { method?: string } = {};
+    try {
+      parsedBody = JSON.parse(body);
+    } catch {
+      // Ignore parse errors, handler will deal with it
+    }
+
     const response = await mcpHandler.handleRequest(body);
-    reply.header('Content-Type', 'application/json').send(response);
+
+    // Get or create session
+    let sessionId = request.headers['mcp-session-id'] as string | undefined;
+
+    // For initialize requests, create a new session
+    if (parsedBody.method === 'initialize') {
+      sessionId = crypto.randomUUID();
+      mcpSessions.set(sessionId, { sseReply: null, pendingMessages: [] });
+    }
+
+    // Set session header in response
+    if (sessionId) {
+      reply.header('Mcp-Session-Id', sessionId);
+    }
+
+    if (wantsSSE) {
+      // Return as SSE stream
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        ...(sessionId ? { 'Mcp-Session-Id': sessionId } : {}),
+      });
+      reply.raw.write(`data: ${response}\n\n`);
+      reply.raw.end();
+    } else {
+      // Return as JSON
+      reply.header('Content-Type', 'application/json').send(response);
+    }
   });
 
   // Health check endpoint

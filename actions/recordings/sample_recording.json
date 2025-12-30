@@ -1,0 +1,24 @@
+{
+  "id": "sample_recording",
+  "timestamp": "2025-01-01T00:00:00.000Z",
+  "events": [
+    {
+      "event_type": "navigate",
+      "url": "https://en.wikipedia.org/wiki/Workflow_automation",
+      "timestamp_ms": 0
+    },
+    {
+      "event_type": "click",
+      "selector": "#firstHeading",
+      "text": "Workflow automation",
+      "tag": "h1",
+      "timestamp_ms": 1500
+    },
+    {
+      "event_type": "scroll",
+      "direction": "down",
+      "amount": 300,
+      "timestamp_ms": 3000
+    }
+  ]
+}
