@@ -7,6 +7,7 @@
   import CategoryBadge from "../components/CategoryBadge.svelte";
   import CategoryFilter from "../components/CategoryFilter.svelte";
   import SearchInput from "../components/SearchInput.svelte";
+  import CreateActionModal from "../components/CreateActionModal.svelte";
 
   // Get domain color for an action
   function getDomainStyle(domain: CategoryDomain | undefined): string {
@@ -18,6 +19,7 @@
   let filterLevel = $state<CategoryLevel | 'all'>('all');
   let searchQuery = $state('');
   let isLoading = $state(true);
+  let showCreateModal = $state(false);
 
   // Filter actions based on category level and search query
   let filteredActions = $derived.by(() => {
@@ -136,6 +138,12 @@
           <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
         </svg>
       </button>
+      <button class="create-btn" onclick={() => showCreateModal = true}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        Create Action
+      </button>
     </div>
   </header>
 
@@ -232,6 +240,8 @@
   </div>
 </div>
 
+<CreateActionModal open={showCreateModal} onClose={() => showCreateModal = false} />
+
 <style>
   .actions-view {
     height: 100%;
@@ -298,6 +308,30 @@
   .reload-btn svg {
     width: 18px;
     height: 18px;
+  }
+
+  .create-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: #6366f1;
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .create-btn:hover {
+    background: #4f46e5;
+  }
+
+  .create-btn svg {
+    width: 16px;
+    height: 16px;
   }
 
   .actions-container {

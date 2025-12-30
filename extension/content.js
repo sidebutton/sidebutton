@@ -1391,8 +1391,16 @@ class EmbedManager {
     targets.forEach((target, index) => {
       const buttonId = `${id}_${index}`;
 
-      // Don't inject duplicate
-      if (this.injectedButtons.has(buttonId)) return;
+      // Don't inject duplicate - but check if button is still in DOM
+      if (this.injectedButtons.has(buttonId)) {
+        const entry = this.injectedButtons.get(buttonId);
+        // If button was removed from DOM (SPA navigation), clean up and re-inject
+        if (!entry.button.isConnected) {
+          this.injectedButtons.delete(buttonId);
+        } else {
+          return;
+        }
+      }
 
       // V2: Check parent_filter if specified
       if (embed.parent_filter && !this.matchesParentFilter(target, embed.parent_filter)) {
@@ -1666,6 +1674,9 @@ class EmbedManager {
     if (result?.error) {
       // Always show errors in bubble
       this.resultBubble.show(button, result.error, true);
+    } else if (action === "none") {
+      // Suppress result display - workflow handles its own output (e.g., types into field)
+      this.showSuccessState(button, originalText, buttonId);
     } else if (result?.content) {
       // Handle based on action type
       if (action === "type" && resultConfig.selector) {
