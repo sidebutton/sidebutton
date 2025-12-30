@@ -8,20 +8,12 @@
   "last_used_params": {},
   "dashboard_shortcuts": [
     {
-      "id": "shortcut_hello_world",
-      "action_id": "hello_world",
-      "custom_name": "Hello World",
-      "color": "#10b981",
-      "params": { "topic": "Artificial Intelligence" },
-      "order": 0
-    },
-    {
       "id": "shortcut_wikipedia_tldr",
       "action_id": "wikipedia_summarize",
       "custom_name": "Wikipedia TL;DR",
       "color": "#8b5cf6",
       "params": { "title": "", "content": "", "style": "tldr" },
-      "order": 1
+      "order": 0
     }
   ],
   "user_contexts": [
