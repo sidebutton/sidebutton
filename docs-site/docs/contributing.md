@@ -34,7 +34,8 @@ sidebutton/
 ├── packages/
 │   ├── core/          # Workflow types and execution engine
 │   ├── server/        # HTTP/WebSocket server, MCP handler
-│   └── dashboard/     # Svelte web UI
+│   ├── dashboard/     # Svelte web UI
+│   └── desktop/       # Electron app
 ├── extension/         # Chrome extension
 ├── workflows/         # Public workflow library
 ├── actions/           # User workflows (gitignored)
