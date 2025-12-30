@@ -34,10 +34,6 @@ The first public release of SideButton.
   - Run log inspection
   - Settings configuration
 
-- **Desktop App**
-  - Electron-based native app
-  - macOS, Windows, Linux support
-
 - **LLM Integration**
   - OpenAI and Anthropic support
   - `llm.classify` for categorization

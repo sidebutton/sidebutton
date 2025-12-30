@@ -44,18 +44,6 @@ pnpm build
 pnpm start
 ```
 
-## Desktop App
-
-SideButton also has a native desktop app for macOS, Windows, and Linux:
-
-```bash
-# From source
-pnpm desktop
-
-# Or build distributable packages
-pnpm desktop:build
-```
-
 ## Verify Installation
 
 After starting the server, verify it's running:
