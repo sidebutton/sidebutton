@@ -190,13 +190,13 @@ Common issues:
 
 ## Advanced: Direct API Access
 
-For programmatic access, you can call the MCP endpoint directly:
+SideButton uses the MCP Streamable HTTP transport (protocol version 2025-06-18). For programmatic access, POST JSON-RPC requests to `/mcp`:
 
 ```bash
 # List tools
 curl -X POST http://localhost:9876/mcp \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 
 # Run a workflow
 curl -X POST http://localhost:9876/mcp \
@@ -211,6 +211,8 @@ curl -X POST http://localhost:9876/mcp \
     }
   }'
 ```
+
+The server also supports the older HTTP+SSE transport (2024-11-05) via `/sse` and `/message` endpoints for backwards compatibility.
 
 ## Next Steps
 

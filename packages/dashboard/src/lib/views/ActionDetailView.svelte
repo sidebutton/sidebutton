@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getAction, runWorkflow, deleteAction, publishAction, updateAction, getSettings, saveSettings } from "../api";
+  import { getAction, runWorkflow, deleteAction, publishAction, updateAction, getSettings, saveSettings, getWorkflowStats } from "../api";
   import {
     viewState,
     navigateBack,
@@ -8,14 +8,18 @@
     navigateToExecution,
     showToast,
   } from "../stores";
-  import type { Action, DashboardShortcut, CategoryLevel, CategoryDomain } from "../types";
-  import { CATEGORY_LEVELS, CATEGORY_DOMAINS } from "../types";
-  import CategoryBadge from "../components/CategoryBadge.svelte";
+  import type { Action, DashboardShortcut, CategoryLevel, CategoryDomain, WorkflowStats } from "../types";
+  import DetailViewHero from "../components/DetailViewHero.svelte";
+  import DetailViewStatsBar from "../components/DetailViewStatsBar.svelte";
+  import DetailViewSteps from "../components/DetailViewSteps.svelte";
+  import CollapsibleSection from "../components/CollapsibleSection.svelte";
   import StepIcon from "../components/StepIcon.svelte";
   import ParamsModal from "../components/ParamsModal.svelte";
+  import { formatStepDetails, getStepEditableFields } from "../utils/stepFormatters";
   import AddShortcutModal from "../components/AddShortcutModal.svelte";
 
   let action = $state<Action | null>(null);
+  let stats = $state<WorkflowStats | null>(null);
   let isLoading = $state(true);
   let error = $state<string | null>(null);
   let showParamsModal = $state(false);
@@ -27,11 +31,10 @@
   // Shortcut modal state
   let showShortcutModal = $state(false);
 
-  // Editing state
-  let isEditingTitle = $state(false);
-  let isEditingDescription = $state(false);
-  let editTitle = $state("");
-  let editDescription = $state("");
+  // Collapsible sections state
+  let showParams = $state(true);
+  let showDomains = $state(true);
+  let showEmbed = $state(true);
 
   // Parameter editing state
   let isEditingParams = $state(false);
@@ -47,11 +50,6 @@
   // Embed editing state
   let isEditingEmbed = $state(false);
   let editEmbed = $state<{ selector: string; position: string; label?: string; url_pattern?: string } | null>(null);
-
-  // Category editing state
-  let isEditingCategory = $state(false);
-  let editCategoryLevel = $state<CategoryLevel>("task");
-  let editCategoryDomain = $state<CategoryDomain>("personal");
 
   // Step editing state
   let editingStepIndex = $state<number | null>(null);
@@ -69,6 +67,12 @@
       const stored = localStorage.getItem(`params_${actionId}`);
       if (stored) {
         lastUsedParams = JSON.parse(stored);
+      }
+      // Load stats
+      try {
+        stats = await getWorkflowStats(actionId);
+      } catch {
+        // Stats are optional
       }
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load action";
@@ -122,7 +126,7 @@
     try {
       await publishAction(action.id);
       error = null;
-      showToast(`"${action.title}" published to Workflows`, "success");
+      showToast(`"${action.title}" published to Library`, "success");
     } catch (e) {
       console.error("Failed to publish:", e);
       showToast("Failed to publish action", "error");
@@ -163,41 +167,23 @@
     }
   }
 
-  // Title/Description editing
-  function startEditTitle() {
+  // Hero editing handlers
+  async function handleTitleChange(newTitle: string) {
     if (!action) return;
-    editTitle = action.title;
-    isEditingTitle = true;
-  }
-
-  async function saveTitle() {
-    if (!action || !editTitle.trim()) return;
-    action.title = editTitle.trim();
+    action.title = newTitle;
     await saveAction();
-    isEditingTitle = false;
   }
 
-  function cancelEditTitle() {
-    isEditingTitle = false;
-    editTitle = "";
-  }
-
-  function startEditDescription() {
+  async function handleDescriptionChange(newDescription: string) {
     if (!action) return;
-    editDescription = action.description || "";
-    isEditingDescription = true;
-  }
-
-  async function saveDescription() {
-    if (!action) return;
-    action.description = editDescription.trim() || undefined;
+    action.description = newDescription || undefined;
     await saveAction();
-    isEditingDescription = false;
   }
 
-  function cancelEditDescription() {
-    isEditingDescription = false;
-    editDescription = "";
+  async function handleCategoryChange(level: CategoryLevel, domain: CategoryDomain) {
+    if (!action) return;
+    action.category = { level, domain };
+    await saveAction();
   }
 
   // Parameter editing
@@ -302,28 +288,6 @@
     isEditingEmbed = false;
   }
 
-  // Category editing
-  function startEditCategory() {
-    if (!action) return;
-    editCategoryLevel = action.category?.level || "task";
-    editCategoryDomain = action.category?.domain || "personal";
-    isEditingCategory = true;
-  }
-
-  async function saveCategory() {
-    if (!action) return;
-    action.category = {
-      level: editCategoryLevel,
-      domain: editCategoryDomain,
-    };
-    await saveAction();
-    isEditingCategory = false;
-  }
-
-  function cancelEditCategory() {
-    isEditingCategory = false;
-  }
-
   // Step editing
   function startEditStep(index: number) {
     if (!action?.steps?.[index]) return;
@@ -345,79 +309,14 @@
   }
 
   async function deleteStep(index: number) {
-    if (!action || !confirm("Delete this step?")) return;
+    if (!action) return;
     action.steps = action.steps.filter((_, i) => i !== index);
     await saveAction();
   }
 
-  function formatStepDetails(step: { type: string; [key: string]: unknown }): string {
-    switch (step.type) {
-      case "browser.navigate":
-        return step.url as string || "";
-      case "browser.click":
-      case "browser.type":
-      case "browser.wait":
-      case "browser.extract":
-      case "browser.hover":
-        return step.selector as string || "";
-      case "shell.run":
-        return step.cmd as string || "";
-      case "workflow.call":
-        return step.workflow as string || "";
-      case "llm.generate":
-        return (step.prompt as string)?.slice(0, 50) + "..." || "";
-      default:
-        return "";
-    }
-  }
-
-  function getStepEditableFields(stepType: string): string[] {
-    const commonFields = ["type"];
-    switch (stepType) {
-      case "browser.navigate":
-        return [...commonFields, "url"];
-      case "browser.click":
-        return [...commonFields, "selector", "timeout"];
-      case "browser.type":
-        return [...commonFields, "selector", "text", "timeout"];
-      case "browser.wait":
-        return [...commonFields, "selector", "timeout"];
-      case "browser.extract":
-        return [...commonFields, "selector", "attribute", "as"];
-      case "browser.extractAll":
-        return [...commonFields, "selector", "attribute", "as"];
-      case "browser.hover":
-        return [...commonFields, "selector"];
-      case "browser.scroll":
-        return [...commonFields, "selector", "direction", "amount"];
-      case "browser.exists":
-        return [...commonFields, "selector", "as"];
-      case "browser.key":
-        return [...commonFields, "key"];
-      case "shell.run":
-        return [...commonFields, "cmd", "cwd"];
-      case "terminal.open":
-        return [...commonFields, "cwd"];
-      case "terminal.run":
-        return [...commonFields, "cmd"];
-      case "workflow.call":
-        return [...commonFields, "workflow", "params"];
-      case "llm.generate":
-        return [...commonFields, "prompt", "as"];
-      case "llm.classify":
-        return [...commonFields, "prompt", "options", "as"];
-      case "control.if":
-        return [...commonFields, "condition", "then", "else"];
-      case "control.retry":
-        return [...commonFields, "max_attempts", "steps"];
-      case "control.stop":
-        return [...commonFields, "message"];
-      case "data.first":
-        return [...commonFields, "from", "as"];
-      default:
-        return commonFields;
-    }
-  }
+  let hasParams = $derived(action?.params && Object.keys(action.params).length > 0);
+  let hasDomains = $derived(action?.policies?.allowed_domains?.length ?? 0 > 0);
+  let hasEmbed = $derived(!!action?.embed);
 
   onMount(() => {
     loadAction();
@@ -449,285 +348,49 @@
 
   <div class="content">
     {#if isLoading}
-      <div class="loading">Loading action...</div>
+      <div class="loading">Loading...</div>
     {:else if error}
       <div class="error">{error}</div>
     {:else if action}
-      <div class="action-info">
-        <!-- Title Row with Edit -->
-        <div class="title-row">
-          {#if isEditingTitle}
-            <div class="edit-inline">
-              <input type="text" bind:value={editTitle} class="edit-input title-input" />
-              <button class="btn-save-small" onclick={saveTitle} disabled={isSaving}>Save</button>
-              <button class="btn-cancel-small" onclick={cancelEditTitle}>Cancel</button>
-            </div>
-          {:else}
-            <h1 onclick={startEditTitle} class="editable" title="Click to edit">{action.title}</h1>
-          {/if}
-          <div class="badges">
-            {#if action.version}
-              <span class="version-badge">v{action.version}</span>
-            {/if}
-            {#if action.last_verified}
-              <span class="verified-badge" title="Verified: {action.last_verified}">Verified</span>
-            {/if}
-            {#if action.parent_id}
-              <span class="forked-badge" title="Forked from: {action.parent_id}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="18" r="3" />
-                  <circle cx="6" cy="6" r="3" />
-                  <circle cx="18" cy="6" r="3" />
-                  <path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9" />
-                  <path d="M12 12v3" />
-                </svg>
-                Forked
-              </span>
-            {/if}
-          </div>
-        </div>
+      <DetailViewHero
+        title={action.title}
+        description={action.description}
+        version={action.version}
+        lastVerified={action.last_verified}
+        category={action.category}
+        parentId={action.parent_id}
+        editable={true}
+        isSaving={isSaving}
+        ontitlechange={handleTitleChange}
+        ondescriptionchange={handleDescriptionChange}
+        oncategorychange={handleCategoryChange}
+      />
 
-        <!-- Description with Edit -->
-        {#if isEditingDescription}
-          <div class="edit-inline description-edit">
-            <textarea bind:value={editDescription} class="edit-textarea" rows="2" placeholder="Add a description..."></textarea>
-            <div class="edit-buttons">
-              <button class="btn-save-small" onclick={saveDescription} disabled={isSaving}>Save</button>
-              <button class="btn-cancel-small" onclick={cancelEditDescription}>Cancel</button>
-            </div>
-          </div>
-        {:else if action.description}
-          <p class="description editable" onclick={startEditDescription} title="Click to edit">{action.description}</p>
-        {:else}
-          <p class="description placeholder editable" onclick={startEditDescription}>Click to add description...</p>
-        {/if}
+      <DetailViewStatsBar stats={stats} lastVerified={action.last_verified} />
 
-        <!-- Category with Edit -->
-        <div class="meta-row">
-          {#if isEditingCategory}
-            <div class="edit-inline category-edit">
-              <select bind:value={editCategoryLevel} class="edit-select">
-                {#each Object.entries(CATEGORY_LEVELS) as [key, info]}
-                  <option value={key}>{info.label}</option>
-                {/each}
-              </select>
-              <select bind:value={editCategoryDomain} class="edit-select">
-                {#each Object.entries(CATEGORY_DOMAINS) as [key, info]}
-                  <option value={key}>{info.label}</option>
-                {/each}
-              </select>
-              <button class="btn-save-small" onclick={saveCategory} disabled={isSaving}>Save</button>
-              <button class="btn-cancel-small" onclick={cancelEditCategory}>Cancel</button>
-            </div>
-          {:else}
-            <div class="editable" onclick={startEditCategory} title="Click to edit">
-              {#if action.category}
-                <CategoryBadge level={action.category.level} domain={action.category.domain} />
-              {:else}
-                <span class="placeholder">Click to set category...</span>
-              {/if}
-            </div>
-          {/if}
-        </div>
-
-        <!-- Metadata Info -->
-        <section class="section metadata-section">
-          <h2>Metadata</h2>
-          <div class="metadata-grid">
-            <div class="metadata-item">
-              <span class="metadata-label">ID</span>
-              <code class="metadata-value">{action.id}</code>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">File Path</span>
-              <code class="metadata-value">actions/{action.id}.yaml</code>
-            </div>
-            {#if action.schema_version}
-              <div class="metadata-item">
-                <span class="metadata-label">Schema Version</span>
-                <span class="metadata-value">{action.schema_version}</span>
-              </div>
-            {/if}
-            {#if action.namespace}
-              <div class="metadata-item">
-                <span class="metadata-label">Namespace</span>
-                <span class="metadata-value namespace-badge">{action.namespace}</span>
-              </div>
-            {/if}
-            {#if action.parent_id}
-              <div class="metadata-item">
-                <span class="metadata-label">Forked From</span>
-                <code class="metadata-value">{action.parent_id}</code>
-              </div>
-            {/if}
-          </div>
-        </section>
-
-        <!-- Parameters Section with Editing -->
-        <section class="section">
-          <div class="section-header-row">
-            <h2>Parameters</h2>
-            {#if !isEditingParams}
-              <button class="btn-edit" onclick={startEditParams}>Edit</button>
-            {/if}
-          </div>
-          {#if isEditingParams}
-            <div class="edit-block">
-              <div class="params-edit-list">
-                {#each Object.entries(editParams) as [name, type]}
-                  <div class="param-edit-item">
-                    <span class="param-name">{name}</span>
-                    <select bind:value={editParams[name]} class="param-type-select">
-                      <option value="string">string</option>
-                      <option value="number">number</option>
-                      <option value="boolean">boolean</option>
-                    </select>
-                    <button class="btn-remove" onclick={() => removeParam(name)}>Remove</button>
-                  </div>
-                {/each}
-              </div>
-              <div class="add-param-row">
-                <input type="text" bind:value={newParamName} placeholder="Parameter name" class="add-input" />
-                <select bind:value={newParamType} class="param-type-select">
-                  <option value="string">string</option>
-                  <option value="number">number</option>
-                  <option value="boolean">boolean</option>
-                </select>
-                <button class="btn-add" onclick={addParam}>Add</button>
-              </div>
-              <div class="edit-buttons">
-                <button class="btn-save-small" onclick={saveParams} disabled={isSaving}>Save</button>
-                <button class="btn-cancel-small" onclick={cancelEditParams}>Cancel</button>
-              </div>
-            </div>
-          {:else if action.params && Object.keys(action.params).length > 0}
-            <div class="params-list">
-              {#each Object.entries(action.params) as [name, type]}
-                <div class="param-item">
-                  <span class="param-name">{name}</span>
-                  <span class="param-type">{type}</span>
-                </div>
-              {/each}
-            </div>
-          {:else}
-            <div class="empty-section">No parameters defined</div>
-          {/if}
-        </section>
-
-        <!-- Allowed Domains Section with Editing -->
-        <section class="section">
-          <div class="section-header-row">
-            <h2>Allowed Domains</h2>
-            {#if !isEditingDomains}
-              <button class="btn-edit" onclick={startEditDomains}>Edit</button>
-            {/if}
-          </div>
-          {#if isEditingDomains}
-            <div class="edit-block">
-              <div class="domains-edit-list">
-                {#each editDomains as domain}
-                  <div class="domain-edit-item">
-                    <span class="domain-tag">{domain}</span>
-                    <button class="btn-remove" onclick={() => removeDomain(domain)}>Remove</button>
-                  </div>
-                {/each}
-              </div>
-              <div class="add-domain-row">
-                <input type="text" bind:value={newDomain} placeholder="example.com" class="add-input" />
-                <button class="btn-add" onclick={addDomain}>Add</button>
-              </div>
-              <div class="edit-buttons">
-                <button class="btn-save-small" onclick={saveDomains} disabled={isSaving}>Save</button>
-                <button class="btn-cancel-small" onclick={cancelEditDomains}>Cancel</button>
-              </div>
-            </div>
-          {:else if action.policies?.allowed_domains?.length}
-            <div class="domains-list">
-              {#each action.policies.allowed_domains as domain}
-                <span class="domain-tag">{domain}</span>
-              {/each}
-            </div>
-          {:else}
-            <div class="empty-section">No domain restrictions</div>
-          {/if}
-        </section>
-
-        <!-- Embed Config Section with Editing -->
-        <section class="section">
-          <div class="section-header-row">
-            <h2>Embedded Button</h2>
-            {#if !isEditingEmbed}
-              <button class="btn-edit" onclick={startEditEmbed}>{action.embed ? 'Edit' : 'Add'}</button>
-            {/if}
-          </div>
-          {#if isEditingEmbed && editEmbed}
-            <div class="edit-block embed-edit">
-              <div class="embed-edit-row">
-                <label>Selector:</label>
-                <input type="text" bind:value={editEmbed.selector} placeholder=".button-class" />
-              </div>
-              <div class="embed-edit-row">
-                <label>Position:</label>
-                <select bind:value={editEmbed.position}>
-                  <option value="before">Before</option>
-                  <option value="after">After</option>
-                  <option value="inside">Inside</option>
-                </select>
-              </div>
-              <div class="embed-edit-row">
-                <label>Label (optional):</label>
-                <input type="text" bind:value={editEmbed.label} placeholder="Run Action" />
-              </div>
-              <div class="embed-edit-row">
-                <label>URL Pattern (optional):</label>
-                <input type="text" bind:value={editEmbed.url_pattern} placeholder="*://example.com/*" />
-              </div>
-              <div class="edit-buttons">
-                <button class="btn-save-small" onclick={saveEmbed} disabled={isSaving}>Save</button>
-                <button class="btn-cancel-small" onclick={cancelEditEmbed}>Cancel</button>
-                {#if action.embed}
-                  <button class="btn-danger-small" onclick={removeEmbed}>Remove Embed</button>
-                {/if}
-              </div>
-            </div>
-          {:else if action.embed}
-            <div class="embed-info">
-              <div class="embed-row">
-                <span class="label">Selector:</span>
-                <code>{action.embed.selector}</code>
-              </div>
-              <div class="embed-row">
-                <span class="label">Position:</span>
-                <span>{action.embed.position}</span>
-              </div>
-              {#if action.embed.label}
-                <div class="embed-row">
-                  <span class="label">Label:</span>
-                  <span>{action.embed.label}</span>
-                </div>
-              {/if}
-              {#if action.embed.url_pattern}
-                <div class="embed-row">
-                  <span class="label">URL Pattern:</span>
-                  <code>{action.embed.url_pattern}</code>
-                </div>
-              {/if}
-            </div>
-          {:else}
-            <div class="empty-section">No embedded button configured</div>
-          {/if}
-        </section>
-
+      <div class="action-content">
         <!-- Steps Section with Editing -->
-        <section class="section">
-          <h2>Steps ({action.steps?.length ?? 0})</h2>
+        <section class="steps-section">
+          <h2>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="6" x2="21" y2="6" />
+              <line x1="8" y1="12" x2="21" y2="12" />
+              <line x1="8" y1="18" x2="21" y2="18" />
+              <line x1="3" y1="6" x2="3.01" y2="6" />
+              <line x1="3" y1="12" x2="3.01" y2="12" />
+              <line x1="3" y1="18" x2="3.01" y2="18" />
+            </svg>
+            Steps
+            <span class="count-badge">{action.steps?.length ?? 0}</span>
+          </h2>
           <div class="steps-list">
             {#each action.steps ?? [] as step, index}
-              <div class="step-item" class:editing={editingStepIndex === index}>
+              <div class="step-card" class:editing={editingStepIndex === index}>
                 {#if editingStepIndex === index}
                   <div class="step-edit-form">
                     <div class="step-edit-header">
                       <span class="step-number">{index + 1}</span>
+                      <StepIcon stepType={step.type} size={20} />
                       <span class="step-type">{step.type}</span>
                     </div>
                     <div class="step-edit-fields">
@@ -760,17 +423,215 @@
                     </div>
                   </div>
                 {:else}
-                  <span class="step-number">{index + 1}</span>
-                  <StepIcon stepType={step.type} size={18} />
-                  <span class="step-type">{step.type}</span>
-                  <span class="step-details">{formatStepDetails(step)}</span>
-                  <div class="step-actions">
-                    <button class="step-action-btn" onclick={() => startEditStep(index)} title="Edit">Edit</button>
-                    <button class="step-action-btn danger" onclick={() => deleteStep(index)} title="Delete">Delete</button>
+                  <div class="step-header">
+                    <span class="step-number">{index + 1}</span>
+                    <StepIcon stepType={step.type} size={20} />
+                    <span class="step-type">{step.type}</span>
+                    <div class="step-actions">
+                      <button class="step-action-btn" onclick={() => startEditStep(index)} title="Edit">Edit</button>
+                      <button class="step-action-btn danger" onclick={() => deleteStep(index)} title="Delete">Delete</button>
+                    </div>
+                  </div>
+                  <div class="step-details">
+                    {formatStepDetails(step)}
                   </div>
                 {/if}
               </div>
             {/each}
+          </div>
+        </section>
+
+        <!-- Collapsible Sections with Editing -->
+        <div class="collapsible-sections">
+          <!-- Parameters Section -->
+          <CollapsibleSection
+            title="Parameters"
+            count={hasParams ? Object.keys(action.params || {}).length : undefined}
+            emptyLabel={hasParams ? undefined : "None"}
+            bind:expanded={showParams}
+            editable={!isEditingParams}
+            onedit={startEditParams}
+          >
+            {#if isEditingParams}
+              <div class="edit-block">
+                <div class="params-edit-list">
+                  {#each Object.entries(editParams) as [name, type]}
+                    <div class="param-edit-item">
+                      <span class="param-name">{name}</span>
+                      <select bind:value={editParams[name]} class="param-type-select">
+                        <option value="string">string</option>
+                        <option value="number">number</option>
+                        <option value="boolean">boolean</option>
+                      </select>
+                      <button class="btn-remove" onclick={() => removeParam(name)}>Remove</button>
+                    </div>
+                  {/each}
+                </div>
+                <div class="add-row">
+                  <input type="text" bind:value={newParamName} placeholder="Parameter name" class="add-input" />
+                  <select bind:value={newParamType} class="param-type-select">
+                    <option value="string">string</option>
+                    <option value="number">number</option>
+                    <option value="boolean">boolean</option>
+                  </select>
+                  <button class="btn-add" onclick={addParam}>Add</button>
+                </div>
+                <div class="edit-buttons">
+                  <button class="btn-save-small" onclick={saveParams} disabled={isSaving}>Save</button>
+                  <button class="btn-cancel-small" onclick={cancelEditParams}>Cancel</button>
+                </div>
+              </div>
+            {:else if hasParams}
+              <div class="params-grid">
+                {#each Object.entries(action.params || {}) as [name, type]}
+                  <div class="param-card">
+                    <span class="param-name">{name}</span>
+                    <span class="param-type">{type}</span>
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <p class="empty-message">No parameters defined.</p>
+            {/if}
+          </CollapsibleSection>
+
+          <!-- Allowed Domains Section -->
+          <CollapsibleSection
+            title="Allowed Domains"
+            count={hasDomains ? action.policies?.allowed_domains?.length : undefined}
+            emptyLabel={hasDomains ? undefined : "Any"}
+            bind:expanded={showDomains}
+            editable={!isEditingDomains}
+            onedit={startEditDomains}
+          >
+            {#if isEditingDomains}
+              <div class="edit-block">
+                <div class="domains-edit-list">
+                  {#each editDomains as domain}
+                    <div class="domain-edit-item">
+                      <span class="domain-tag">{domain}</span>
+                      <button class="btn-remove" onclick={() => removeDomain(domain)}>Remove</button>
+                    </div>
+                  {/each}
+                </div>
+                <div class="add-row">
+                  <input type="text" bind:value={newDomain} placeholder="example.com" class="add-input" />
+                  <button class="btn-add" onclick={addDomain}>Add</button>
+                </div>
+                <div class="edit-buttons">
+                  <button class="btn-save-small" onclick={saveDomains} disabled={isSaving}>Save</button>
+                  <button class="btn-cancel-small" onclick={cancelEditDomains}>Cancel</button>
+                </div>
+              </div>
+            {:else if hasDomains}
+              <div class="domains-list">
+                {#each action.policies?.allowed_domains ?? [] as domain}
+                  <span class="domain-tag">{domain}</span>
+                {/each}
+              </div>
+            {:else}
+              <p class="empty-message">No domain restrictions.</p>
+            {/if}
+          </CollapsibleSection>
+
+          <!-- Embedded Button Section -->
+          <CollapsibleSection
+            title="Embedded Button"
+            configuredLabel={hasEmbed ? "Configured" : undefined}
+            emptyLabel={hasEmbed ? undefined : "Not configured"}
+            bind:expanded={showEmbed}
+            editable={!isEditingEmbed}
+            onedit={startEditEmbed}
+          >
+            {#if isEditingEmbed && editEmbed}
+              <div class="edit-block embed-edit">
+                <div class="embed-edit-row">
+                  <label>Selector:</label>
+                  <input type="text" bind:value={editEmbed.selector} placeholder=".button-class" />
+                </div>
+                <div class="embed-edit-row">
+                  <label>Position:</label>
+                  <select bind:value={editEmbed.position}>
+                    <option value="before">Before</option>
+                    <option value="after">After</option>
+                    <option value="inside">Inside</option>
+                  </select>
+                </div>
+                <div class="embed-edit-row">
+                  <label>Label (optional):</label>
+                  <input type="text" bind:value={editEmbed.label} placeholder="Run Action" />
+                </div>
+                <div class="embed-edit-row">
+                  <label>URL Pattern (optional):</label>
+                  <input type="text" bind:value={editEmbed.url_pattern} placeholder="*://example.com/*" />
+                </div>
+                <div class="edit-buttons">
+                  <button class="btn-save-small" onclick={saveEmbed} disabled={isSaving}>Save</button>
+                  <button class="btn-cancel-small" onclick={cancelEditEmbed}>Cancel</button>
+                  {#if action.embed}
+                    <button class="btn-danger-small" onclick={removeEmbed}>Remove</button>
+                  {/if}
+                </div>
+              </div>
+            {:else if action.embed}
+              <div class="embed-info">
+                <div class="embed-row">
+                  <span class="embed-label">Selector</span>
+                  <code class="embed-value">{action.embed.selector}</code>
+                </div>
+                <div class="embed-row">
+                  <span class="embed-label">Position</span>
+                  <span class="embed-value">{action.embed.position}</span>
+                </div>
+                {#if action.embed.label}
+                  <div class="embed-row">
+                    <span class="embed-label">Label</span>
+                    <span class="embed-value">{action.embed.label}</span>
+                  </div>
+                {/if}
+                {#if action.embed.url_pattern}
+                  <div class="embed-row">
+                    <span class="embed-label">URL Pattern</span>
+                    <code class="embed-value">{action.embed.url_pattern}</code>
+                  </div>
+                {/if}
+              </div>
+            {:else}
+              <p class="empty-message">No embedded button configured.</p>
+            {/if}
+          </CollapsibleSection>
+        </div>
+
+        <!-- Metadata Section -->
+        <section class="section metadata-section">
+          <h2>Metadata</h2>
+          <div class="metadata-grid">
+            <div class="metadata-item">
+              <span class="metadata-label">ID</span>
+              <code class="metadata-value">{action.id}</code>
+            </div>
+            <div class="metadata-item">
+              <span class="metadata-label">File Path</span>
+              <code class="metadata-value">actions/{action.id}.yaml</code>
+            </div>
+            {#if action.schema_version}
+              <div class="metadata-item">
+                <span class="metadata-label">Schema Version</span>
+                <span class="metadata-value">{action.schema_version}</span>
+              </div>
+            {/if}
+            {#if action.namespace}
+              <div class="metadata-item">
+                <span class="metadata-label">Namespace</span>
+                <span class="metadata-value namespace-badge">{action.namespace}</span>
+              </div>
+            {/if}
+            {#if action.parent_id}
+              <div class="metadata-item">
+                <span class="metadata-label">Forked From</span>
+                <code class="metadata-value">{action.parent_id}</code>
+              </div>
+            {/if}
           </div>
         </section>
 
@@ -928,469 +789,102 @@
     color: #c62828;
   }
 
-  .action-info {
-    max-width: 800px;
-  }
-
-  .title-row {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 1.5rem;
-    font-weight: 600;
-  }
-
-  .editable {
-    cursor: pointer;
-    border-radius: 4px;
-    transition: background 0.15s;
-  }
-
-  .editable:hover {
-    background: #f0f0f0;
-  }
-
-  h1.editable {
-    padding: 4px 8px;
-    margin: -4px -8px;
-  }
-
-  .badges {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .version-badge,
-  .verified-badge,
-  .forked-badge {
-    font-size: 0.75rem;
-    padding: 4px 10px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .version-badge {
-    background: #f0f0f0;
-    color: #666;
-  }
-
-  .verified-badge {
-    background: #e8f5e9;
-    color: #388e3c;
-  }
-
-  .forked-badge {
-    background: #f3e5f5;
-    color: #7b1fa2;
-  }
-
-  .forked-badge svg {
-    width: 14px;
-    height: 14px;
-  }
-
-  .description {
-    margin: 0 0 16px;
-    color: #666;
-    font-size: 0.95rem;
-    line-height: 1.5;
-    padding: 4px 8px;
-    margin-left: -8px;
-  }
-
-  .description.placeholder {
-    color: #999;
-    font-style: italic;
-  }
-
-  .meta-row {
-    margin-bottom: 24px;
+  .action-content {
+    max-width: 900px;
   }
 
   .section {
-    margin-bottom: 24px;
+    margin-bottom: 20px;
   }
 
   .section h2 {
-    margin: 0 0 12px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #666;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .section-header-row {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
-  }
-
-  .section-header-row h2 {
-    margin: 0;
-  }
-
-  .btn-edit {
-    padding: 4px 12px;
-    background: transparent;
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-    color: #666;
-    font-size: 0.8rem;
-    cursor: pointer;
-  }
-
-  .btn-edit:hover {
-    background: #f0f0f0;
-    color: #1a1a1a;
-  }
-
-  .edit-inline {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-
-  .description-edit {
-    flex-direction: column;
-    align-items: stretch;
-    margin-bottom: 16px;
-  }
-
-  .category-edit {
-    gap: 8px;
-  }
-
-  .edit-input {
-    padding: 8px 12px;
-    border: 1px solid #2196f3;
-    border-radius: 6px;
-    font-size: 0.9rem;
-  }
-
-  .title-input {
-    font-size: 1.5rem;
-    font-weight: 600;
-    min-width: 300px;
-  }
-
-  .edit-textarea {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid #2196f3;
-    border-radius: 6px;
+    gap: 10px;
+    margin: 0 0 16px;
     font-size: 0.95rem;
-    font-family: inherit;
-    resize: vertical;
-  }
-
-  .edit-select {
-    padding: 8px 12px;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    background: #fff;
-  }
-
-  .edit-buttons {
-    display: flex;
-    gap: 8px;
-    margin-top: 8px;
-  }
-
-  .btn-save-small,
-  .btn-cancel-small,
-  .btn-danger-small {
-    padding: 6px 14px;
-    border-radius: 4px;
-    font-size: 0.8rem;
-    cursor: pointer;
-    border: none;
-  }
-
-  .btn-save-small {
-    background: #4caf50;
-    color: #fff;
-  }
-
-  .btn-save-small:hover:not(:disabled) {
-    background: #388e3c;
-  }
-
-  .btn-save-small:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .btn-cancel-small {
-    background: #f0f0f0;
-    color: #666;
-  }
-
-  .btn-cancel-small:hover {
-    background: #e0e0e0;
-  }
-
-  .btn-danger-small {
-    background: #ffebee;
-    color: #c62828;
-  }
-
-  .btn-danger-small:hover {
-    background: #ffcdd2;
-  }
-
-  .edit-block {
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 16px;
-  }
-
-  .params-edit-list,
-  .domains-edit-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-
-  .param-edit-item,
-  .domain-edit-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 8px 12px;
-    background: #f8f9fa;
-    border-radius: 6px;
-  }
-
-  .add-param-row,
-  .add-domain-row {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-
-  .add-input {
-    flex: 1;
-    padding: 8px 12px;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    font-size: 0.9rem;
-  }
-
-  .param-type-select {
-    padding: 8px 12px;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    background: #fff;
-  }
-
-  .btn-add {
-    padding: 8px 16px;
-    background: #2196f3;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-  }
-
-  .btn-add:hover {
-    background: #1976d2;
-  }
-
-  .btn-remove {
-    padding: 4px 10px;
-    background: transparent;
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-    color: #c62828;
-    font-size: 0.75rem;
-    cursor: pointer;
-  }
-
-  .btn-remove:hover {
-    background: #ffebee;
-  }
-
-  .params-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .param-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 14px;
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-  }
-
-  .param-name {
-    font-weight: 500;
-    color: #1a1a1a;
-  }
-
-  .param-type {
-    font-size: 0.8rem;
-    padding: 2px 8px;
-    background: #f0f0f0;
-    border-radius: 4px;
-    color: #666;
-    font-family: monospace;
-  }
-
-  .domains-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .domain-tag {
-    padding: 6px 12px;
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    font-family: monospace;
+    font-weight: 600;
     color: #333;
   }
 
-  .embed-edit {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .embed-edit-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .embed-edit-row label {
-    min-width: 120px;
-    font-size: 0.85rem;
-    color: #666;
-  }
-
-  .embed-edit-row input,
-  .embed-edit-row select {
-    flex: 1;
-    padding: 8px 12px;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    font-size: 0.9rem;
-  }
-
-  .embed-info {
+  /* Steps Section */
+  .steps-section {
     background: #fff;
     border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 14px;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
   }
 
-  .embed-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 6px 0;
-  }
-
-  .embed-row .label {
-    font-size: 0.85rem;
+  .steps-section h2 svg {
+    width: 18px;
+    height: 18px;
     color: #666;
-    min-width: 100px;
   }
 
-  .embed-row code {
-    font-size: 0.85rem;
-    padding: 4px 8px;
-    background: #f5f5f5;
-    border-radius: 4px;
-    color: #7b1fa2;
-  }
-
-  .empty-section {
-    color: #999;
-    font-size: 0.9rem;
-    font-style: italic;
-    padding: 12px;
-    background: #f8f9fa;
-    border-radius: 6px;
-  }
-
-  .placeholder {
-    color: #999;
-    font-style: italic;
+  .count-badge {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    background: #e3f2fd;
+    color: #1976d2;
+    border-radius: 10px;
+    font-weight: 500;
   }
 
   .steps-list {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 12px;
   }
 
-  .step-item {
+  .step-card {
+    background: #f8f9fa;
+    border: 1px solid #e8e8e8;
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+
+  .step-card.editing {
+    background: #fff;
+    border-color: #2196f3;
+  }
+
+  .step-header {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 12px 14px;
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    position: relative;
-  }
-
-  .step-item.editing {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 16px;
+    margin-bottom: 8px;
   }
 
   .step-number {
-    width: 24px;
-    height: 24px;
+    width: 26px;
+    height: 26px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #f0f0f0;
+    background: #e0e0e0;
     border-radius: 50%;
-    font-size: 0.75rem;
-    color: #666;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #555;
     flex-shrink: 0;
   }
 
   .step-type {
-    font-family: monospace;
-    font-size: 0.85rem;
+    font-family: ui-monospace, monospace;
+    font-size: 0.9rem;
+    font-weight: 500;
     color: #1a1a1a;
-    min-width: 140px;
+    flex: 1;
   }
 
   .step-details {
-    flex: 1;
-    font-size: 0.8rem;
-    color: #888;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    margin-left: 38px;
+    font-size: 0.85rem;
+    color: #666;
+    font-family: ui-monospace, monospace;
+    word-break: break-word;
+    line-height: 1.5;
   }
 
   .step-actions {
@@ -1400,7 +894,7 @@
     transition: opacity 0.15s;
   }
 
-  .step-item:hover .step-actions {
+  .step-card:hover .step-actions {
     opacity: 1;
   }
 
@@ -1427,6 +921,7 @@
     background: #ffebee;
   }
 
+  /* Step Edit Form */
   .step-edit-form {
     width: 100%;
   }
@@ -1481,6 +976,259 @@
     gap: 8px;
   }
 
+  /* Collapsible Sections */
+  .collapsible-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+
+  .empty-message {
+    color: #888;
+    font-size: 0.9rem;
+    margin: 0;
+    font-style: italic;
+  }
+
+  /* Edit Block */
+  .edit-block {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .params-edit-list,
+  .domains-edit-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .param-edit-item,
+  .domain-edit-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 6px;
+  }
+
+  .add-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .add-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 0.9rem;
+  }
+
+  .param-type-select {
+    padding: 8px 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    background: #fff;
+  }
+
+  .btn-add {
+    padding: 8px 16px;
+    background: #2196f3;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .btn-add:hover {
+    background: #1976d2;
+  }
+
+  .btn-remove {
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    color: #c62828;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+
+  .btn-remove:hover {
+    background: #ffebee;
+  }
+
+  .edit-buttons {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn-save-small,
+  .btn-cancel-small,
+  .btn-danger-small {
+    padding: 6px 14px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    border: none;
+  }
+
+  .btn-save-small {
+    background: #4caf50;
+    color: #fff;
+  }
+
+  .btn-save-small:hover:not(:disabled) {
+    background: #388e3c;
+  }
+
+  .btn-save-small:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-cancel-small {
+    background: #f0f0f0;
+    color: #666;
+  }
+
+  .btn-cancel-small:hover {
+    background: #e0e0e0;
+  }
+
+  .btn-danger-small {
+    background: #ffebee;
+    color: #c62828;
+  }
+
+  .btn-danger-small:hover {
+    background: #ffcdd2;
+  }
+
+  /* Params Grid */
+  .params-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .param-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: #f8f9fa;
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+  }
+
+  .param-name {
+    font-weight: 500;
+    color: #1a1a1a;
+  }
+
+  .param-type {
+    font-size: 0.8rem;
+    padding: 2px 8px;
+    background: #e0e0e0;
+    border-radius: 4px;
+    color: #666;
+    font-family: ui-monospace, monospace;
+  }
+
+  /* Domains List */
+  .domains-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .domain-tag {
+    padding: 6px 12px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-family: ui-monospace, monospace;
+    color: #333;
+  }
+
+  /* Embed Edit */
+  .embed-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .embed-edit-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .embed-edit-row label {
+    min-width: 120px;
+    font-size: 0.85rem;
+    color: #666;
+  }
+
+  .embed-edit-row input,
+  .embed-edit-row select {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 0.9rem;
+  }
+
+  /* Embed Info */
+  .embed-info {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .embed-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .embed-label {
+    font-size: 0.85rem;
+    color: #666;
+    min-width: 100px;
+  }
+
+  .embed-value {
+    font-size: 0.85rem;
+    color: #333;
+  }
+
+  code.embed-value {
+    font-family: ui-monospace, monospace;
+    padding: 4px 8px;
+    background: #f5f5f5;
+    border-radius: 4px;
+    color: #7b1fa2;
+  }
+
+  /* Metadata Section */
+  .metadata-section {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 20px;
+  }
+
   .metadata-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -1492,13 +1240,12 @@
     flex-direction: column;
     gap: 4px;
     padding: 12px 14px;
-    background: #fff;
-    border: 1px solid #e0e0e0;
+    background: #f8f9fa;
     border-radius: 8px;
   }
 
   .metadata-label {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: #888;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -1511,10 +1258,7 @@
   }
 
   code.metadata-value {
-    font-family: monospace;
-    background: #f5f5f5;
-    padding: 4px 8px;
-    border-radius: 4px;
+    font-family: ui-monospace, monospace;
     font-size: 0.8rem;
   }
 
@@ -1527,11 +1271,12 @@
     font-weight: 500;
   }
 
+  /* Raw Config */
   .raw-config-toggle {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 16px;
+    padding: 12px 16px;
     background: #fff;
     border: 1px solid #e0e0e0;
     border-radius: 8px;
@@ -1568,7 +1313,7 @@
 
   .raw-config-content pre {
     margin: 0;
-    font-family: monospace;
+    font-family: ui-monospace, monospace;
     font-size: 0.8rem;
     line-height: 1.5;
     color: #333;

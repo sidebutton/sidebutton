@@ -20,13 +20,17 @@ const API_BASE = 'http://localhost:9876';
  * Fetch helper with error handling
  */
 async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${url}`, {
-    ...options,
-    headers: {
+  const fetchOptions: RequestInit = { ...options };
+
+  // Only set Content-Type header when there's a body
+  if (options?.body) {
+    fetchOptions.headers = {
       'Content-Type': 'application/json',
       ...options?.headers,
-    },
-  });
+    };
+  }
+
+  const response = await fetch(`${API_BASE}${url}`, fetchOptions);
 
   if (!response.ok) {
     const error = await response.text();

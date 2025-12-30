@@ -144,12 +144,12 @@
 <div class="workflows-view">
   <header>
     <div class="header-left">
-      <h1>Workflows</h1>
+      <h1>Library</h1>
       <span class="item-count">{$workflows.length}</span>
     </div>
     <div class="header-controls">
       <SearchInput
-        placeholder="Search workflows..."
+        placeholder="Search library..."
         onSearch={handleSearch}
       />
       <div class="sort-dropdown-container">
@@ -216,8 +216,8 @@
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
           </svg>
         </div>
-        <h2>No Workflows</h2>
-        <p>Publish Actions to make them available as reusable Workflows.</p>
+        <h2>Library Empty</h2>
+        <p>Publish your Actions to add them to the Library for reuse.</p>
       </div>
     {:else if filteredWorkflows.length === 0}
       <div class="empty-state">
@@ -227,7 +227,7 @@
             <path d="M21 21l-4.35-4.35" />
           </svg>
         </div>
-        <h2>No Matching Workflows</h2>
+        <h2>No Matching Items</h2>
         <p>Try adjusting your search or filter.</p>
       </div>
     {:else}

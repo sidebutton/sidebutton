@@ -26,7 +26,7 @@ MCP is an open standard that lets AI tools like Claude, Cursor, and VS Code Copi
 
 SideButton exposes:
 - **15 MCP tools** for workflow and browser control
-- **SSE transport** over HTTP
+- **Streamable HTTP transport** (protocol version 2025-06-18)
 - **JSON-RPC 2.0** protocol
 
 ## Supported AI Tools

@@ -8,8 +8,10 @@
     navigateToActionDetail,
   } from "../stores";
   import type { Action, WorkflowStats } from "../types";
-  import CategoryBadge from "../components/CategoryBadge.svelte";
-  import StepIcon from "../components/StepIcon.svelte";
+  import DetailViewHero from "../components/DetailViewHero.svelte";
+  import DetailViewStatsBar from "../components/DetailViewStatsBar.svelte";
+  import DetailViewSteps from "../components/DetailViewSteps.svelte";
+  import CollapsibleSection from "../components/CollapsibleSection.svelte";
   import ParamsModal from "../components/ParamsModal.svelte";
 
   let workflow = $state<Action | null>(null);
@@ -91,54 +93,6 @@
     }
   }
 
-  function formatStepDetails(step: { type: string; [key: string]: unknown }): string {
-    switch (step.type) {
-      case "browser.navigate":
-        return step.url as string || "";
-      case "browser.click":
-      case "browser.type":
-      case "browser.wait":
-      case "browser.extract":
-      case "browser.hover":
-        return step.selector as string || "";
-      case "shell.run":
-        return step.cmd as string || "";
-      case "workflow.call":
-        return step.workflow as string || "";
-      case "llm.generate":
-        const prompt = step.prompt as string || "";
-        return prompt.length > 80 ? prompt.slice(0, 80) + "..." : prompt;
-      case "control.if":
-        return step.condition as string || "";
-      case "control.retry":
-        return `max ${step.max_attempts || 3} attempts`;
-      case "control.stop":
-        return step.message as string || "";
-      default:
-        return "";
-    }
-  }
-
-  function formatRelativeTime(date: string | undefined): string {
-    if (!date) return "";
-    const d = new Date(date);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return "today";
-    if (diffDays === 1) return "yesterday";
-    if (diffDays < 7) return `${diffDays} days ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-    return date.slice(0, 10);
-  }
-
-  function formatFailRate(s: WorkflowStats): string {
-    if (s.total_runs === 0) return "0%";
-    const rate = Math.round((s.failed_count / s.total_runs) * 100);
-    return `${rate}%`;
-  }
-
   let hasParams = $derived(workflow?.params && Object.keys(workflow.params).length > 0);
   let hasDomains = $derived(workflow?.policies?.allowed_domains?.length ?? 0 > 0);
   let hasEmbed = $derived(!!workflow?.embed);
@@ -169,220 +123,104 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polygon points="5 3 19 12 5 21 5 3" />
         </svg>
-        Run Workflow
+        Run
       </button>
     </div>
   </header>
 
   <div class="content">
     {#if isLoading}
-      <div class="loading">Loading workflow...</div>
+      <div class="loading">Loading...</div>
     {:else if error}
       <div class="error">{error}</div>
     {:else if workflow}
-      <!-- Hero Section -->
-      <div class="hero-section">
-        <div class="hero-header">
-          <h1>{workflow.title}</h1>
-          <div class="hero-badges">
-            {#if workflow.version}
-              <span class="version-badge">v{workflow.version}</span>
-            {/if}
-            {#if workflow.last_verified}
-              <span class="verified-badge" title="Verified: {workflow.last_verified}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                  <polyline points="22 4 12 14.01 9 11.01" />
-                </svg>
-                Verified {formatRelativeTime(workflow.last_verified)}
-              </span>
-            {/if}
-          </div>
-        </div>
+      <DetailViewHero
+        title={workflow.title}
+        description={workflow.description}
+        version={workflow.version}
+        lastVerified={workflow.last_verified}
+        category={workflow.category}
+        parentId={workflow.parent_id}
+        editable={false}
+      />
 
-        {#if workflow.description}
-          <p class="hero-description">{workflow.description}</p>
-        {/if}
-
-        {#if workflow.category}
-          <div class="hero-category">
-            <CategoryBadge
-              level={workflow.category.level}
-              domain={workflow.category.domain}
-              showDomain={true}
-              size="md"
-            />
-          </div>
-        {/if}
-      </div>
-
-      <!-- Stats Bar -->
-      {#if stats && stats.total_runs > 0}
-        <div class="stats-bar">
-          <div class="stat-item">
-            <span class="stat-value">{stats.total_runs}</span>
-            <span class="stat-label">Total Runs</span>
-          </div>
-          <div class="stat-divider"></div>
-          <div class="stat-item success">
-            <span class="stat-value">{stats.success_count}</span>
-            <span class="stat-label">Successful</span>
-          </div>
-          <div class="stat-divider"></div>
-          <div class="stat-item" class:error={stats.failed_count > 0}>
-            <span class="stat-value">{formatFailRate(stats)}</span>
-            <span class="stat-label">Fail Rate</span>
-          </div>
-          <div class="stat-divider"></div>
-          <div class="stat-item">
-            <span class="stat-value">{formatRelativeTime(workflow.last_verified) || "Never"}</span>
-            <span class="stat-label">Last Verified</span>
-          </div>
-        </div>
-      {/if}
+      <DetailViewStatsBar stats={stats} lastVerified={workflow.last_verified} />
 
       <div class="workflow-content">
-        <!-- Steps Section -->
-        <section class="section steps-section">
-          <h2>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="8" y1="6" x2="21" y2="6" />
-              <line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" />
-              <line x1="3" y1="6" x2="3.01" y2="6" />
-              <line x1="3" y1="12" x2="3.01" y2="12" />
-              <line x1="3" y1="18" x2="3.01" y2="18" />
-            </svg>
-            Steps
-            <span class="count-badge">{workflow.steps?.length ?? 0}</span>
-          </h2>
-          <div class="steps-list">
-            {#each workflow.steps ?? [] as step, index}
-              <div class="step-card">
-                <div class="step-header">
-                  <span class="step-number">{index + 1}</span>
-                  <StepIcon stepType={step.type} size={20} />
-                  <span class="step-type">{step.type}</span>
-                </div>
-                <div class="step-details">
-                  {formatStepDetails(step)}
-                </div>
-              </div>
-            {/each}
-          </div>
-        </section>
+        <DetailViewSteps steps={workflow.steps ?? []} editable={false} />
 
         <!-- Collapsible Sections -->
         <div class="collapsible-sections">
-          <!-- Parameters Section -->
-          <section class="section collapsible" class:collapsed={!showParams}>
-            <button class="section-toggle" onclick={() => showParams = !showParams}>
-              <svg class="toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 18l6-6-6-6" />
-              </svg>
-              <h2>
-                Parameters
-                {#if hasParams}
-                  <span class="count-badge">{Object.keys(workflow.params || {}).length}</span>
-                {:else}
-                  <span class="empty-label">None</span>
-                {/if}
-              </h2>
-            </button>
-            {#if showParams}
-              <div class="section-content">
-                {#if hasParams}
-                  <div class="params-grid">
-                    {#each Object.entries(workflow.params || {}) as [name, type]}
-                      <div class="param-card">
-                        <span class="param-name">{name}</span>
-                        <span class="param-type">{type}</span>
-                      </div>
-                    {/each}
+          <CollapsibleSection
+            title="Parameters"
+            count={hasParams ? Object.keys(workflow.params || {}).length : undefined}
+            emptyLabel={hasParams ? undefined : "None"}
+            bind:expanded={showParams}
+          >
+            {#if hasParams}
+              <div class="params-grid">
+                {#each Object.entries(workflow.params || {}) as [name, type]}
+                  <div class="param-card">
+                    <span class="param-name">{name}</span>
+                    <span class="param-type">{type}</span>
                   </div>
-                {:else}
-                  <p class="empty-message">This workflow has no parameters.</p>
-                {/if}
+                {/each}
               </div>
+            {:else}
+              <p class="empty-message">This workflow has no parameters.</p>
             {/if}
-          </section>
+          </CollapsibleSection>
 
-          <!-- Allowed Domains Section -->
-          <section class="section collapsible" class:collapsed={!showDomains}>
-            <button class="section-toggle" onclick={() => showDomains = !showDomains}>
-              <svg class="toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 18l6-6-6-6" />
-              </svg>
-              <h2>
-                Allowed Domains
-                {#if hasDomains}
-                  <span class="count-badge">{workflow.policies?.allowed_domains?.length}</span>
-                {:else}
-                  <span class="empty-label">Any</span>
-                {/if}
-              </h2>
-            </button>
-            {#if showDomains}
-              <div class="section-content">
-                {#if hasDomains}
-                  <div class="domains-list">
-                    {#each workflow.policies?.allowed_domains ?? [] as domain}
-                      <span class="domain-tag">{domain}</span>
-                    {/each}
-                  </div>
-                {:else}
-                  <p class="empty-message">This workflow can run on any domain.</p>
-                {/if}
+          <CollapsibleSection
+            title="Allowed Domains"
+            count={hasDomains ? workflow.policies?.allowed_domains?.length : undefined}
+            emptyLabel={hasDomains ? undefined : "Any"}
+            bind:expanded={showDomains}
+          >
+            {#if hasDomains}
+              <div class="domains-list">
+                {#each workflow.policies?.allowed_domains ?? [] as domain}
+                  <span class="domain-tag">{domain}</span>
+                {/each}
               </div>
+            {:else}
+              <p class="empty-message">This workflow can run on any domain.</p>
             {/if}
-          </section>
+          </CollapsibleSection>
 
-          <!-- Embedded Button Section -->
-          <section class="section collapsible" class:collapsed={!showEmbed}>
-            <button class="section-toggle" onclick={() => showEmbed = !showEmbed}>
-              <svg class="toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 18l6-6-6-6" />
-              </svg>
-              <h2>
-                Embedded Button
-                {#if hasEmbed}
-                  <span class="configured-label">Configured</span>
-                {:else}
-                  <span class="empty-label">Not configured</span>
-                {/if}
-              </h2>
-            </button>
-            {#if showEmbed}
-              <div class="section-content">
-                {#if workflow.embed}
-                  <div class="embed-info">
-                    <div class="embed-row">
-                      <span class="embed-label">Selector</span>
-                      <code class="embed-value">{workflow.embed.selector}</code>
-                    </div>
-                    <div class="embed-row">
-                      <span class="embed-label">Position</span>
-                      <span class="embed-value">{workflow.embed.position}</span>
-                    </div>
-                    {#if workflow.embed.label}
-                      <div class="embed-row">
-                        <span class="embed-label">Label</span>
-                        <span class="embed-value">{workflow.embed.label}</span>
-                      </div>
-                    {/if}
-                    {#if workflow.embed.url_pattern}
-                      <div class="embed-row">
-                        <span class="embed-label">URL Pattern</span>
-                        <code class="embed-value">{workflow.embed.url_pattern}</code>
-                      </div>
-                    {/if}
+          <CollapsibleSection
+            title="Embedded Button"
+            configuredLabel={hasEmbed ? "Configured" : undefined}
+            emptyLabel={hasEmbed ? undefined : "Not configured"}
+            bind:expanded={showEmbed}
+          >
+            {#if workflow.embed}
+              <div class="embed-info">
+                <div class="embed-row">
+                  <span class="embed-label">Selector</span>
+                  <code class="embed-value">{workflow.embed.selector}</code>
+                </div>
+                <div class="embed-row">
+                  <span class="embed-label">Position</span>
+                  <span class="embed-value">{workflow.embed.position}</span>
+                </div>
+                {#if workflow.embed.label}
+                  <div class="embed-row">
+                    <span class="embed-label">Label</span>
+                    <span class="embed-value">{workflow.embed.label}</span>
                   </div>
-                {:else}
-                  <p class="empty-message">No embedded button configured for this workflow.</p>
+                {/if}
+                {#if workflow.embed.url_pattern}
+                  <div class="embed-row">
+                    <span class="embed-label">URL Pattern</span>
+                    <code class="embed-value">{workflow.embed.url_pattern}</code>
+                  </div>
                 {/if}
               </div>
+            {:else}
+              <p class="empty-message">No embedded button configured for this workflow.</p>
             {/if}
-          </section>
+          </CollapsibleSection>
         </div>
 
         <!-- Metadata Section -->
@@ -550,121 +388,6 @@
     color: #c62828;
   }
 
-  /* Hero Section */
-  .hero-section {
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 12px;
-    padding: 24px;
-    margin-bottom: 20px;
-  }
-
-  .hero-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 12px;
-  }
-
-  .hero-section h1 {
-    margin: 0;
-    font-size: 1.75rem;
-    font-weight: 600;
-    line-height: 1.3;
-  }
-
-  .hero-badges {
-    display: flex;
-    gap: 10px;
-    flex-shrink: 0;
-  }
-
-  .version-badge {
-    font-size: 0.8rem;
-    padding: 4px 12px;
-    background: #f0f0f0;
-    border-radius: 6px;
-    color: #666;
-    font-family: ui-monospace, monospace;
-  }
-
-  .verified-badge {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.8rem;
-    padding: 4px 12px;
-    background: #e8f5e9;
-    border-radius: 6px;
-    color: #388e3c;
-  }
-
-  .verified-badge svg {
-    width: 14px;
-    height: 14px;
-  }
-
-  .hero-description {
-    margin: 0 0 16px;
-    color: #555;
-    font-size: 1rem;
-    line-height: 1.6;
-  }
-
-  .hero-category {
-    display: flex;
-    align-items: center;
-  }
-
-  /* Stats Bar */
-  .stats-bar {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0;
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 12px;
-    padding: 16px 24px;
-    margin-bottom: 20px;
-  }
-
-  .stat-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 0 32px;
-    gap: 4px;
-  }
-
-  .stat-item.success .stat-value {
-    color: #388e3c;
-  }
-
-  .stat-item.error .stat-value {
-    color: #d32f2f;
-  }
-
-  .stat-value {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #1a1a1a;
-  }
-
-  .stat-label {
-    font-size: 0.75rem;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .stat-divider {
-    width: 1px;
-    height: 40px;
-    background: #e0e0e0;
-  }
-
   .workflow-content {
     max-width: 900px;
   }
@@ -683,143 +406,11 @@
     color: #333;
   }
 
-  .section h2 svg {
-    width: 18px;
-    height: 18px;
-    color: #666;
-  }
-
-  .count-badge {
-    font-size: 0.75rem;
-    padding: 2px 8px;
-    background: #e3f2fd;
-    color: #1976d2;
-    border-radius: 10px;
-    font-weight: 500;
-  }
-
-  .empty-label {
-    font-size: 0.75rem;
-    color: #999;
-    font-weight: 400;
-  }
-
-  .configured-label {
-    font-size: 0.75rem;
-    padding: 2px 8px;
-    background: #e8f5e9;
-    color: #388e3c;
-    border-radius: 10px;
-    font-weight: 500;
-  }
-
-  /* Steps Section */
-  .steps-section {
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 12px;
-    padding: 20px;
-  }
-
-  .steps-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .step-card {
-    background: #f8f9fa;
-    border: 1px solid #e8e8e8;
-    border-radius: 10px;
-    padding: 14px 16px;
-  }
-
-  .step-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 8px;
-  }
-
-  .step-number {
-    width: 26px;
-    height: 26px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #e0e0e0;
-    border-radius: 50%;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #555;
-  }
-
-  .step-type {
-    font-family: ui-monospace, monospace;
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: #1a1a1a;
-  }
-
-  .step-details {
-    margin-left: 38px;
-    font-size: 0.85rem;
-    color: #666;
-    font-family: ui-monospace, monospace;
-    word-break: break-word;
-    line-height: 1.5;
-  }
-
-  /* Collapsible Sections */
   .collapsible-sections {
     display: flex;
     flex-direction: column;
     gap: 8px;
     margin-bottom: 20px;
-  }
-
-  .section.collapsible {
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 12px;
-    overflow: hidden;
-    margin-bottom: 0;
-  }
-
-  .section-toggle {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    padding: 16px 20px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    text-align: left;
-  }
-
-  .section-toggle:hover {
-    background: #f8f9fa;
-  }
-
-  .section-toggle h2 {
-    margin: 0;
-    flex: 1;
-  }
-
-  .toggle-icon {
-    width: 16px;
-    height: 16px;
-    color: #888;
-    transition: transform 0.2s;
-  }
-
-  .section.collapsible:not(.collapsed) .toggle-icon {
-    transform: rotate(90deg);
-  }
-
-  .section-content {
-    padding: 0 20px 20px 46px;
   }
 
   .empty-message {

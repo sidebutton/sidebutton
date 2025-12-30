@@ -1,0 +1,20 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2025-12-31"
+id: terminal_demo
+title: "Terminal: Run Command"
+description: "Run a shell command and display the output"
+category:
+  level: primitive
+  domain: engineering
+  reusable: true
+params:
+  command: string
+  cwd: string
+steps:
+  - type: shell.run
+    cmd: "cd {{cwd}} && {{command}}"
+    as: output
+
+  - type: control.stop
+    message: "{{output}}"
