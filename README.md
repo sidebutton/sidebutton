@@ -30,8 +30,6 @@ Define workflows in YAML and execute them through browser automation, shell comm
 
 ## Quick Start
 
-### Desktop App
-
 ```bash
 # Install dependencies
 pnpm install
@@ -39,14 +37,7 @@ pnpm install
 # Build all packages
 pnpm build
 
-# Start the desktop app
-pnpm desktop
-```
-
-### CLI / Server
-
-```bash
-# Start the server (without Electron)
+# Start the server
 pnpm start
 
 # Open http://localhost:9876 in your browser
@@ -62,7 +53,6 @@ pnpm cli status     # Check server status
 
 ## Features
 
-- **Desktop app** - Native Electron app for macOS, Windows, and Linux
 - **Config-first workflows** - Define actions in YAML files
 - **Browser automation** - Navigate, click, type, scroll, extract via Chrome extension
 - **Shell execution** - Run bash commands with output capture
@@ -183,15 +173,10 @@ sidebutton/
 │   │       ├── extension.ts   # WebSocket client
 │   │       ├── mcp/           # MCP handler
 │   │       └── cli.ts         # Commander CLI
-│   ├── dashboard/         # Svelte web UI
-│   │   └── src/
-│   │       ├── App.svelte
-│   │       └── lib/
-│   └── desktop/           # @sidebutton/desktop (Electron)
-│       ├── src/
-│       │   ├── main.js        # Main process
-│       │   └── preload.js     # Preload script
-│       └── forge.config.js    # Electron Forge config
+│   └── dashboard/         # Svelte web UI
+│       └── src/
+│           ├── App.svelte
+│           └── lib/
 ├── extension/             # Chrome extension
 ├── workflows/             # Public workflow library
 ├── actions/               # User-created workflows
@@ -274,10 +259,6 @@ pnpm start
 pnpm cli list          # List workflows
 pnpm cli status        # Check status
 pnpm cli serve         # Start server
-
-# Desktop app
-pnpm desktop           # Start desktop app
-pnpm desktop:build     # Build distributable packages
 ```
 
 ### Watch Mode
@@ -296,18 +277,6 @@ In dev mode:
 - **Dashboard** runs at `http://localhost:5173` with Vite HMR
 - **Server** auto-restarts on code changes via tsx watch
 - **API proxy** forwards `/api/*` and `/ws/*` from dashboard to server
-
-### Building Desktop App
-
-```bash
-# Build for current platform
-pnpm desktop:build
-
-# Build outputs are in packages/desktop/out/make/
-# - macOS: .dmg, .zip
-# - Windows: .exe (Squirrel)
-# - Linux: .deb, .rpm
-```
 
 ## Platform Automation Disclaimer
 
