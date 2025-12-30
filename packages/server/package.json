@@ -19,7 +19,7 @@
     "build": "tsup && pnpm run build:dashboard",
     "build:server": "tsup",
     "build:dashboard": "cd ../dashboard && pnpm build && rsync -a --delete dist/ ../server/dashboard/",
-    "dev": "tsx watch --clear-screen=false src/cli.ts serve",
+    "dev": "tsx watch --ignore '../core/dist/**' --ignore '../dashboard/**' --clear-screen=false src/cli.ts serve",
     "dev:build": "tsup --watch",
     "start": "node bin/sidebutton.js serve",
     "test": "vitest run",
