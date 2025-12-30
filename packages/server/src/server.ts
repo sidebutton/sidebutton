@@ -535,7 +535,96 @@ export async function startServer(config: ServerConfig): Promise<void> {
     pendingMessages: string[];
   }>();
 
-  // MCP GET endpoint - Opens SSE stream for server-initiated messages
+  // Old HTTP+SSE transport endpoint (for backwards compatibility)
+  // Claude Code uses type: "sse" which expects this transport
+  fastify.get('/sse', async (request, reply) => {
+    const accept = request.headers.accept || '';
+
+    if (!accept.includes('text/event-stream')) {
+      reply.code(406).send({ error: 'Must accept text/event-stream' });
+      return;
+    }
+
+    const sessionId = crypto.randomUUID();
+    mcpSessions.set(sessionId, { sseReply: null, pendingMessages: [] });
+
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+
+    // Send endpoint event - tell client where to POST messages
+    reply.raw.write(`event: endpoint\ndata: /message\n\n`);
+    console.log(`MCP SSE transport: sent endpoint event for session ${sessionId}`);
+
+    const session = mcpSessions.get(sessionId);
+    if (session) {
+      session.sseReply = reply;
+    }
+
+    // Keep alive with pings
+    const pingInterval = setInterval(() => {
+      if (mcpSessions.has(sessionId)) {
+        reply.raw.write(`: ping\n\n`);
+      }
+    }, 30000);
+
+    request.raw.on('close', () => {
+      clearInterval(pingInterval);
+      const s = mcpSessions.get(sessionId);
+      if (s) {
+        s.sseReply = null;
+      }
+      mcpSessions.delete(sessionId);
+      console.log(`MCP SSE stream closed for session ${sessionId}`);
+    });
+
+    console.log(`MCP SSE stream opened for session ${sessionId}`);
+  });
+
+  // Old transport message endpoint
+  fastify.post('/message', async (request, reply) => {
+    const body = typeof request.body === 'string'
+      ? request.body
+      : JSON.stringify(request.body);
+
+    let parsedBody: { method?: string; id?: string | number | null } = {};
+    try {
+      parsedBody = JSON.parse(body);
+    } catch {
+      // Ignore parse errors
+    }
+
+    const isNotification = parsedBody.method && parsedBody.id === undefined;
+
+    // Process the request
+    const response = await mcpHandler.handleRequest(body);
+
+    // Find active SSE session to send response
+    let activeSession: { sseReply: FastifyReply | null; pendingMessages: string[] } | undefined;
+    for (const [, session] of mcpSessions) {
+      if (session.sseReply) {
+        activeSession = session;
+        break;
+      }
+    }
+
+    if (activeSession?.sseReply) {
+      if (!isNotification) {
+        // Send response via SSE
+        activeSession.sseReply.raw.write(`event: message\ndata: ${response}\n\n`);
+      }
+      reply.code(202).send();
+    } else {
+      // Fallback to direct response
+      reply.header('Content-Type', 'application/json').send(response);
+    }
+  });
+
+  // MCP GET endpoint - Opens SSE stream
+  // Supports both old HTTP+SSE transport (2024-11-05) and new Streamable HTTP (2025-06-18)
   fastify.get('/mcp', async (request, reply) => {
     const accept = request.headers.accept || '';
 
@@ -545,20 +634,8 @@ export async function startServer(config: ServerConfig): Promise<void> {
       return;
     }
 
-    // Get or create session from header
+    // Get session from header
     let sessionId = request.headers['mcp-session-id'] as string | undefined;
-
-    if (!sessionId) {
-      // New session - create one
-      sessionId = crypto.randomUUID();
-      mcpSessions.set(sessionId, { sseReply: null, pendingMessages: [] });
-    }
-
-    const session = mcpSessions.get(sessionId);
-    if (!session) {
-      reply.code(404).send({ error: 'Session not found' });
-      return;
-    }
 
     // Set SSE headers
     reply.raw.writeHead(200, {
@@ -566,17 +643,33 @@ export async function startServer(config: ServerConfig): Promise<void> {
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
       'Access-Control-Allow-Origin': '*',
-      'Mcp-Session-Id': sessionId,
+      ...(sessionId ? { 'Mcp-Session-Id': sessionId } : {}),
     });
 
-    // Store SSE reply for this session
-    session.sseReply = reply;
+    // If no session ID, this is the old HTTP+SSE transport (2024-11-05)
+    // Send the endpoint event to tell client where to POST messages
+    if (!sessionId) {
+      // Create a new session for backwards compatibility
+      sessionId = crypto.randomUUID();
+      mcpSessions.set(sessionId, { sseReply: null, pendingMessages: [] });
 
-    // Send any pending messages
-    for (const msg of session.pendingMessages) {
-      reply.raw.write(`data: ${msg}\n\n`);
+      // Send endpoint event (old transport protocol)
+      // Use relative path - some clients expect this
+      reply.raw.write(`event: endpoint\ndata: /mcp\n\n`);
+      console.log(`MCP old transport: sent endpoint event for session ${sessionId}`);
     }
-    session.pendingMessages = [];
+
+    const session = mcpSessions.get(sessionId);
+    if (session) {
+      // Store SSE reply for this session
+      session.sseReply = reply;
+
+      // Send any pending messages
+      for (const msg of session.pendingMessages) {
+        reply.raw.write(`data: ${msg}\n\n`);
+      }
+      session.pendingMessages = [];
+    }
 
     // Keep alive with pings
     const pingInterval = setInterval(() => {
@@ -599,6 +692,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
   });
 
   // MCP POST endpoint - Send JSON-RPC messages
+  // Supports both old HTTP+SSE transport (2024-11-05) and new Streamable HTTP (2025-06-18)
   fastify.post('/mcp', async (request, reply) => {
     const accept = request.headers.accept || '';
     const wantsSSE = accept.includes('text/event-stream');
@@ -607,23 +701,70 @@ export async function startServer(config: ServerConfig): Promise<void> {
       ? request.body
       : JSON.stringify(request.body);
 
-    // Parse to check if it's an initialize request
-    let parsedBody: { method?: string } = {};
+    // Parse to check message type
+    let parsedBody: { method?: string; id?: string | number | null } = {};
     try {
       parsedBody = JSON.parse(body);
     } catch {
       // Ignore parse errors, handler will deal with it
     }
 
-    const response = await mcpHandler.handleRequest(body);
+    // Check if this is a notification (has method but no id)
+    const isNotification = parsedBody.method && parsedBody.id === undefined;
 
     // Get or create session
     let sessionId = request.headers['mcp-session-id'] as string | undefined;
 
-    // For initialize requests, create a new session
-    if (parsedBody.method === 'initialize') {
+    // For initialize requests in new transport, create a new session
+    if (parsedBody.method === 'initialize' && !sessionId) {
       sessionId = crypto.randomUUID();
       mcpSessions.set(sessionId, { sseReply: null, pendingMessages: [] });
+    }
+
+    // Handle notifications - return 202 Accepted with no body per MCP spec
+    if (isNotification) {
+      // Still process the notification for side effects
+      await mcpHandler.handleRequest(body);
+
+      if (sessionId) {
+        reply.header('Mcp-Session-Id', sessionId);
+      }
+      reply.code(202).send();
+      return;
+    }
+
+    const response = await mcpHandler.handleRequest(body);
+
+    console.log(`MCP POST: method=${parsedBody.method}, sessionId=${sessionId}, wantsSSE=${wantsSSE}`);
+
+    // Check if we have an active SSE stream for old transport
+    // In old transport, find any session with an active SSE reply
+    let activeSession: { sseReply: FastifyReply | null; pendingMessages: string[] } | undefined;
+    let activeSessionId: string | undefined;
+    for (const [id, session] of mcpSessions) {
+      if (session.sseReply) {
+        activeSession = session;
+        activeSessionId = id;
+        break;
+      }
+    }
+
+    console.log(`MCP POST: activeSession=${activeSessionId}, hasSSEReply=${!!activeSession?.sseReply}`);
+
+    // If old transport with active SSE stream, send response via SSE
+    // Note: In old transport, client may send arbitrary session IDs - ignore them
+    // The presence of an active SSE stream indicates old transport
+    if (activeSession?.sseReply && !wantsSSE) {
+      // Old transport: send response over SSE stream with message event type
+      console.log(`MCP POST: sending response via SSE stream (old transport)`);
+      try {
+        activeSession.sseReply.raw.write(`event: message\ndata: ${response}\n\n`);
+        reply.code(202).send();
+        return;
+      } catch (e) {
+        console.log(`MCP POST: SSE write failed: ${e}`);
+        // SSE stream might be closed, fall through to normal response
+      }
     }
 
     // Set session header in response
@@ -632,7 +773,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
 
     if (wantsSSE) {
-      // Return as SSE stream
+      // Return as SSE stream (new transport)
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
