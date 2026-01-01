@@ -53,38 +53,38 @@ export const colors = {
 
 export const statusColors = {
   success: {
-    color: colors.success,
-    bgColor: '#14532D',
+    color: '#166534',           // Dark green text
+    bgColor: colors.successLight, // Light green bg (#DCFCE7)
     lightBg: colors.successLight,
   },
   failed: {
-    color: colors.error,
-    bgColor: '#7F1D1D',
+    color: '#991B1B',           // Dark red text
+    bgColor: colors.errorLight,   // Light red bg (#FEE2E2)
     lightBg: colors.errorLight,
   },
   error: {
-    color: colors.error,
-    bgColor: '#7F1D1D',
+    color: '#991B1B',           // Dark red text
+    bgColor: colors.errorLight,   // Light red bg (#FEE2E2)
     lightBg: colors.errorLight,
   },
   cancelled: {
-    color: colors.warning,
-    bgColor: '#78350F',
+    color: '#92400E',           // Dark amber text
+    bgColor: colors.warningLight, // Light amber bg (#FEF3C7)
     lightBg: colors.warningLight,
   },
   running: {
-    color: colors.info,
-    bgColor: '#1E3A5F',
+    color: '#1D4ED8',           // Dark blue text
+    bgColor: colors.infoLight,    // Light blue bg (#DBEAFE)
     lightBg: colors.infoLight,
   },
   pending: {
-    color: '#6B7280',
-    bgColor: '#374151',
+    color: '#4B5563',           // Gray text
+    bgColor: '#F3F4F6',           // Light gray bg
     lightBg: '#F3F4F6',
   },
   stopped: {
-    color: colors.warning,
-    bgColor: '#78350F',
+    color: '#92400E',           // Dark amber text
+    bgColor: colors.warningLight, // Light amber bg (#FEF3C7)
     lightBg: colors.warningLight,
   },
 } as const;

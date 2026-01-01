@@ -83,14 +83,15 @@ class DashboardBroadcaster {
 // ============================================================================
 
 class RunningWorkflowsManager {
-  private running: Map<string, { info: RunningWorkflowInfo; context: ExecutionContext }> = new Map();
+  private running: Map<string, { info: RunningWorkflowInfo; context: ExecutionContext | null }> = new Map();
   private broadcaster: DashboardBroadcaster;
 
   constructor(broadcaster: DashboardBroadcaster) {
     this.broadcaster = broadcaster;
   }
 
-  add(runId: string, workflowId: string, workflowTitle: string, params: Record<string, string>, context: ExecutionContext): void {
+  // Full add with context (for REST API workflows that support cancellation)
+  add(runId: string, workflowId: string, workflowTitle: string, params: Record<string, string>, context?: ExecutionContext): void {
     const info: RunningWorkflowInfo = {
       run_id: runId,
       workflow_id: workflowId,
@@ -98,7 +99,7 @@ class RunningWorkflowsManager {
       started_at: new Date().toISOString(),
       params,
     };
-    this.running.set(runId, { info, context });
+    this.running.set(runId, { info, context: context ?? null });
     this.broadcaster.broadcastRunningWorkflowsChanged(this.getAll());
   }
 
@@ -109,7 +110,7 @@ class RunningWorkflowsManager {
 
   cancel(runId: string): boolean {
     const entry = this.running.get(runId);
-    if (entry) {
+    if (entry?.context) {
       entry.context.cancel();
       return true;
     }
@@ -120,7 +121,7 @@ class RunningWorkflowsManager {
     return Array.from(this.running.values()).map(e => e.info);
   }
 
-  get(runId: string): { info: RunningWorkflowInfo; context: ExecutionContext } | undefined {
+  get(runId: string): { info: RunningWorkflowInfo; context: ExecutionContext | null } | undefined {
     return this.running.get(runId);
   }
 }
@@ -510,8 +511,9 @@ export async function startServer(config: ServerConfig): Promise<void> {
     extensionClient
   );
 
-  // Connect MCP handler to broadcaster for real-time updates
+  // Connect MCP handler to broadcaster and running workflows tracker
   mcpHandler.setBroadcaster(broadcaster);
+  mcpHandler.setRunningWorkflowsTracker(runningWorkflows);
 
   // Register plugins
   await fastify.register(fastifyCors, {
@@ -539,14 +541,34 @@ export async function startServer(config: ServerConfig): Promise<void> {
   // WebSocket endpoint for Dashboard (real-time events)
   fastify.get('/ws/dashboard', { websocket: true }, (socket) => {
     broadcaster.addClient(socket);
+
+    // Send current running workflows state immediately on connect
+    // This ensures new clients don't miss running workflows due to race conditions
+    const currentRunning = runningWorkflows.getAll();
+    if (currentRunning.length > 0) {
+      try {
+        socket.send(JSON.stringify({
+          type: 'running-workflows-changed',
+          data: { workflows: currentRunning }
+        }));
+      } catch (e) {
+        // Client might disconnect immediately, ignore
+      }
+    }
   });
 
-  // MCP Streamable HTTP Transport (2024-11-05 spec)
+  // MCP Streamable HTTP Transport
+  // Supports both old HTTP+SSE (2024-11-05) and new Streamable HTTP (2025-06-18)
   // Session tracking for SSE streams
   const mcpSessions = new Map<string, {
     sseReply: FastifyReply | null;
     pendingMessages: string[];
+    expiryTimer: ReturnType<typeof setTimeout> | null;
+    isNewTransport: boolean;
   }>();
+
+  // Session expiry timeout (5 minutes) for new transport reconnection window
+  const SESSION_EXPIRY_MS = 5 * 60 * 1000;
 
   // Old HTTP+SSE transport endpoint (for backwards compatibility)
   // Redirects to /mcp which handles both old and new transport
@@ -571,7 +593,12 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
 
     const sessionId = crypto.randomUUID();
-    mcpSessions.set(sessionId, { sseReply: reply, pendingMessages: [] });
+    mcpSessions.set(sessionId, {
+      sseReply: reply,
+      pendingMessages: [],
+      expiryTimer: null,
+      isNewTransport: false
+    });
 
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -639,14 +666,24 @@ export async function startServer(config: ServerConfig): Promise<void> {
   fastify.get('/mcp', async (request, reply) => {
     const accept = request.headers.accept || '';
 
+    console.log(`[MCP] GET /mcp - SSE connection request (Accept: ${accept})`);
+
     // Must accept text/event-stream
     if (!accept.includes('text/event-stream')) {
+      console.log('[MCP] GET /mcp rejected - Accept header does not include text/event-stream');
       reply.code(406).send({ error: 'Must accept text/event-stream' });
       return;
     }
 
     // Get session from header
     let sessionId = request.headers['mcp-session-id'] as string | undefined;
+    const isNewTransport = !!sessionId;
+
+    // Check if session was terminated or expired (new transport only)
+    if (sessionId && !mcpSessions.has(sessionId)) {
+      reply.code(404).send({ error: 'Session not found or expired' });
+      return;
+    }
 
     // Set SSE headers
     reply.raw.writeHead(200, {
@@ -665,7 +702,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
       const sessionsToDelete: string[] = [];
       for (const [existingId, existingSession] of mcpSessions) {
         if (existingSession.sseReply) {
-          console.log(`MCP old transport: closing existing SSE session ${existingId}`);
+          // Close silently - old transport reconnects frequently, no need to log each time
           try {
             if (!existingSession.sseReply.raw.writableEnded) {
               existingSession.sseReply.raw.end();
@@ -681,31 +718,54 @@ export async function startServer(config: ServerConfig): Promise<void> {
         mcpSessions.delete(id);
       }
 
-      // Create a new session
+      // Create a new session (old transport)
       sessionId = crypto.randomUUID();
-      mcpSessions.set(sessionId, { sseReply: null, pendingMessages: [] });
+      mcpSessions.set(sessionId, {
+        sseReply: null,
+        pendingMessages: [],
+        expiryTimer: null,
+        isNewTransport: false
+      });
+      console.log(`[MCP] New SSE session created: ${sessionId} (old transport)`);
 
       // Send endpoint event (old transport protocol)
       reply.raw.write(`event: endpoint\ndata: /mcp\n\n`);
-      console.log(`MCP old transport: new session ${sessionId}`);
     }
 
     const session = mcpSessions.get(sessionId);
     if (session) {
+      // Clear any pending expiry timer (client reconnected)
+      if (session.expiryTimer) {
+        clearTimeout(session.expiryTimer);
+        session.expiryTimer = null;
+        console.log(`MCP session ${sessionId} reconnected, expiry cancelled`);
+      }
+
       // Store SSE reply for this session
       session.sseReply = reply;
 
       // Send any pending messages
       for (const msg of session.pendingMessages) {
-        reply.raw.write(`data: ${msg}\n\n`);
+        try {
+          reply.raw.write(`data: ${msg}\n\n`);
+        } catch {
+          // Ignore write errors for pending messages
+        }
       }
       session.pendingMessages = [];
     }
 
     // Keep alive with pings
     const pingInterval = setInterval(() => {
-      if (mcpSessions.has(sessionId!)) {
-        reply.raw.write(`: ping\n\n`);
+      const s = mcpSessions.get(sessionId!);
+      if (s?.sseReply) {
+        try {
+          reply.raw.write(`: ping\n\n`);
+        } catch {
+          // Connection failed, clean up
+          clearInterval(pingInterval);
+          s.sseReply = null;
+        }
       }
     }, 30000);
 
@@ -713,13 +773,31 @@ export async function startServer(config: ServerConfig): Promise<void> {
     request.raw.on('close', () => {
       clearInterval(pingInterval);
       const s = mcpSessions.get(sessionId!);
-      if (s) {
-        s.sseReply = null;
-      }
-      console.log(`MCP SSE stream closed for session ${sessionId}`);
-    });
 
-    console.log(`MCP SSE stream opened for session ${sessionId}`);
+      if (!s) {
+        // Session already deleted - normal for old transport rapid reconnections
+        return;
+      }
+
+      s.sseReply = null;
+
+      if (isNewTransport) {
+        // New transport: Keep session for reconnection window
+        // Client can reconnect with same session ID
+        s.expiryTimer = setTimeout(() => {
+          const current = mcpSessions.get(sessionId!);
+          if (current && current.sseReply === null) {
+            mcpSessions.delete(sessionId!);
+            console.log(`MCP session ${sessionId} expired (no reconnect after ${SESSION_EXPIRY_MS / 1000}s)`);
+          }
+        }, SESSION_EXPIRY_MS);
+        console.log(`MCP SSE stream closed for session ${sessionId} (reconnect window: ${SESSION_EXPIRY_MS / 1000}s)`);
+      } else {
+        // Old transport: Delete session immediately per spec
+        // "Client closes the SSE connection → Server cleans up session resources"
+        mcpSessions.delete(sessionId!);
+      }
+    });
   });
 
   // MCP POST endpoint - Send JSON-RPC messages
@@ -727,6 +805,8 @@ export async function startServer(config: ServerConfig): Promise<void> {
   fastify.post('/mcp', async (request, reply) => {
     const accept = request.headers.accept || '';
     const wantsSSE = accept.includes('text/event-stream');
+
+    console.log(`[MCP] POST /mcp received (Accept: ${accept})`);
 
     const body = typeof request.body === 'string'
       ? request.body
@@ -746,10 +826,22 @@ export async function startServer(config: ServerConfig): Promise<void> {
     // Get or create session
     let sessionId = request.headers['mcp-session-id'] as string | undefined;
 
+    // Check if session was terminated or expired (return 404 per MCP spec)
+    if (sessionId && !mcpSessions.has(sessionId) && parsedBody.method !== 'initialize') {
+      reply.code(404).send({ error: 'Session not found or expired' });
+      return;
+    }
+
     // For initialize requests in new transport, create a new session
     if (parsedBody.method === 'initialize' && !sessionId) {
       sessionId = crypto.randomUUID();
-      mcpSessions.set(sessionId, { sseReply: null, pendingMessages: [] });
+      mcpSessions.set(sessionId, {
+        sseReply: null,
+        pendingMessages: [],
+        expiryTimer: null,
+        isNewTransport: true
+      });
+      console.log(`[MCP] New session created: ${sessionId} (new transport, via initialize)`);
     }
 
     // Handle notifications - return 202 Accepted with no body per MCP spec
@@ -766,35 +858,33 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
     const response = await mcpHandler.handleRequest(body);
 
-    console.log(`MCP POST: method=${parsedBody.method}, sessionId=${sessionId}, wantsSSE=${wantsSSE}`);
-
-    // Check if we have an active SSE stream for old transport (2024-11-05)
-    // Old transport: client opens GET /mcp for SSE, then POSTs requests
-    // Responses go via SSE stream, POST returns 202 Accepted
-    const clientProvidedSession = !!request.headers['mcp-session-id'];
-
-    // Find the active SSE session (old transport ensures only one exists)
-    let activeSSE: { id: string; reply: FastifyReply } | null = null;
-    for (const [id, session] of mcpSessions) {
-      if (session.sseReply && !session.sseReply.raw.writableEnded) {
-        activeSSE = { id, reply: session.sseReply };
-        break;
+    // Check for old transport SSE session (no Mcp-Session-Id header but active SSE stream)
+    // Old transport: client connects to GET /mcp first, then POSTs without session header
+    // We need to send response via SSE stream and return 202 Accepted
+    if (!request.headers['mcp-session-id']) {
+      // Find active old transport SSE session
+      let oldTransportSSE: FastifyReply | null = null;
+      for (const [, session] of mcpSessions) {
+        if (!session.isNewTransport && session.sseReply && !session.sseReply.raw.writableEnded) {
+          oldTransportSSE = session.sseReply;
+          break;
+        }
       }
-    }
 
-    // Use old transport if: no client session header AND active SSE stream exists
-    if (!clientProvidedSession && activeSSE && !wantsSSE) {
-      console.log(`MCP POST: sending via SSE (old transport, session=${activeSSE.id})`);
-      try {
-        activeSSE.reply.raw.write(`event: message\ndata: ${response}\n\n`);
+      if (oldTransportSSE) {
+        // Old transport: send response via SSE stream
+        try {
+          oldTransportSSE.raw.write(`event: message\ndata: ${response}\n\n`);
+          console.log(`[MCP] Response sent via SSE (old transport)`);
+        } catch (e) {
+          console.log(`[MCP] Failed to write to SSE stream:`, e);
+        }
         reply.code(202).send();
         return;
-      } catch (e) {
-        console.log(`MCP POST: SSE write failed, falling through to direct response`);
       }
     }
 
-    // Set session header in response
+    // Set session header in response (new transport)
     if (sessionId) {
       reply.header('Mcp-Session-Id', sessionId);
     }
@@ -814,6 +904,44 @@ export async function startServer(config: ServerConfig): Promise<void> {
       // Return as JSON
       reply.header('Content-Type', 'application/json').send(response);
     }
+  });
+
+  // MCP DELETE endpoint - Client-initiated session termination
+  // Per MCP spec: "Clients SHOULD send HTTP DELETE to explicitly terminate session"
+  fastify.delete('/mcp', async (request, reply) => {
+    const sessionId = request.headers['mcp-session-id'] as string | undefined;
+
+    if (!sessionId) {
+      reply.code(400).send({ error: 'Missing Mcp-Session-Id header' });
+      return;
+    }
+
+    const session = mcpSessions.get(sessionId);
+    if (!session) {
+      // Session already terminated or never existed
+      reply.code(404).send({ error: 'Session not found' });
+      return;
+    }
+
+    // Close active SSE stream if any
+    if (session.sseReply && !session.sseReply.raw.writableEnded) {
+      try {
+        session.sseReply.raw.end();
+      } catch {
+        // Ignore close errors
+      }
+    }
+
+    // Clear expiry timer if pending
+    if (session.expiryTimer) {
+      clearTimeout(session.expiryTimer);
+    }
+
+    // Delete session
+    mcpSessions.delete(sessionId);
+    console.log(`MCP session ${sessionId} terminated by client DELETE request`);
+
+    reply.code(204).send();
   });
 
   // Health check endpoint

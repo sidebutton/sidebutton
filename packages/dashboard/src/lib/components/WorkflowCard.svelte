@@ -197,9 +197,9 @@
 
 <style>
   .workflow-card {
-    background: var(--bg-gradient, #fff);
-    border: 1px solid #e0e0e0;
-    border-left: 3px solid var(--border-accent, #e0e0e0);
+    background: var(--bg-gradient, var(--color-card));
+    border: 1px solid var(--color-border);
+    border-left: 3px solid var(--border-accent, var(--color-border));
     border-radius: 12px;
     padding: 16px 20px;
     cursor: pointer;
@@ -212,8 +212,8 @@
   }
 
   .workflow-card:hover {
-    border-color: var(--border-accent, #bdbdbd);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border-color: var(--border-accent, var(--color-border-strong));
+    box-shadow: var(--shadow-md);
     transform: translateY(-2px);
   }
 
@@ -233,7 +233,7 @@
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
-    color: #1a1a1a;
+    color: var(--color-text);
     line-height: 1.3;
     flex: 1;
   }
@@ -248,16 +248,16 @@
   .version-badge {
     font-size: 0.7rem;
     padding: 2px 8px;
-    background: #f0f0f0;
+    background: var(--color-surface);
     border-radius: 4px;
-    color: #666;
+    color: var(--color-text-secondary);
     font-family: ui-monospace, monospace;
   }
 
   .embed-badge {
     width: 18px;
     height: 18px;
-    color: #4caf50;
+    color: var(--color-success);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -272,7 +272,7 @@
   .description {
     margin: 0;
     font-size: 0.85rem;
-    color: #666;
+    color: var(--color-text-secondary);
     line-height: 1.4;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -281,7 +281,7 @@
   }
 
   .description.empty {
-    color: #999;
+    color: var(--color-text-muted);
     font-style: italic;
   }
 
@@ -314,13 +314,13 @@
 
   .more-steps {
     font-size: 0.7rem;
-    color: #888;
+    color: var(--color-text-muted);
     margin-left: 2px;
   }
 
   .step-count {
     font-size: 0.8rem;
-    color: #666;
+    color: var(--color-text-secondary);
   }
 
   /* Stats Footer */
@@ -328,7 +328,7 @@
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 8px;
-    border-top: 1px solid #eee;
+    border-top: 1px solid var(--color-border);
     padding-top: 12px;
     margin-top: 4px;
   }
@@ -352,14 +352,14 @@
     line-height: 1.2;
   }
 
-  .stat-value.runs { color: #1976d2; }
-  .stat-value.success { color: #388e3c; }
-  .stat-value.fail { color: #d32f2f; }
-  .stat-value.muted { color: #666; }
+  .stat-value.runs { color: var(--color-info); }
+  .stat-value.success { color: var(--color-success); }
+  .stat-value.fail { color: var(--color-error); }
+  .stat-value.muted { color: var(--color-text-secondary); }
 
   .stat-label {
     font-size: 0.65rem;
-    color: #888;
+    color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.3px;
   }
@@ -370,21 +370,21 @@
 
   .no-runs {
     font-size: 0.8rem;
-    color: #999;
+    color: var(--color-text-muted);
     font-style: italic;
   }
 
   .verified-date {
     font-size: 0.75rem;
-    color: #888;
+    color: var(--color-text-muted);
   }
 
   /* Skeleton State - min-height ensures exact match with real card */
   .workflow-card.skeleton {
     cursor: default;
     pointer-events: none;
-    background: #fff;
-    border-left-color: #e0e0e0;
+    background: var(--color-card);
+    border-left-color: var(--color-border);
     min-height: 180px;
   }
 
@@ -392,7 +392,7 @@
   .skeleton-title {
     height: 21px;
     width: 70%;
-    background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+    background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-border) 50%, var(--color-surface) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 4px;
@@ -406,7 +406,7 @@
   .skeleton-badge {
     height: 18px;
     width: 40px;
-    background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+    background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-border) 50%, var(--color-surface) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 4px;
@@ -426,7 +426,7 @@
     display: block;
     height: 15px;
     width: 100%;
-    background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+    background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-border) 50%, var(--color-surface) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 4px;
@@ -440,7 +440,7 @@
   .skeleton-category {
     height: 22px;
     width: 110px;
-    background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+    background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-border) 50%, var(--color-surface) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 4px;
@@ -449,7 +449,7 @@
   .skeleton-icons {
     height: 14px;
     width: 60px;
-    background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+    background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-border) 50%, var(--color-surface) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 4px;
@@ -458,7 +458,7 @@
   .skeleton-step-count {
     height: 14px;
     width: 50px;
-    background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+    background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-border) 50%, var(--color-surface) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 4px;
@@ -469,7 +469,7 @@
     display: block;
     height: 19px;
     width: 32px;
-    background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+    background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-border) 50%, var(--color-surface) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 4px;
@@ -479,7 +479,7 @@
     display: block;
     height: 10px;
     width: 40px;
-    background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+    background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-border) 50%, var(--color-surface) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 3px;

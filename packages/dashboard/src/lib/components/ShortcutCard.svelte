@@ -113,11 +113,11 @@
 
 <style>
   .shortcut-card {
-    --accent-color: #2196f3;
+    --accent-color: var(--color-accent);
     position: relative;
     display: flex;
-    background: white;
-    border: 1px solid #e0e0e0;
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
     border-left-width: 6px;
     border-left-style: solid;
     border-left-color: var(--accent-color);
@@ -127,10 +127,10 @@
   }
 
   .shortcut-card:hover {
-    border-top-color: #bdbdbd;
-    border-right-color: #bdbdbd;
-    border-bottom-color: #bdbdbd;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border-top-color: var(--color-border-strong);
+    border-right-color: var(--color-border-strong);
+    border-bottom-color: var(--color-border-strong);
+    box-shadow: var(--shadow-md);
     transform: translateY(-2px);
   }
 
@@ -186,7 +186,7 @@
   .custom-name {
     font-size: 16px;
     font-weight: 600;
-    color: #1a1a1a;
+    color: var(--color-text);
     margin: 0;
     white-space: nowrap;
     overflow: hidden;
@@ -195,12 +195,12 @@
 
   .action-title {
     font-size: 12px;
-    color: #666;
+    color: var(--color-text-secondary);
   }
 
   .action-missing {
     font-size: 12px;
-    color: #e65100;
+    color: var(--color-warning);
     font-style: italic;
   }
 
@@ -213,8 +213,8 @@
 
   .param {
     font-size: 11px;
-    color: #666;
-    background: #f5f5f5;
+    color: var(--color-text-secondary);
+    background: var(--color-surface);
     padding: 2px 8px;
     border-radius: 4px;
     max-width: 150px;
@@ -224,7 +224,7 @@
   }
 
   .param.more {
-    color: #999;
+    color: var(--color-text-muted);
     font-style: italic;
   }
 
@@ -235,10 +235,10 @@
     z-index: 10;
     display: flex;
     gap: 4px;
-    background: white;
+    background: var(--color-card);
     padding: 4px;
     border-radius: 6px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-md);
   }
 
   .action-btn {
@@ -251,13 +251,13 @@
     background: transparent;
     border-radius: 4px;
     cursor: pointer;
-    color: #666;
+    color: var(--color-text-secondary);
     transition: all 0.15s;
   }
 
   .action-btn:hover:not(:disabled) {
-    background: #f0f0f0;
-    color: #333;
+    background: var(--color-surface);
+    color: var(--color-text);
   }
 
   .action-btn:disabled {
@@ -266,8 +266,8 @@
   }
 
   .action-btn.delete:hover:not(:disabled) {
-    background: #ffebee;
-    color: #c62828;
+    background: var(--color-error-light);
+    color: #991B1B;
   }
 
   .action-btn {

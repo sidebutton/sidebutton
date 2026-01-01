@@ -41,6 +41,13 @@ export interface DashboardBroadcaster {
   broadcastRunningWorkflowsChanged(workflows: { run_id: string; workflow_id: string; workflow_title: string; started_at: string; params: Record<string, string> }[]): void;
 }
 
+// Interface for tracking running workflows (shared with REST API)
+export interface RunningWorkflowsTracker {
+  add(runId: string, workflowId: string, workflowTitle: string, params: Record<string, string>): void;
+  remove(runId: string): void;
+  getAll(): { run_id: string; workflow_id: string; workflow_title: string; started_at: string; params: Record<string, string> }[];
+}
+
 export class McpHandler {
   private actionsDir: string;
   private workflowsDir: string;
@@ -51,7 +58,7 @@ export class McpHandler {
   private workflows: Workflow[] = [];
   private templates: Workflow[] = [];
   private broadcaster: DashboardBroadcaster | null = null;
-  private runningWorkflows: Map<string, { run_id: string; workflow_id: string; workflow_title: string; started_at: string; params: Record<string, string> }> = new Map();
+  private runningWorkflowsTracker: RunningWorkflowsTracker | null = null;
 
   constructor(
     actionsDir: string,
@@ -75,10 +82,11 @@ export class McpHandler {
     this.broadcaster = broadcaster;
   }
 
-  private broadcastRunning(): void {
-    if (this.broadcaster) {
-      this.broadcaster.broadcastRunningWorkflowsChanged(Array.from(this.runningWorkflows.values()));
-    }
+  /**
+   * Set the running workflows tracker (shared with REST API)
+   */
+  setRunningWorkflowsTracker(tracker: RunningWorkflowsTracker): void {
+    this.runningWorkflowsTracker = tracker;
   }
 
   /**
@@ -222,6 +230,25 @@ export class McpHandler {
     method: string,
     params?: Record<string, unknown>
   ): Promise<unknown> {
+    // Log all MCP method calls
+    if (method === 'initialize') {
+      console.log('[MCP] Client initializing...');
+    } else if (method === 'notifications/initialized') {
+      console.log('[MCP] Client initialized successfully');
+    } else if (method === 'tools/list') {
+      console.log('[MCP] Client requesting tools list');
+    } else if (method === 'tools/call') {
+      const toolName = params?.name as string;
+      const toolArgs = params?.arguments as Record<string, unknown> | undefined;
+      console.log(`[MCP] Tool call: ${toolName}`, toolArgs ? JSON.stringify(toolArgs).slice(0, 200) : '');
+    } else if (method === 'resources/list') {
+      console.log('[MCP] Client requesting resources list');
+    } else if (method === 'resources/read') {
+      console.log('[MCP] Client reading resource:', params?.uri);
+    } else {
+      console.log(`[MCP] Unknown method: ${method}`);
+    }
+
     switch (method) {
       case 'initialize':
         return this.handleInitialize();
@@ -333,15 +360,10 @@ export class McpHandler {
       ?.filter(uc => uc.type === 'llm')
       .map(uc => uc.context) ?? [];
 
-    // Track as running and broadcast
-    this.runningWorkflows.set(runId, {
-      run_id: runId,
-      workflow_id: workflowId,
-      workflow_title: workflow.title,
-      started_at: timestamp,
-      params,
-    });
-    this.broadcastRunning();
+    // Track as running (shared tracker broadcasts automatically)
+    if (this.runningWorkflowsTracker) {
+      this.runningWorkflowsTracker.add(runId, workflowId, workflow.title, params, ctx);
+    }
 
     let status: 'success' | 'failed' | 'cancelled' = 'success';
 
@@ -356,9 +378,10 @@ export class McpHandler {
       }
     }
 
-    // Remove from running and broadcast
-    this.runningWorkflows.delete(runId);
-    this.broadcastRunning();
+    // Remove from running (shared tracker broadcasts automatically)
+    if (this.runningWorkflowsTracker) {
+      this.runningWorkflowsTracker.remove(runId);
+    }
 
     const durationMs = Date.now() - startTime;
 

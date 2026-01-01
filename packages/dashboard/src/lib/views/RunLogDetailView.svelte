@@ -199,14 +199,14 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    background: #fafafa;
-    color: #1a1a1a;
+    background: var(--color-surface);
+    color: var(--color-text);
   }
 
   header {
     padding: 16px 24px;
-    background: #fff;
-    border-bottom: 1px solid #e0e0e0;
+    background: var(--color-card);
+    border-bottom: 1px solid var(--color-border);
     display: flex;
     align-items: center;
     gap: 16px;
@@ -218,16 +218,16 @@
     gap: 8px;
     padding: 8px 16px;
     background: transparent;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--color-border);
     border-radius: 8px;
-    color: #666;
+    color: var(--color-text-secondary);
     cursor: pointer;
     font-size: 0.9rem;
   }
 
   .back-btn:hover {
-    background: #f0f0f0;
-    color: #1a1a1a;
+    background: var(--color-surface);
+    color: var(--color-text);
   }
 
   .back-btn svg {
@@ -247,7 +247,7 @@
 
   .confirm-text {
     font-size: 0.9rem;
-    color: #f57c00;
+    color: var(--color-warning);
   }
 
   .btn-secondary,
@@ -260,23 +260,23 @@
   }
 
   .btn-secondary {
-    background: #f0f0f0;
-    color: #666;
-    border: 1px solid #e0e0e0;
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-border);
   }
 
   .btn-secondary:hover {
-    background: #e0e0e0;
-    color: #1a1a1a;
+    background: var(--color-border);
+    color: var(--color-text);
   }
 
   .btn-danger {
-    background: #ffebee;
-    color: #c62828;
+    background: var(--color-error-light);
+    color: #991B1B;
   }
 
   .btn-danger:hover {
-    background: #ffcdd2;
+    background: #FECACA;
   }
 
   .content {
@@ -290,11 +290,11 @@
   .not-found {
     text-align: center;
     padding: 40px;
-    color: #666;
+    color: var(--color-text-secondary);
   }
 
   .error {
-    color: #c62828;
+    color: var(--color-error);
   }
 
   .run-info {
@@ -322,8 +322,8 @@
   }
 
   .meta-item {
-    background: #fff;
-    border: 1px solid #e0e0e0;
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
     padding: 12px 16px;
   }
@@ -331,7 +331,7 @@
   .meta-item .label {
     display: block;
     font-size: 0.75rem;
-    color: #888;
+    color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 4px;
@@ -339,7 +339,7 @@
 
   .meta-item .value {
     font-size: 0.95rem;
-    color: #1a1a1a;
+    color: var(--color-text);
   }
 
   .meta-item .value.mono {
@@ -356,7 +356,7 @@
     margin: 0 0 12px;
     font-size: 0.9rem;
     font-weight: 600;
-    color: #666;
+    color: var(--color-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
@@ -372,25 +372,25 @@
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    background: #fff;
-    border: 1px solid #e0e0e0;
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
     border-radius: 6px;
   }
 
   .param-name {
     font-weight: 500;
-    color: #7b1fa2;
+    color: #8B5CF6;
   }
 
   .param-value {
-    color: #666;
+    color: var(--color-text-secondary);
     font-family: monospace;
     font-size: 0.9rem;
   }
 
   .events-container {
-    background: #fff;
-    border: 1px solid #e0e0e0;
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
     border-radius: 12px;
     padding: 16px;
     font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
@@ -406,11 +406,11 @@
   }
 
   .event-item:hover {
-    background: #f5f5f5;
+    background: var(--color-surface);
   }
 
   .event-index {
-    color: #999;
+    color: var(--color-text-muted);
     min-width: 30px;
     text-align: right;
   }
@@ -418,37 +418,37 @@
   .event-type {
     min-width: 100px;
     font-weight: 500;
-    color: #666;
+    color: var(--color-text-secondary);
   }
 
   .event-message {
     flex: 1;
-    color: #333;
+    color: var(--color-text);
     word-break: break-word;
   }
 
   .event-run .event-type {
-    color: #1976d2;
+    color: var(--color-info);
   }
 
   .event-end .event-type {
-    color: #388e3c;
+    color: var(--color-success);
   }
 
   .event-step .event-type {
-    color: #666;
+    color: var(--color-text-secondary);
   }
 
   .event-step-end .event-type {
-    color: #7b1fa2;
+    color: #8B5CF6;
   }
 
   .event-error .event-type,
   .event-error .event-message {
-    color: #c62828;
+    color: var(--color-error);
   }
 
   .event-log .event-type {
-    color: #f57c00;
+    color: var(--color-warning);
   }
 </style>

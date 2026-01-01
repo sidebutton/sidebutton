@@ -61,8 +61,8 @@
     align-items: center;
     justify-content: center;
     gap: 0;
-    background: #fff;
-    border: 1px solid #e0e0e0;
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
     border-radius: 12px;
     padding: 16px 24px;
     margin-bottom: 20px;
@@ -77,22 +77,22 @@
   }
 
   .stat-item.success .stat-value {
-    color: #388e3c;
+    color: var(--color-success);
   }
 
   .stat-item.error .stat-value {
-    color: #d32f2f;
+    color: var(--color-error);
   }
 
   .stat-value {
     font-size: 1.25rem;
     font-weight: 600;
-    color: #1a1a1a;
+    color: var(--color-text);
   }
 
   .stat-label {
     font-size: 0.75rem;
-    color: #888;
+    color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
@@ -100,6 +100,6 @@
   .stat-divider {
     width: 1px;
     height: 40px;
-    background: #e0e0e0;
+    background: var(--color-border);
   }
 </style>

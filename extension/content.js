@@ -1335,6 +1335,13 @@ class EmbedManager {
     const builtinKeys = ['_url', '_domain', '_pathname', '_title', '_path'];
 
     for (const paramName of Object.keys(params)) {
+      const paramSchema = params[paramName];
+
+      // Skip optional params (required: false)
+      if (paramSchema?.required === false) {
+        continue;
+      }
+
       const mapValue = paramMap[paramName];
 
       // No mapping at all - param not configured

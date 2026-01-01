@@ -64,8 +64,8 @@
 
 <style>
   .section.collapsible {
-    background: #fff;
-    border: 1px solid #e0e0e0;
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
     border-radius: 12px;
     overflow: hidden;
     margin-bottom: 8px;
@@ -84,7 +84,7 @@
   }
 
   .section-toggle:hover {
-    background: #f8f9fa;
+    background: var(--color-surface);
   }
 
   .section-toggle h2 {
@@ -95,13 +95,13 @@
     gap: 10px;
     font-size: 0.95rem;
     font-weight: 600;
-    color: #333;
+    color: var(--color-text);
   }
 
   .toggle-icon {
     width: 16px;
     height: 16px;
-    color: #888;
+    color: var(--color-text-muted);
     transition: transform 0.2s;
     flex-shrink: 0;
   }
@@ -113,23 +113,23 @@
   .count-badge {
     font-size: 0.75rem;
     padding: 2px 8px;
-    background: #e3f2fd;
-    color: #1976d2;
+    background: var(--color-info-light);
+    color: var(--color-info);
     border-radius: 10px;
     font-weight: 500;
   }
 
   .empty-label {
     font-size: 0.75rem;
-    color: #999;
+    color: var(--color-text-muted);
     font-weight: 400;
   }
 
   .configured-label {
     font-size: 0.75rem;
     padding: 2px 8px;
-    background: #e8f5e9;
-    color: #388e3c;
+    background: var(--color-success-light);
+    color: #166534;
     border-radius: 10px;
     font-weight: 500;
   }
@@ -137,17 +137,17 @@
   .btn-edit {
     padding: 4px 12px;
     background: transparent;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--color-border);
     border-radius: 4px;
-    color: #666;
+    color: var(--color-text-secondary);
     font-size: 0.8rem;
     cursor: pointer;
     flex-shrink: 0;
   }
 
   .btn-edit:hover {
-    background: #f0f0f0;
-    color: #1a1a1a;
+    background: var(--color-surface);
+    color: var(--color-text);
   }
 
   .section-content {
