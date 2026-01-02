@@ -15,6 +15,15 @@
   },
   "files": ["dist", "bin", "dashboard", "bundles"],
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sidebutton/sidebutton.git",
+    "directory": "packages/server"
+  },
+  "homepage": "https://sidebutton.com",
+  "bugs": {
+    "url": "https://github.com/sidebutton/sidebutton/issues"
+  },
   "scripts": {
     "build": "tsup && pnpm run build:dashboard",
     "build:server": "tsup",
