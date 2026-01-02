@@ -43,7 +43,7 @@ export interface DashboardBroadcaster {
 
 // Interface for tracking running workflows (shared with REST API)
 export interface RunningWorkflowsTracker {
-  add(runId: string, workflowId: string, workflowTitle: string, params: Record<string, string>): void;
+  add(runId: string, workflowId: string, workflowTitle: string, params: Record<string, string>, context?: ExecutionContext): void;
   remove(runId: string): void;
   getAll(): { run_id: string; workflow_id: string; workflow_title: string; started_at: string; params: Record<string, string> }[];
 }
