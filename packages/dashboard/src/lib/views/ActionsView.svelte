@@ -379,6 +379,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 16px;
+    align-items: start;
   }
 
   .action-card {

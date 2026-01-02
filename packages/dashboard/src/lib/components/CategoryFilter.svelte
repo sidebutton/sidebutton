@@ -37,8 +37,10 @@
   .filter-pills {
     display: flex;
     gap: 8px;
-    padding: 12px 0;
+    padding: 12px 24px;
     flex-wrap: wrap;
+    background: #fff;
+    border-bottom: 1px solid #e0e0e0;
   }
 
   .pill {

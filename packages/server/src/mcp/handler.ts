@@ -245,14 +245,20 @@ export class McpHandler {
       console.log('[MCP] Client requesting resources list');
     } else if (method === 'resources/read') {
       console.log('[MCP] Client reading resource:', params?.uri);
+    } else if (method === 'notifications/cancelled') {
+      // Client cancelled a request - this is normal, don't log as unknown
+    } else if (method.startsWith('notifications/')) {
+      console.error(`[MCP] Unhandled notification: ${method}`);
     } else {
       console.log(`[MCP] Unknown method: ${method}`);
     }
 
     switch (method) {
       case 'initialize':
-        return this.handleInitialize();
+        return this.handleInitialize(params);
       case 'notifications/initialized':
+      case 'notifications/cancelled':
+        // Notifications don't need a response
         return {};
       case 'tools/list':
         return { tools: MCP_TOOLS };
@@ -267,12 +273,29 @@ export class McpHandler {
     }
   }
 
-  private handleInitialize(): unknown {
+  // Supported MCP protocol versions (newest first)
+  private static SUPPORTED_VERSIONS = ['2025-11-25', '2025-03-26', '2024-11-05'];
+
+  private handleInitialize(params?: Record<string, unknown>): unknown {
+    const clientVersion = (params?.protocolVersion as string) || '2024-11-05';
+
+    // Version negotiation per spec:
+    // - If server supports client version, respond with same version
+    // - Otherwise, respond with latest version server supports
+    const negotiatedVersion = McpHandler.SUPPORTED_VERSIONS.includes(clientVersion)
+      ? clientVersion
+      : McpHandler.SUPPORTED_VERSIONS[0];
+
     return {
-      protocolVersion: '2025-06-18',
+      protocolVersion: negotiatedVersion,
       capabilities: {
-        tools: {},
-        resources: {},
+        tools: {
+          listChanged: false,
+        },
+        resources: {
+          subscribe: false,
+          listChanged: false,
+        },
       },
       serverInfo: {
         name: 'sidebutton',

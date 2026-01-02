@@ -663,10 +663,9 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
   // MCP GET endpoint - Opens SSE stream
   // Supports both old HTTP+SSE transport (2024-11-05) and new Streamable HTTP (2025-06-18)
+  let mcpConnectionCount = 0;
   fastify.get('/mcp', async (request, reply) => {
     const accept = request.headers.accept || '';
-
-    console.log(`[MCP] GET /mcp - SSE connection request (Accept: ${accept})`);
 
     // Must accept text/event-stream
     if (!accept.includes('text/event-stream')) {
@@ -697,28 +696,9 @@ export async function startServer(config: ServerConfig): Promise<void> {
     // If no session ID, this is the old HTTP+SSE transport (2024-11-05)
     // Send the endpoint event to tell client where to POST messages
     if (!sessionId) {
-      // Old transport: close ALL existing SSE sessions first
-      // Since we can't correlate multiple sessions in old transport, only allow one
-      const sessionsToDelete: string[] = [];
-      for (const [existingId, existingSession] of mcpSessions) {
-        if (existingSession.sseReply) {
-          // Close silently - old transport reconnects frequently, no need to log each time
-          try {
-            if (!existingSession.sseReply.raw.writableEnded) {
-              existingSession.sseReply.raw.end();
-            }
-          } catch {
-            // Ignore errors closing connections
-          }
-          sessionsToDelete.push(existingId);
-        }
-      }
-      // Delete old sessions
-      for (const id of sessionsToDelete) {
-        mcpSessions.delete(id);
-      }
-
       // Create a new session (old transport)
+      // Note: Allow multiple old-transport sessions - clients like Claude Code may open
+      // multiple parallel connections. POST responses go to the most recent active SSE.
       sessionId = crypto.randomUUID();
       mcpSessions.set(sessionId, {
         sseReply: null,
@@ -726,10 +706,18 @@ export async function startServer(config: ServerConfig): Promise<void> {
         expiryTimer: null,
         isNewTransport: false
       });
-      console.log(`[MCP] New SSE session created: ${sessionId} (old transport)`);
+      mcpConnectionCount++;
+      // Only log first connection and then every 10th to reduce noise
+      if (mcpConnectionCount === 1) {
+        console.log(`[MCP] SSE connection established (old transport)`);
+      } else if (mcpConnectionCount % 10 === 0) {
+        console.log(`[MCP] SSE connections: ${mcpConnectionCount} total`);
+      }
 
       // Send endpoint event (old transport protocol)
-      reply.raw.write(`event: endpoint\ndata: /mcp\n\n`);
+      // Must send full URI per MCP spec - clients may not handle relative paths
+      const host = request.headers.host || 'localhost:9876';
+      reply.raw.write(`event: endpoint\ndata: http://${host}/mcp\n\n`);
     }
 
     const session = mcpSessions.get(sessionId);
@@ -833,15 +821,27 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
 
     // For initialize requests in new transport, create a new session
+    // But ONLY if there's no active old-transport SSE (to avoid confusing transports)
     if (parsedBody.method === 'initialize' && !sessionId) {
-      sessionId = crypto.randomUUID();
-      mcpSessions.set(sessionId, {
-        sseReply: null,
-        pendingMessages: [],
-        expiryTimer: null,
-        isNewTransport: true
-      });
-      console.log(`[MCP] New session created: ${sessionId} (new transport, via initialize)`);
+      // Check if there's an active old-transport SSE - if so, don't create new transport session
+      let hasOldTransportSSE = false;
+      for (const [, session] of mcpSessions) {
+        if (!session.isNewTransport && session.sseReply && !session.sseReply.raw.writableEnded) {
+          hasOldTransportSSE = true;
+          break;
+        }
+      }
+
+      if (!hasOldTransportSSE) {
+        sessionId = crypto.randomUUID();
+        mcpSessions.set(sessionId, {
+          sseReply: null,
+          pendingMessages: [],
+          expiryTimer: null,
+          isNewTransport: true
+        });
+        console.log(`[MCP] New session created: ${sessionId} (new transport, via initialize)`);
+      }
     }
 
     // Handle notifications - return 202 Accepted with no body per MCP spec
@@ -858,26 +858,53 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
     const response = await mcpHandler.handleRequest(body);
 
+    // For initialize requests with new transport (no active old SSE), respond directly with JSON
+    if (parsedBody.method === 'initialize' && sessionId) {
+      reply.header('Mcp-Session-Id', sessionId);
+      reply.header('Content-Type', 'application/json').send(response);
+      console.log(`[MCP] Initialize response sent directly (new transport, session: ${sessionId})`);
+      return;
+    }
+
     // Check for old transport SSE session (no Mcp-Session-Id header but active SSE stream)
     // Old transport: client connects to GET /mcp first, then POSTs without session header
     // We need to send response via SSE stream and return 202 Accepted
     if (!request.headers['mcp-session-id']) {
-      // Find active old transport SSE session
+      // Find active old transport SSE session (must be actually connected)
       let oldTransportSSE: FastifyReply | null = null;
-      for (const [, session] of mcpSessions) {
+      for (const [sseSessionId, session] of mcpSessions) {
         if (!session.isNewTransport && session.sseReply && !session.sseReply.raw.writableEnded) {
-          oldTransportSSE = session.sseReply;
-          break;
+          // Also check socket is alive
+          const socket = session.sseReply.raw.socket;
+          if (socket && !socket.destroyed && socket.writable) {
+            oldTransportSSE = session.sseReply;
+            break;
+          } else {
+            // Clean up dead session
+            console.log(`[MCP] Cleaning up dead SSE session: ${sseSessionId}`);
+            mcpSessions.delete(sseSessionId);
+          }
         }
       }
 
       if (oldTransportSSE) {
         // Old transport: send response via SSE stream
+        // Check if connection is actually alive
+        const socket = oldTransportSSE.raw.socket;
+        if (!socket || socket.destroyed || !socket.writable) {
+          console.log(`[MCP] Old transport SSE connection is dead, responding with JSON`);
+          reply.header('Content-Type', 'application/json').send(response);
+          return;
+        }
+
         try {
-          oldTransportSSE.raw.write(`event: message\ndata: ${response}\n\n`);
-          console.log(`[MCP] Response sent via SSE (old transport)`);
+          const sseData = `event: message\ndata: ${response}\n\n`;
+          const written = oldTransportSSE.raw.write(sseData);
+          console.log(`[MCP] Response sent via SSE (old transport, written=${written}):`, response.slice(0, 200));
         } catch (e) {
-          console.log(`[MCP] Failed to write to SSE stream:`, e);
+          console.log(`[MCP] Failed to write to SSE stream, responding with JSON:`, e);
+          reply.header('Content-Type', 'application/json').send(response);
+          return;
         }
         reply.code(202).send();
         return;
