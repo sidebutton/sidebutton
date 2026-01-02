@@ -42,7 +42,8 @@ export default defineConfig({
           { text: 'Changelog', link: '/changelog' },
           { text: 'Contributing', link: '/contributing' }
         ]
-      }
+      },
+      { text: 'Website', link: 'https://sidebutton.com' }
     ],
 
     sidebar: {

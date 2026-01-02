@@ -12,6 +12,9 @@ hero:
     - theme: alt
       text: View on GitHub
       link: https://github.com/sidebutton/sidebutton
+    - theme: alt
+      text: Visit Website
+      link: https://sidebutton.com
 
 features:
   - icon: 🔁
