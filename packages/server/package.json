@@ -1,6 +1,17 @@
 {
   "name": "@sidebutton/server",
   "version": "1.0.0",
+  "description": "SideButton server with MCP integration, REST API, and web dashboard for workflow automation",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "workflow",
+    "automation",
+    "browser-automation",
+    "chrome-extension",
+    "ai-agents",
+    "claude"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -35,7 +46,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@sidebutton/core": "^1.0.0",
+    "@sidebutton/core": "workspace:^",
     "fastify": "^5.2.0",
     "js-yaml": "^4.1.0",
     "@fastify/static": "^8.0.3",

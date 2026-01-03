@@ -1,6 +1,16 @@
 {
   "name": "@sidebutton/core",
   "version": "1.0.0",
+  "description": "Core workflow engine for SideButton - YAML-based browser and shell automation",
+  "keywords": [
+    "workflow",
+    "automation",
+    "browser-automation",
+    "yaml",
+    "mcp",
+    "llm",
+    "ai-agents"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
