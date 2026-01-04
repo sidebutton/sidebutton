@@ -1,0 +1,9 @@
+{
+  "user_contexts": [
+    {
+      "id": "default",
+      "type": "llm",
+      "context": "You are a helpful assistant. Be concise, accurate, and focus on delivering clear answers. When summarizing content, preserve key facts and main ideas while removing redundancy."
+    }
+  ]
+}

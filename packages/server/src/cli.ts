@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const DEFAULT_PORT = 9876;
 
-// Bundle metadata type
+// Bundle metadata type (used by init command)
 interface BundleMetadata {
   name: string;
   version: string;
@@ -23,6 +23,63 @@ interface BundleMetadata {
   requires: { llm: boolean; browser: boolean };
   tos_warning: boolean;
   tags: string[];
+}
+
+// Check if directory is empty (no YAML files)
+function isDirEmpty(dir: string): boolean {
+  if (!fs.existsSync(dir)) return true;
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.yaml') || f.endsWith('.yml'));
+  return files.length === 0;
+}
+
+// Copy default content to user's config directory
+function copyDefaults(configDir: string): void {
+  const defaultsDir = findDefaultsDir();
+  if (!defaultsDir) return;
+
+  console.log(chalk.cyan('  Setting up default content...\n'));
+
+  // Copy workflows/ and actions/ from defaults
+  for (const subdir of ['workflows', 'actions']) {
+    const srcDir = path.join(defaultsDir, subdir);
+    const destDir = path.join(configDir, subdir);
+
+    if (!fs.existsSync(srcDir)) continue;
+    if (!fs.existsSync(destDir)) {
+      fs.mkdirSync(destDir, { recursive: true });
+    }
+
+    const files = fs.readdirSync(srcDir);
+    for (const file of files) {
+      const srcPath = path.join(srcDir, file);
+      const destPath = path.join(destDir, file);
+      if (!fs.existsSync(destPath) && fs.statSync(srcPath).isFile()) {
+        fs.copyFileSync(srcPath, destPath);
+      }
+    }
+  }
+
+  console.log(`  ${chalk.green('✓')} Default workflows and actions installed\n`);
+}
+
+// Find defaults directory (works from source and npm package)
+function findDefaultsDir(): string | null {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+
+  // npm package: dist/cli.js -> defaults/
+  const npmDefaultsDir = path.resolve(__dirname, '../defaults');
+  if (fs.existsSync(npmDefaultsDir)) {
+    return npmDefaultsDir;
+  }
+
+  // Development: src/cli.ts -> defaults/
+  const devDefaultsDir = path.resolve(__dirname, '../defaults');
+  if (fs.existsSync(devDefaultsDir)) {
+    return devDefaultsDir;
+  }
+
+  return null;
 }
 
 // Find the project root (where workflows/ and actions/ are)
@@ -41,9 +98,16 @@ function findProjectRoot(): string {
   // Fallback to home directory with .sidebutton
   const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? process.cwd();
   const configDir = path.join(homeDir, '.sidebutton');
+  const actionsDir = path.join(configDir, 'actions');
 
+  // Create directory if needed
   if (!fs.existsSync(configDir)) {
     fs.mkdirSync(configDir, { recursive: true });
+  }
+
+  // Copy defaults if actions directory is empty (first run)
+  if (isDirEmpty(actionsDir)) {
+    copyDefaults(configDir);
   }
 
   return configDir;

@@ -1,0 +1,25 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2025-12-21"
+id: wikipedia_open
+title: "Wikipedia: Open Article"
+description: "Navigate to a Wikipedia article by topic and wait for the page to load"
+category:
+  level: primitive
+  domain: research
+  reusable: true
+params:
+  topic: string
+policies:
+  allowed_domains:
+    - wikipedia.org
+    - "*.wikipedia.org"
+steps:
+  # Navigate to Wikipedia article
+  - type: browser.navigate
+    url: "https://en.wikipedia.org/wiki/{{topic}}"
+
+  # Wait for article content to load
+  - type: browser.wait
+    selector: "#firstHeading"
+    timeout: 10000

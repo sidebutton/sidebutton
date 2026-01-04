@@ -1,0 +1,62 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2025-12-21"
+id: wikipedia_summarize
+title: "Wikipedia: Summarize"
+description: "Summarizes Wikipedia article content using AI. Works via embed button on Wikipedia pages or from dashboard with manual content input."
+category:
+  level: workflow
+  domain: research
+  reusable: true
+params:
+  title: string
+  content: string
+  style: string  # Optional: tldr | concise | detailed (default: concise)
+policies:
+  allowed_domains:
+    - wikipedia.org
+    - "*.wikipedia.org"
+embed:
+  selector: "#firstHeading"
+  position: after
+  label: "TL;DR"
+  when: "#mw-content-text"
+  extract:
+    title:
+      selector: self
+      attribute: textContent
+    content:
+      selector: "#mw-content-text .mw-parser-output"
+      attribute: innerText
+  param_map:
+    title: "{{title}}"
+    content: "{{content}}"
+    style: "tldr"
+steps:
+  # Validate content is provided
+  - type: control.if
+    condition: "{{content}} == ''"
+    then:
+      - type: control.stop
+        message: "No content provided. Use this workflow via the embed button on Wikipedia pages."
+
+  # Summarize using LLM
+  - type: llm.generate
+    prompt: |
+      Summarize the following Wikipedia article.
+
+      Article: {{title}}
+
+      Summary style: {{style}}
+      - If "tldr": Write a 1-2 sentence TL;DR.
+      - If "detailed": Write a comprehensive multi-paragraph summary.
+      - Otherwise (default "concise"): Write 2-3 concise paragraphs.
+
+      Content:
+      {{content}}
+
+      Summary:
+    as: summary
+
+  - type: control.stop
+    message: "{{summary}}"
