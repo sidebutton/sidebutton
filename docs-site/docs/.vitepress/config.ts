@@ -75,7 +75,8 @@ export default defineConfig({
             { text: 'Recording Mode', link: '/features/recording' },
             { text: 'Embed Buttons', link: '/features/embed' },
             { text: 'Dashboard', link: '/features/dashboard' },
-            { text: 'LLM Integration', link: '/features/llm' }
+            { text: 'LLM Integration', link: '/features/llm' },
+            { text: 'Jira Integration', link: '/jira-setup' }
           ]
         },
         {
