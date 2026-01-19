@@ -263,6 +263,31 @@ export interface FullLlmConfig {
   model: string;
 }
 
+// External MCP transport configuration
+export type ExternalMcpTransport =
+  | { type: 'claude-code' }
+  | { type: 'http'; endpoint: string }
+  | { type: 'sse'; endpoint: string };
+
+// External MCP tool-specific configuration
+export interface ExternalMcpToolConfig {
+  createIssue?: {
+    cloudId: string;
+    defaultProject: string;
+    defaultIssueType: string;
+  };
+}
+
+// External MCP server configuration
+export interface ExternalMcpConfig {
+  id: string;
+  name: string;
+  displayName: string;
+  enabled: boolean;
+  transport: ExternalMcpTransport;
+  tools: ExternalMcpToolConfig;
+}
+
 // Application settings
 export interface Settings {
   llm: FullLlmConfig;
@@ -271,6 +296,8 @@ export interface Settings {
   user_contexts: UserContext[];
   /** Maps "org/repo" to local filesystem path */
   repos?: Record<string, string>;
+  /** External MCP server configurations */
+  external_mcps?: ExternalMcpConfig[];
 }
 
 // ============================================================================

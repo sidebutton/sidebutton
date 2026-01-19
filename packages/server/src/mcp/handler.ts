@@ -18,6 +18,15 @@ import {
 import type { ExtensionClientImpl } from '../extension.js';
 import { MCP_TOOLS } from './tools.js';
 
+function extractDomain(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
+}
+
 interface JsonRpcRequest {
   jsonrpc: string;
   id?: string | number | null;
@@ -230,27 +239,27 @@ export class McpHandler {
     method: string,
     params?: Record<string, unknown>
   ): Promise<unknown> {
-    // Log all MCP method calls
+    // Log all MCP method calls to stderr (avoid polluting stdout in stdio mode)
     if (method === 'initialize') {
-      console.log('[MCP] Client initializing...');
+      process.stderr.write('[MCP] Client initializing...\n');
     } else if (method === 'notifications/initialized') {
-      console.log('[MCP] Client initialized successfully');
+      process.stderr.write('[MCP] Client initialized successfully\n');
     } else if (method === 'tools/list') {
-      console.log('[MCP] Client requesting tools list');
+      process.stderr.write('[MCP] Client requesting tools list\n');
     } else if (method === 'tools/call') {
       const toolName = params?.name as string;
       const toolArgs = params?.arguments as Record<string, unknown> | undefined;
-      console.log(`[MCP] Tool call: ${toolName}`, toolArgs ? JSON.stringify(toolArgs).slice(0, 200) : '');
+      process.stderr.write(`[MCP] Tool call: ${toolName} ${toolArgs ? JSON.stringify(toolArgs).slice(0, 200) : ''}\n`);
     } else if (method === 'resources/list') {
-      console.log('[MCP] Client requesting resources list');
+      process.stderr.write('[MCP] Client requesting resources list\n');
     } else if (method === 'resources/read') {
-      console.log('[MCP] Client reading resource:', params?.uri);
+      process.stderr.write(`[MCP] Client reading resource: ${params?.uri}\n`);
     } else if (method === 'notifications/cancelled') {
       // Client cancelled a request - this is normal, don't log as unknown
     } else if (method.startsWith('notifications/')) {
-      console.error(`[MCP] Unhandled notification: ${method}`);
+      process.stderr.write(`[MCP] Unhandled notification: ${method}\n`);
     } else {
-      console.log(`[MCP] Unknown method: ${method}`);
+      process.stderr.write(`[MCP] Unknown method: ${method}\n`);
     }
 
     switch (method) {
@@ -379,8 +388,17 @@ export class McpHandler {
     ctx.workflowsRegistry = this.workflows;
     ctx.llmConfig = settings.llm;
     ctx.repos = settings.repos ?? {};
+
+    // Filter user contexts by type and domain match
+    const pageUrl = params.page_url;
+    const requestDomain = extractDomain(pageUrl);
     ctx.userContexts = settings.user_contexts
       ?.filter(uc => uc.type === 'llm')
+      .filter(uc => {
+        if (!uc.domain) return true; // No domain = applies everywhere
+        if (!requestDomain) return true; // No URL = include all
+        return requestDomain === uc.domain || requestDomain.endsWith('.' + uc.domain);
+      })
       .map(uc => uc.context) ?? [];
 
     // Track as running (shared tracker broadcasts automatically)

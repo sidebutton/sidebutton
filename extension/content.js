@@ -1346,7 +1346,6 @@ class EmbedManager {
 
       // No mapping at all - param not configured
       if (mapValue === undefined || mapValue === null || mapValue === '') {
-        console.log(`[Assistant] validateRequiredParams: Missing mapping for '${paramName}'`);
         return false;
       }
 
@@ -1357,7 +1356,6 @@ class EmbedManager {
         // Built-in context keys are always available
         const isBuiltin = builtinKeys.includes(contextKey) || contextKey.startsWith('_path.');
         if (!isBuiltin && !extractKeys.includes(contextKey)) {
-          console.log(`[Assistant] validateRequiredParams: No extract config for '${contextKey}' (param: ${paramName})`);
           return false;
         }
       }
@@ -1373,23 +1371,18 @@ class EmbedManager {
   injectButtons(config) {
     const { id, title, embed } = config;
 
-    console.log(`[Assistant] injectButtons for ${id}:`, embed);
-
     // Validate required params have mappings before injecting
     if (!this.validateRequiredParams(config)) {
-      console.log(`[Assistant] ${id}: Required params not configured, skipping injection`);
       return;
     }
 
     // Check "when" condition if specified
     if (embed.when && !document.querySelector(embed.when)) {
-      console.log(`[Assistant] ${id}: 'when' condition not met:`, embed.when);
       return;
     }
 
     // V2: Find ALL target elements (querySelectorAll)
     const targets = document.querySelectorAll(embed.selector);
-    console.log(`[Assistant] ${id}: Found ${targets.length} targets for selector:`, embed.selector);
     if (!targets.length) return;
 
     let injectedCount = 0;
@@ -2510,6 +2503,10 @@ function isContentHidden(element) {
 // ============================================================================
 
 console.log("[Assistant] Content script loaded");
+
+// Set extension marker on all websites for extension detection
+// Websites can check document.documentElement.dataset.sidebutton === 'ready'
+document.documentElement.setAttribute('data-sidebutton', 'ready');
 
 // Request embed configs from background on load
 chrome.runtime.sendMessage({ action: "requestEmbedConfigs" }).catch(() => {});

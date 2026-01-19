@@ -1,148 +1,302 @@
 // SideButton Browser Extension - Popup Script
+// Supports both local server mode and hosted (Claude Desktop) mode
 
+const DASHBOARD_URL = "http://localhost:9876";
+const ACTIONS_URL = `${DASHBOARD_URL}/actions`;
+const LOGIN_URL = "https://sidebutton.com/connect";
+const DEFAULT_MCP_URL = "https://sidebutton.com/api/mcp";
+
+// ============================================================================
+// DOM Elements
+// ============================================================================
+
+const headerSubtitle = document.getElementById("header-subtitle");
+
+// Views
+const viewDisconnected = document.getElementById("view-disconnected");
+const viewHosted = document.getElementById("view-hosted");
+const viewLocal = document.getElementById("view-local");
+
+// Disconnected view elements
+const loginBtn = document.getElementById("login-btn");
+const connectLocalBtn = document.getElementById("connect-local-btn");
+
+// Hosted view elements
+const hostedEmail = document.getElementById("hosted-email");
+const hostedTabStatus = document.getElementById("hosted-tab-status");
+const hostedTabLabel = document.getElementById("hosted-tab-label");
+const hostedTabDetail = document.getElementById("hosted-tab-detail");
+const hostedConnectTabBtn = document.getElementById("hosted-connect-tab-btn");
+const mcpUrl = document.getElementById("mcp-url");
+const copyUrlBtn = document.getElementById("copy-url-btn");
+const signoutBtn = document.getElementById("signout-btn");
+
+// Local view elements
 const statusEl = document.getElementById("status");
 const statusDetail = document.getElementById("status-detail");
-const connectBtn = document.getElementById("connect-btn");
-const recordingSection = document.getElementById("recording-section");
+const dashboardBtn = document.getElementById("dashboard-btn");
+const actionsRow = document.getElementById("actions-row");
+const actionsCount = document.getElementById("actions-count");
+const disconnectBtn = document.getElementById("disconnect-btn");
+const focusBtn = document.getElementById("focus-btn");
 const recordBtn = document.getElementById("record-btn");
-const recordingStatus = document.getElementById("recording-status");
+
+// ============================================================================
+// State
+// ============================================================================
 
 let currentStatus = {
+  mode: "disconnected", // "disconnected", "local", "hosted"
   connected: false,
   wsConnected: false,
+  hostedConnected: false,
   tabId: null,
   recording: false,
+  email: null,
+  mcpUrl: null,
 };
 
+// ============================================================================
+// View Switching
+// ============================================================================
+
+function showView(viewName) {
+  viewDisconnected.classList.remove("active");
+  viewHosted.classList.remove("active");
+  viewLocal.classList.remove("active");
+
+  switch (viewName) {
+    case "disconnected":
+      viewDisconnected.classList.add("active");
+      headerSubtitle.textContent = "Choose connection";
+      break;
+    case "hosted":
+      viewHosted.classList.add("active");
+      headerSubtitle.textContent = "Claude Desktop Mode";
+      break;
+    case "local":
+      viewLocal.classList.add("active");
+      headerSubtitle.textContent = "Browser Automation";
+      break;
+  }
+}
+
+// ============================================================================
+// UI Updates
+// ============================================================================
+
 function updateUI() {
-  const { connected, wsConnected, tabId, recording } = currentStatus;
+  const { mode, connected, wsConnected, hostedConnected, tabId, recording, email } = currentStatus;
 
-  // Get focus button
-  const focusBtn = document.getElementById("focus-btn");
+  // Determine which view to show
+  if (mode === "hosted" && (email || hostedConnected)) {
+    showView("hosted");
+    hostedEmail.textContent = email || "Connected";
+    mcpUrl.textContent = currentStatus.mcpUrl || DEFAULT_MCP_URL;
 
-  if (connected) {
-    statusEl.className = "status connected";
-    statusEl.querySelector(".status-label").textContent = "Connected";
+    // Update tab connection status in hosted view
+    if (tabId && connected) {
+      hostedTabStatus.classList.remove("disconnected");
+      hostedTabStatus.classList.add("connected");
+      hostedTabLabel.textContent = "Tab Connected";
+      hostedTabDetail.textContent = "Ready for automation";
+      hostedConnectTabBtn.textContent = "Disconnect Tab";
+      hostedConnectTabBtn.classList.remove("btn-accent");
+      hostedConnectTabBtn.classList.add("btn-secondary");
+    } else {
+      hostedTabStatus.classList.remove("connected");
+      hostedTabStatus.classList.add("disconnected");
+      hostedTabLabel.textContent = "No Tab Connected";
+      hostedTabDetail.textContent = "Click below to connect a tab";
+      hostedConnectTabBtn.textContent = "Connect Current Tab";
+      hostedConnectTabBtn.classList.remove("btn-secondary");
+      hostedConnectTabBtn.classList.add("btn-accent");
+    }
+  } else if (mode === "local" && connected) {
+    showView("local");
 
+    // Update status detail
     if (recording) {
       statusDetail.textContent = "Recording actions...";
+      recordBtn.classList.add("active");
+      recordBtn.closest(".icon-btn-wrapper").querySelector(".tooltip").textContent = "Stop Recording";
     } else {
       statusDetail.textContent = "Ready for automation";
-    }
-
-    connectBtn.textContent = "Disconnect";
-    connectBtn.className = "secondary";
-
-    // Show focus button when connected
-    if (focusBtn) {
-      focusBtn.style.display = "block";
-      focusBtn.onclick = () => {
-        if (tabId) {
-          chrome.tabs.update(tabId, { active: true });
-        }
-      };
-    }
-
-    // Show recording section when connected
-    recordingSection.style.display = "block";
-
-    // Update recording button state
-    if (recording) {
-      recordBtn.className = "record-btn recording";
-      recordBtn.innerHTML = '<span class="record-dot"></span>Stop Recording';
-      recordingStatus.style.display = "flex";
-    } else {
-      recordBtn.className = "record-btn";
-      recordBtn.innerHTML = '<span class="record-dot"></span>Start Recording';
-      recordingStatus.style.display = "none";
+      recordBtn.classList.remove("active");
+      recordBtn.closest(".icon-btn-wrapper").querySelector(".tooltip").textContent = "Record";
     }
   } else {
-    statusEl.className = "status disconnected";
-    statusEl.querySelector(".status-label").textContent = "Disconnected";
-
-    if (!wsConnected) {
-      statusDetail.textContent = "Waiting for SideButton server...";
-      connectBtn.disabled = true;
-    } else {
-      statusDetail.textContent = "Click to connect";
-      connectBtn.disabled = false;
-    }
-
-    connectBtn.textContent = "Connect";
-    connectBtn.className = "primary";
-
-    // Hide focus button when disconnected
-    if (focusBtn) {
-      focusBtn.style.display = "none";
-    }
-
-    // Hide recording section when disconnected
-    recordingSection.style.display = "none";
+    showView("disconnected");
   }
 }
 
 function refreshStatus() {
   chrome.runtime.sendMessage({ from: "popup", action: "getStatus" }, (response) => {
     if (response) {
-      currentStatus = response;
+      currentStatus = {
+        ...currentStatus,
+        ...response,
+      };
       updateUI();
     }
   });
 }
 
-connectBtn.addEventListener("click", () => {
-  if (currentStatus.connected) {
+// ============================================================================
+// Hosted Mode Actions
+// ============================================================================
+
+// Login button - opens website login page
+loginBtn.addEventListener("click", () => {
+  // Get extension ID to pass to login page
+  const extId = chrome.runtime.id;
+  const url = `${LOGIN_URL}?ext=${extId}`;
+  chrome.tabs.create({ url });
+  window.close();
+});
+
+// Copy URL button
+copyUrlBtn.addEventListener("click", () => {
+  const url = mcpUrl.textContent;
+  navigator.clipboard.writeText(url).then(() => {
+    copyUrlBtn.textContent = "Copied!";
+    setTimeout(() => {
+      copyUrlBtn.textContent = "Copy URL";
+    }, 2000);
+  });
+});
+
+// Sign out button
+signoutBtn.addEventListener("click", async () => {
+  await chrome.runtime.sendMessage({ from: "popup", action: "hostedSignout" });
+  await chrome.storage.local.remove(["hostedEmail", "hostedUserCode", "hostedMcpUrl", "mode"]);
+  currentStatus = {
+    ...currentStatus,
+    mode: "disconnected",
+    email: null,
+    mcpUrl: null,
+    hostedConnected: false,
+  };
+  updateUI();
+});
+
+// Hosted mode: Connect/Disconnect tab button
+hostedConnectTabBtn.addEventListener("click", () => {
+  if (currentStatus.tabId && currentStatus.connected) {
+    // Disconnect from tab
     chrome.runtime.sendMessage({ from: "popup", action: "disconnect" }, () => {
       refreshStatus();
     });
   } else {
-    connectBtn.disabled = true;
-    connectBtn.textContent = "Connecting...";
-
+    // Connect to current tab
     chrome.runtime.sendMessage({ from: "popup", action: "connect" }, (response) => {
       if (response?.error) {
-        console.error("[Assistant]", response.error);
+        console.error("[SideButton]", response.error);
+        hostedConnectTabBtn.textContent = "Connection failed";
+        setTimeout(() => {
+          hostedConnectTabBtn.textContent = "Connect Current Tab";
+        }, 2000);
       }
       refreshStatus();
     });
   }
 });
 
-// Recording button handler
+// ============================================================================
+// Local Mode Actions
+// ============================================================================
+
+// Connect to local server
+connectLocalBtn.addEventListener("click", () => {
+  chrome.runtime.sendMessage({ from: "popup", action: "connect" }, (response) => {
+    if (response?.error) {
+      console.error("[SideButton]", response.error);
+      // Show error state
+      connectLocalBtn.textContent = "Connection failed";
+      setTimeout(() => {
+        connectLocalBtn.textContent = "Connect Local Server";
+      }, 2000);
+    }
+    refreshStatus();
+  });
+});
+
+// Dashboard button - opens dashboard in new tab
+dashboardBtn.addEventListener("click", () => {
+  chrome.tabs.create({ url: DASHBOARD_URL });
+});
+
+// Actions row - opens actions page
+actionsRow.addEventListener("click", () => {
+  chrome.tabs.create({ url: ACTIONS_URL });
+});
+
+// Disconnect button
+disconnectBtn.addEventListener("click", () => {
+  chrome.runtime.sendMessage({ from: "popup", action: "disconnect" }, () => {
+    refreshStatus();
+  });
+});
+
+// Focus tab button
+focusBtn.addEventListener("click", () => {
+  if (currentStatus.tabId) {
+    chrome.tabs.update(currentStatus.tabId, { active: true });
+  }
+});
+
+// Recording button
 recordBtn.addEventListener("click", () => {
   if (currentStatus.recording) {
-    // Stop recording
     chrome.runtime.sendMessage({ from: "popup", action: "stopRecording" }, () => {
       refreshStatus();
     });
   } else {
-    // Start recording
     chrome.runtime.sendMessage({ from: "popup", action: "startRecording" }, () => {
       refreshStatus();
     });
   }
 });
 
-// Embed toggle handler
-const embedToggle = document.getElementById("embed-toggle");
+// ============================================================================
+// Fetch Actions Count
+// ============================================================================
 
-// Load embed setting
-chrome.runtime.sendMessage({ from: "popup", action: "getEmbedEnabled" }, (response) => {
-  if (response) {
-    embedToggle.checked = response.enabled !== false;
+async function fetchActionsCount() {
+  try {
+    const response = await fetch(`${DASHBOARD_URL}/api/workflows`);
+    if (!response.ok) throw new Error("Failed to fetch");
+    const data = await response.json();
+    const count = data.workflows?.length || 0;
+    actionsCount.textContent = `${count} Action${count !== 1 ? "s" : ""}`;
+  } catch (e) {
+    actionsCount.textContent = "-- Actions";
   }
-});
+}
 
-embedToggle.addEventListener("change", () => {
-  chrome.runtime.sendMessage({
-    from: "popup",
-    action: "setEmbedEnabled",
-    enabled: embedToggle.checked,
-  });
-});
+// ============================================================================
+// Initialize
+// ============================================================================
 
-// Initial status
-refreshStatus();
+// Load saved hosted credentials on popup open
+async function initialize() {
+  const data = await chrome.storage.local.get(["hostedEmail", "hostedUserCode", "hostedMcpUrl", "mode"]);
 
-// Poll for updates
+  if (data.mode === "hosted" && data.hostedEmail) {
+    currentStatus.mode = "hosted";
+    currentStatus.email = data.hostedEmail;
+    currentStatus.mcpUrl = data.hostedMcpUrl || DEFAULT_MCP_URL;
+  }
+
+  refreshStatus();
+  fetchActionsCount();
+}
+
+initialize();
+
+// Poll for status updates
 setInterval(refreshStatus, 2000);
+
+// Refresh actions count periodically (less frequently)
+setInterval(fetchActionsCount, 10000);
+

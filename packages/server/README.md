@@ -31,13 +31,32 @@ npx sidebutton serve
 ## CLI Commands
 
 ```bash
-sidebutton serve          # Start server on port 9876
-sidebutton list           # List available workflows
-sidebutton run <id>       # Run a workflow by ID
-sidebutton status         # Check server status
+sidebutton serve              # Start server on port 9876
+sidebutton serve --stdio      # Start with stdio transport (for Claude Desktop)
+sidebutton serve -p 8080      # Start on custom port
+sidebutton list               # List available workflows
+sidebutton run <id>           # Run a workflow by ID
+sidebutton status             # Check server status
 ```
 
 ## MCP Integration
+
+### Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "sidebutton": {
+      "command": "npx",
+      "args": ["@sidebutton/server@latest", "serve", "--stdio"]
+    }
+  }
+}
+```
+
+**Note:** The `--stdio` flag uses stdin/stdout for MCP communication, which is required for Claude Desktop's JSON config. The HTTP server still runs in the background for browser extension connectivity.
 
 ### Claude Code
 

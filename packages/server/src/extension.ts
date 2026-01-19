@@ -100,7 +100,8 @@ export class ExtensionClientImpl implements ExtensionClient {
       console.error('WebSocket error:', error);
     });
 
-    console.log('Chrome extension connected');
+    // Use stderr to avoid polluting stdout in stdio mode
+    process.stderr.write('[sidebutton] Chrome extension connected\n');
   }
 
   private handleEvent(event: ExtensionEvent): void {
@@ -426,5 +427,19 @@ export class ExtensionClientImpl implements ExtensionClient {
     if (!response.ok) {
       throw new Error(response.error ?? 'TypeRef failed');
     }
+  }
+
+  /**
+   * Broadcast a message to the extension (no response expected)
+   * Used for one-way notifications like workflow-installed
+   */
+  broadcast(type: string, data: Record<string, unknown> = {}): void {
+    if (!this.socket || this.socket.readyState !== 1) {
+      console.log(`[Extension] Cannot broadcast '${type}' - not connected`);
+      return;
+    }
+    const message = JSON.stringify({ type, data });
+    this.socket.send(message);
+    console.log(`[Extension] Broadcast '${type}':`, data);
   }
 }

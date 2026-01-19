@@ -2,6 +2,7 @@
  * CLI entry point for sidebutton
  */
 
+import 'dotenv/config';
 import { Command } from 'commander';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
@@ -9,6 +10,7 @@ import * as yaml from 'js-yaml';
 import chalk from 'chalk';
 import { loadWorkflowsFromDir, type Workflow } from '@sidebutton/core';
 import { startServer } from './server.js';
+import { startStdioMode } from './stdio-mode.js';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_PORT = 9876;
@@ -37,7 +39,8 @@ function copyDefaults(configDir: string): void {
   const defaultsDir = findDefaultsDir();
   if (!defaultsDir) return;
 
-  console.log(chalk.cyan('  Setting up default content...\n'));
+  // Use stderr to avoid polluting stdout in stdio mode
+  process.stderr.write(chalk.cyan('  Setting up default content...\n'));
 
   // Copy workflows/ and actions/ from defaults
   for (const subdir of ['workflows', 'actions']) {
@@ -218,10 +221,24 @@ program
   .description('Start the server with dashboard')
   .option('-p, --port <port>', 'Port to listen on', String(DEFAULT_PORT))
   .option('--headless', 'Run without dashboard')
+  .option('--stdio', 'Use stdio transport for MCP (for Claude Desktop)')
   .action(async (options) => {
     const projectRoot = findProjectRoot();
     const port = Number(options.port);
 
+    // stdio mode: no stdout output, uses stdin/stdout for MCP JSON-RPC
+    if (options.stdio) {
+      await startStdioMode({
+        port,
+        actionsDir: path.join(projectRoot, 'actions'),
+        workflowsDir: path.join(projectRoot, 'workflows'),
+        templatesDir: path.join(projectRoot, 'templates'),
+        runLogsDir: path.join(projectRoot, 'run_logs'),
+      });
+      return;
+    }
+
+    // Normal mode with console output
     console.log(chalk.cyan('\n  SideButton\n'));
     console.log(`  Project root: ${projectRoot}`);
 

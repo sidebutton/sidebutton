@@ -8,7 +8,6 @@
 import type { Step } from '../types.js';
 import type { ExecutionContext } from '../context.js';
 import { WorkflowError } from '../types.js';
-import { truncateForDisplay } from '../interpolate.js';
 
 type BrowserNavigate = Extract<Step, { type: 'browser.navigate' }>;
 type BrowserClick = Extract<Step, { type: 'browser.click' }>;
@@ -89,8 +88,7 @@ export async function executeBrowserExtract(
   ctx.emitLog('info', `Extracting from: ${selector}`);
   const text = await ext.extract(selector);
 
-  // Store result for display
-  ctx.lastStepResult = truncateForDisplay(text, 500);
+  ctx.lastStepResult = text;
   ctx.variables[step.as] = text;
 }
 
@@ -105,7 +103,7 @@ export async function executeBrowserExtractAll(
   ctx.emitLog('info', `Extracting all from: ${selector}`);
   const text = await ext.extractAll(selector, separator);
 
-  ctx.lastStepResult = truncateForDisplay(text, 500);
+  ctx.lastStepResult = text;
   ctx.variables[step.as] = text;
 }
 

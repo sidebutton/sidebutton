@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "SideButton",
-  "version": "1.0.0",
-  "description": "Connect your browser to SideButton for workflow automation, recording, and AI integration",
+  "version": "1.0.1",
+  "description": "Connect your browser to SideButton for workflow automation, recording, and AI integration. Works with Claude Desktop.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -18,6 +18,13 @@
   "host_permissions": [
     "<all_urls>"
   ],
+  "externally_connectable": {
+    "matches": [
+      "https://sidebutton.com/*",
+      "https://*.sidebutton.com/*",
+      "http://localhost:*/*"
+    ]
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"
@@ -25,7 +32,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "js": ["content.js", "panel.js"],
       "run_at": "document_idle"
     }
   ],

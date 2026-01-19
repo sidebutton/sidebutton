@@ -6,7 +6,6 @@
 import type { Step, LlmConfig } from '../types.js';
 import type { ExecutionContext } from '../context.js';
 import { WorkflowError } from '../types.js';
-import { truncateForDisplay } from '../interpolate.js';
 
 type LlmClassify = Extract<Step, { type: 'llm.classify' }>;
 type LlmGenerate = Extract<Step, { type: 'llm.generate' }>;
@@ -18,7 +17,7 @@ async function generateText(prompt: string, config: LlmConfig): Promise<string> 
   const { provider, model, api_key, base_url } = config;
 
   if (provider === 'openai') {
-    const url = base_url || 'https://api.openai.com/v1/chat/completions';
+    const url = `${base_url || 'https://api.openai.com/v1'}/chat/completions`;
     const modelName = model || 'gpt-4o-mini';
     const apiKey = api_key || process.env.OPENAI_API_KEY;
 
@@ -51,7 +50,7 @@ async function generateText(prompt: string, config: LlmConfig): Promise<string> 
   }
 
   if (provider === 'anthropic') {
-    const url = base_url || 'https://api.anthropic.com/v1/messages';
+    const url = `${base_url || 'https://api.anthropic.com/v1'}/messages`;
     const modelName = model || 'claude-3-haiku-20240307';
     const apiKey = api_key || process.env.ANTHROPIC_API_KEY;
 
@@ -156,6 +155,6 @@ export async function executeLlmGenerate(
 
   const result = await generateText(fullPrompt, ctx.llmConfig);
 
-  ctx.lastStepResult = truncateForDisplay(result, 500);
+  ctx.lastStepResult = result;
   ctx.variables[step.as] = result;
 }

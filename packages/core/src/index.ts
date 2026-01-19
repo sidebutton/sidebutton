@@ -32,6 +32,10 @@ export type {
   UserContext,
   FullLlmConfig,
   Settings,
+  // External MCP configuration
+  ExternalMcpTransport,
+  ExternalMcpToolConfig,
+  ExternalMcpConfig,
   // Recording system
   RecordedEvent,
   Recording,

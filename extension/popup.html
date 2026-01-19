@@ -9,7 +9,7 @@
       padding: 0;
     }
     body {
-      width: 280px;
+      width: 300px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       font-size: 13px;
       color: #1a1a1a;
@@ -30,9 +30,14 @@
       font-size: 11px;
       opacity: 0.85;
     }
+    .header .subtitle.disconnected {
+      color: rgba(255,255,255,0.7);
+    }
     .content {
       padding: 16px;
     }
+
+    /* Status cards */
     .status {
       display: flex;
       align-items: center;
@@ -49,6 +54,10 @@
       background: #fee2e2;
       color: #991b1b;
     }
+    .status.hosted {
+      background: #dbeafe;
+      color: #1e40af;
+    }
     .status-dot {
       width: 8px;
       height: 8px;
@@ -61,6 +70,9 @@
     .status.disconnected .status-dot {
       background: #ef4444;
     }
+    .status.hosted .status-dot {
+      background: #3b82f6;
+    }
     .status-text {
       flex: 1;
     }
@@ -72,211 +84,359 @@
       font-size: 11px;
       opacity: 0.8;
     }
-    button {
+
+    /* Buttons */
+    .btn {
       width: 100%;
-      padding: 10px 16px;
+      padding: 12px 16px;
       border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 500;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
       cursor: pointer;
       transition: all 0.15s;
+      margin-bottom: 8px;
     }
-    button.primary {
-      background: #15C39A;
-      color: white;
-    }
-    button.primary:hover {
-      background: #0EA87D;
-    }
-    button.secondary {
-      background: #f3f4f6;
-      color: #374151;
-    }
-    button.secondary:hover {
-      background: #e5e7eb;
-    }
-    button:disabled {
+    .btn:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
-    .info {
-      margin-top: 12px;
-      padding: 10px;
-      background: #f8fafc;
-      border-radius: 6px;
-      font-size: 11px;
-      color: #64748b;
+    .btn-primary {
+      background: linear-gradient(135deg, #15C39A 0%, #0EA87D 100%);
+      color: white;
     }
-    .info strong {
-      color: #334155;
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(21, 195, 154, 0.3);
     }
-    .recording-section {
-      margin-top: 12px;
+    .btn-accent {
+      background: #F97316;
+      color: white;
     }
+    .btn-accent:hover:not(:disabled) {
+      background: #EA580C;
+    }
+    .btn-secondary {
+      background: #f3f4f6;
+      color: #374151;
+    }
+    .btn-secondary:hover:not(:disabled) {
+      background: #e5e7eb;
+    }
+    .btn-danger {
+      background: #fef2f2;
+      color: #dc2626;
+    }
+    .btn-danger:hover:not(:disabled) {
+      background: #fee2e2;
+    }
+
+    /* Divider */
     .divider {
+      display: flex;
+      align-items: center;
+      margin: 12px 0;
+      color: #9ca3af;
+      font-size: 11px;
+    }
+    .divider::before, .divider::after {
+      content: "";
+      flex: 1;
       height: 1px;
       background: #e5e7eb;
+    }
+    .divider span {
+      padding: 0 12px;
+    }
+
+    /* MCP URL section */
+    .url-section {
       margin-bottom: 12px;
     }
-    .record-btn {
+    .url-section label {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+    .url-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-family: "SF Mono", Monaco, monospace;
+      font-size: 11px;
+      word-break: break-all;
+      color: #334155;
+    }
+
+    /* Instructions */
+    .instructions {
+      background: #f8fafc;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .instructions-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 8px;
+    }
+    .instructions ol {
+      font-size: 11px;
+      color: #64748b;
+      padding-left: 16px;
+      line-height: 1.6;
+      margin: 0;
+    }
+
+    /* Actions row */
+    .actions-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: #f8fafc;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .actions-row:hover {
+      background: #f1f5f9;
+    }
+    .actions-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .actions-icon {
+      font-size: 14px;
+    }
+    .actions-count {
+      font-weight: 500;
+      color: #334155;
+    }
+    .actions-link {
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    /* Icon buttons row */
+    .icon-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      padding-top: 4px;
+    }
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: 8px;
+      background: #f3f4f6;
+      color: #6b7280;
+      cursor: pointer;
+      transition: all 0.15s;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
+    }
+    .icon-btn:hover {
+      background: #e5e7eb;
+      color: #374151;
+    }
+    .icon-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .icon-btn:disabled:hover {
+      background: #f3f4f6;
+      color: #6b7280;
+    }
+    .icon-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+    .icon-btn.recording {
       background: #fef2f2;
       color: #dc2626;
-      border: 1px solid #fecaca;
     }
-    .record-btn:hover {
+    .icon-btn.recording:hover {
       background: #fee2e2;
     }
-    .record-btn.recording {
+    .icon-btn.recording:disabled {
+      opacity: 0.4;
+    }
+    .icon-btn.recording.active {
       background: #dc2626;
       color: white;
-      border-color: #dc2626;
     }
-    .record-btn.recording:hover {
+    .icon-btn.recording.active:hover {
       background: #b91c1c;
     }
-    .record-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #dc2626;
-    }
-    .record-btn.recording .record-dot {
-      background: white;
+    .icon-btn.recording.active svg {
       animation: pulse-record 1s ease-in-out infinite;
     }
     @keyframes pulse-record {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.5; }
     }
-    .recording-status {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 8px;
-      padding: 8px 12px;
-      background: #fef2f2;
-      border-radius: 6px;
-      font-size: 12px;
-      color: #dc2626;
-    }
-    .recording-indicator {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #dc2626;
-      animation: pulse-record 1s ease-in-out infinite;
-    }
-    .settings-section {
-      margin-top: 12px;
-    }
-    .toggle-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-    .toggle-label {
-      flex: 1;
-      cursor: pointer;
-    }
-    .toggle-title {
-      display: block;
-      font-weight: 500;
-      margin-bottom: 2px;
-    }
-    .toggle-desc {
-      display: block;
-      font-size: 11px;
-      color: #64748b;
-    }
-    .toggle-switch {
+
+    /* Tooltip */
+    .icon-btn-wrapper {
       position: relative;
-      width: 40px;
-      height: 22px;
-      flex-shrink: 0;
     }
-    .toggle-switch input {
+    .icon-btn-wrapper .tooltip {
+      position: absolute;
+      bottom: -24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1f2937;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      white-space: nowrap;
       opacity: 0;
-      width: 0;
-      height: 0;
+      pointer-events: none;
+      transition: opacity 0.15s;
+      z-index: 10;
     }
-    .toggle-slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: #e5e7eb;
-      transition: 0.2s;
-      border-radius: 22px;
+    .icon-btn-wrapper:hover .tooltip {
+      opacity: 1;
     }
-    .toggle-slider:before {
-      position: absolute;
-      content: "";
-      height: 16px;
-      width: 16px;
-      left: 3px;
-      bottom: 3px;
-      background-color: white;
-      transition: 0.2s;
-      border-radius: 50%;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+
+    /* View switching */
+    .view {
+      display: none;
     }
-    input:checked + .toggle-slider {
-      background-color: #15C39A;
+    .view.active {
+      display: block;
     }
-    input:checked + .toggle-slider:before {
-      transform: translateX(18px);
-    }
+
   </style>
 </head>
 <body>
   <div class="header">
     <h1>SideButton</h1>
-    <div class="subtitle">Browser Automation</div>
+    <div id="header-subtitle" class="subtitle">Browser Automation</div>
   </div>
 
   <div class="content">
-    <div id="status" class="status disconnected">
-      <div class="status-dot"></div>
-      <div class="status-text">
-        <div class="status-label">Disconnected</div>
-        <div class="status-detail" id="status-detail">Click to connect</div>
+    <!-- ================================================================== -->
+    <!-- View 1: Disconnected - Show connect options -->
+    <!-- ================================================================== -->
+    <div id="view-disconnected" class="view">
+      <div class="status disconnected">
+        <div class="status-dot"></div>
+        <div class="status-text">
+          <div class="status-label">Not Connected</div>
+          <div class="status-detail">Choose a connection method</div>
+        </div>
       </div>
-    </div>
 
-    <button id="connect-btn" class="primary">Connect</button>
-    <button id="focus-btn" class="secondary focus-btn" style="display: none; margin-top: 8px;">Focus on Tab</button>
-
-    <div id="recording-section" class="recording-section" style="display: none;">
-      <div class="divider"></div>
-      <button id="record-btn" class="record-btn">
-        <span class="record-dot"></span>
-        Start Recording
+      <!-- Hosted mode option -->
+      <button id="login-btn" class="btn btn-primary">
+        <svg style="width:16px;height:16px;margin-right:6px;vertical-align:middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M8 12l2 2 4-4"></path>
+        </svg>
+        Login to SideButton
       </button>
-      <div id="recording-status" class="recording-status" style="display: none;">
-        <span class="recording-indicator"></span>
-        <span>Recording actions...</span>
-      </div>
+
+      <div class="divider"><span>or</span></div>
+
+      <!-- Local server option -->
+      <button id="connect-local-btn" class="btn btn-secondary">Connect Local Server</button>
     </div>
 
-    <div id="settings-section" class="settings-section">
-      <div class="divider"></div>
-      <div class="toggle-row">
-        <label for="embed-toggle" class="toggle-label">
-          <span class="toggle-title">Embedded Buttons</span>
-          <span class="toggle-desc">Show workflow buttons in pages</span>
-        </label>
-        <label class="toggle-switch">
-          <input type="checkbox" id="embed-toggle" checked>
-          <span class="toggle-slider"></span>
-        </label>
+    <!-- ================================================================== -->
+    <!-- View 2: Hosted Mode Connected - Show MCP URL + Tab Controls -->
+    <!-- ================================================================== -->
+    <div id="view-hosted" class="view">
+      <div class="status hosted">
+        <div class="status-dot"></div>
+        <div class="status-text">
+          <div class="status-label">Connected to Cloud</div>
+          <div id="hosted-email" class="status-detail">demo@sidebutton.com</div>
+        </div>
+      </div>
+
+      <!-- Tab connection status -->
+      <div id="hosted-tab-status" class="status disconnected" style="margin-bottom: 12px;">
+        <div class="status-dot"></div>
+        <div class="status-text">
+          <div class="status-label" id="hosted-tab-label">No Tab Connected</div>
+          <div class="status-detail" id="hosted-tab-detail">Click below to connect a tab</div>
+        </div>
+      </div>
+
+      <button id="hosted-connect-tab-btn" class="btn btn-accent">Connect Current Tab</button>
+
+      <div class="divider"><span>MCP URL</span></div>
+
+      <div class="url-section">
+        <div class="url-box" id="mcp-url">https://sidebutton.com/api/mcp</div>
+      </div>
+
+      <button id="copy-url-btn" class="btn btn-secondary">Copy URL</button>
+
+      <button id="signout-btn" class="btn btn-danger" style="margin-top: 12px;">Sign Out</button>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- View 3: Local Mode Connected - Show dashboard controls -->
+    <!-- ================================================================== -->
+    <div id="view-local" class="view">
+      <div id="status" class="status connected">
+        <div class="status-dot"></div>
+        <div class="status-text">
+          <div class="status-label">Connected</div>
+          <div id="status-detail" class="status-detail">Ready for automation</div>
+        </div>
+      </div>
+
+      <button id="dashboard-btn" class="btn btn-primary">Open Dashboard</button>
+
+      <div id="actions-row" class="actions-row">
+        <div class="actions-info">
+          <span class="actions-icon">&#9889;</span>
+          <span class="actions-count" id="actions-count">-- Actions</span>
+        </div>
+        <span class="actions-link">View &rarr;</span>
+      </div>
+
+      <div class="icon-buttons">
+        <div class="icon-btn-wrapper">
+          <button id="disconnect-btn" class="icon-btn" title="Disconnect">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+              <line x1="12" y1="2" x2="12" y2="12"></line>
+            </svg>
+          </button>
+          <span class="tooltip">Disconnect</span>
+        </div>
+        <div class="icon-btn-wrapper">
+          <button id="focus-btn" class="icon-btn" title="Focus Tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <circle cx="12" cy="12" r="6"></circle>
+              <circle cx="12" cy="12" r="2"></circle>
+            </svg>
+          </button>
+          <span class="tooltip">Focus Tab</span>
+        </div>
+        <div class="icon-btn-wrapper">
+          <button id="record-btn" class="icon-btn recording" title="Record">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="12" r="8"></circle>
+            </svg>
+          </button>
+          <span class="tooltip">Record</span>
+        </div>
       </div>
     </div>
 
