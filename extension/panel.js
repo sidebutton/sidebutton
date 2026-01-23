@@ -107,6 +107,18 @@ class ChatPanel {
       this.connectedMcps = ["sidebutton"];
     }
 
+    // Check if chat panel is enabled
+    try {
+      const toggleData = await new Promise((resolve) => {
+        chrome.storage.local.get(["chatPanelEnabled"], resolve);
+      });
+      if (toggleData.chatPanelEnabled === false) {
+        this.shadowHost.style.display = "none";
+      }
+    } catch (e) {
+      // Default: visible
+    }
+
     // Listen for state changes from background
     chrome.runtime.onMessage.addListener((msg) => {
       if (msg.action === "panel:stateChanged") {
@@ -117,6 +129,10 @@ class ChatPanel {
         this.updateMessage(msg.data.id, msg.data);
       } else if (msg.action === "panel:streamChunk") {
         this.appendStreamChunk(msg.data.messageId, msg.data.chunk);
+      } else if (msg.action === "panel:setVisibility") {
+        if (this.shadowHost) {
+          this.shadowHost.style.display = msg.enabled ? "" : "none";
+        }
       }
     });
 

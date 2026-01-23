@@ -23,6 +23,10 @@ let hostedEmail = null;
 let hostedUserCode = null;
 let hostedMcpUrl = null;
 
+// Feature toggle state
+let embedButtonsEnabled = true;
+let chatPanelEnabled = true;
+
 // ============================================================================
 // Chat Panel State Management
 // ============================================================================
@@ -1735,7 +1739,51 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       chrome.storage.local.remove(["mode", "hostedEmail", "hostedUserCode", "hostedMcpUrl"]);
       sendResponse({ ok: true });
       return false;
+    } else if (msg.action === "setEmbedEnabled") {
+      embedButtonsEnabled = msg.enabled;
+      chrome.storage.local.set({ embedButtonsEnabled: msg.enabled });
+      broadcastEmbedStatusToAllTabs();
+      sendResponse({ ok: true });
+      return false;
+    } else if (msg.action === "setChatPanelEnabled") {
+      chatPanelEnabled = msg.enabled;
+      chrome.storage.local.set({ chatPanelEnabled: msg.enabled });
+      broadcastPanelVisibility();
+      sendResponse({ ok: true });
+      return false;
     }
+  }
+
+  // Handle fetch proxy requests from content script (bypasses Private Network Access)
+  if (msg.action === "fetchProxy") {
+    const { url, options } = msg;
+    // Only allow proxying to localhost
+    try {
+      const parsed = new URL(url);
+      if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
+        sendResponse({ ok: false, error: 'Only localhost requests allowed' });
+        return false;
+      }
+    } catch {
+      sendResponse({ ok: false, error: 'Invalid URL' });
+      return false;
+    }
+
+    fetch(url, {
+      method: options?.method || 'GET',
+      headers: options?.headers || {},
+      body: options?.body || undefined,
+    })
+      .then(async (resp) => {
+        const text = await resp.text();
+        let data;
+        try { data = JSON.parse(text); } catch { data = text; }
+        sendResponse({ ok: resp.ok, status: resp.status, data });
+      })
+      .catch((e) => {
+        sendResponse({ ok: false, error: e.message || 'Fetch failed' });
+      });
+    return true; // async response
   }
 
   // Handle login success from website (via content script or external message)
@@ -1844,6 +1892,9 @@ async function fetchEmbedConfigs(domain) {
 async function sendEmbedConfigsToTab(tabId, url) {
   console.log("[SideButton] sendEmbedConfigsToTab:", tabId, url);
 
+  // Skip if embed buttons are disabled
+  if (!embedButtonsEnabled) return;
+
   // Skip restricted URLs early - cannot inject content scripts
   const restrictedPrefixes = ["chrome://", "chrome-extension://", "devtools://", "edge://", "about:"];
   if (restrictedPrefixes.some(prefix => url?.startsWith(prefix))) {
@@ -1898,8 +1949,46 @@ function broadcastEmbedStatus() {
     chrome.tabs.sendMessage(tab.id, {
       action: "embedStatus",
       connected,
-      enabled: true,
+      enabled: embedButtonsEnabled,
     }).catch(() => {});
+  });
+}
+
+// Broadcast panel visibility to all tabs
+function broadcastPanelVisibility() {
+  chrome.tabs.query({}, (tabs) => {
+    for (const tab of tabs) {
+      if (!tab?.id || !tab.url) continue;
+
+      // Skip restricted URLs
+      const restrictedPrefixes = ["chrome://", "chrome-extension://", "devtools://", "edge://", "about:"];
+      if (restrictedPrefixes.some(prefix => tab.url.startsWith(prefix))) continue;
+
+      chrome.tabs.sendMessage(tab.id, {
+        action: "panel:setVisibility",
+        enabled: chatPanelEnabled,
+      }).catch(() => {});
+    }
+  });
+}
+
+// Broadcast embed status to all tabs (used when toggle changes)
+function broadcastEmbedStatusToAllTabs() {
+  const connected = ws && ws.readyState === WebSocket.OPEN;
+
+  chrome.tabs.query({}, (tabs) => {
+    for (const tab of tabs) {
+      if (!tab?.id || !tab.url) continue;
+
+      const restrictedPrefixes = ["chrome://", "chrome-extension://", "devtools://", "edge://", "about:"];
+      if (restrictedPrefixes.some(prefix => tab.url.startsWith(prefix))) continue;
+
+      chrome.tabs.sendMessage(tab.id, {
+        action: "embedStatus",
+        connected,
+        enabled: embedButtonsEnabled,
+      }).catch(() => {});
+    }
   });
 }
 
@@ -2064,6 +2153,12 @@ chrome.storage.local.get(["mode", "hostedEmail", "hostedUserCode", "hostedMcpUrl
     hostedMode = true;
     connectHosted();
   }
+});
+
+// Restore feature toggle state
+chrome.storage.local.get(["embedButtonsEnabled", "chatPanelEnabled"], (data) => {
+  if (data.embedButtonsEnabled === false) embedButtonsEnabled = false;
+  if (data.chatPanelEnabled === false) chatPanelEnabled = false;
 });
 
 console.log("[SideButton] Background service worker started");

@@ -317,6 +317,80 @@
       display: block;
     }
 
+    /* Features toggles */
+    .features-section {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid #e5e7eb;
+    }
+    .features-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+    }
+    .toggle-info {
+      display: flex;
+      flex-direction: column;
+    }
+    .toggle-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: #1a1a1a;
+    }
+    .toggle-desc {
+      font-size: 11px;
+      color: #64748b;
+    }
+    .toggle-switch {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #d1d5db;
+      border-radius: 20px;
+      transition: background 0.2s;
+    }
+    .toggle-slider::before {
+      content: "";
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      left: 2px;
+      bottom: 2px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    }
+    .toggle-switch input:checked + .toggle-slider {
+      background: #15C39A;
+    }
+    .toggle-switch input:checked + .toggle-slider::before {
+      transform: translateX(16px);
+    }
+
   </style>
 </head>
 <body>
@@ -437,6 +511,31 @@
           </button>
           <span class="tooltip">Record</span>
         </div>
+      </div>
+    </div>
+
+    <!-- Features toggles (visible in all views) -->
+    <div class="features-section">
+      <div class="features-title">Features</div>
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <span class="toggle-label">Embed Buttons</span>
+          <span class="toggle-desc">Show action buttons on sites</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-embed" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <span class="toggle-label">Chat Panel</span>
+          <span class="toggle-desc">Show AI chat button</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-chat-panel" checked>
+          <span class="toggle-slider"></span>
+        </label>
       </div>
     </div>
 

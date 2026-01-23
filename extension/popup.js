@@ -41,6 +41,10 @@ const disconnectBtn = document.getElementById("disconnect-btn");
 const focusBtn = document.getElementById("focus-btn");
 const recordBtn = document.getElementById("record-btn");
 
+// Feature toggle elements
+const toggleEmbed = document.getElementById("toggle-embed");
+const toggleChatPanel = document.getElementById("toggle-chat-panel");
+
 // ============================================================================
 // State
 // ============================================================================
@@ -259,6 +263,22 @@ recordBtn.addEventListener("click", () => {
 });
 
 // ============================================================================
+// Feature Toggles
+// ============================================================================
+
+toggleEmbed.addEventListener("change", () => {
+  const enabled = toggleEmbed.checked;
+  chrome.storage.local.set({ embedButtonsEnabled: enabled });
+  chrome.runtime.sendMessage({ from: "popup", action: "setEmbedEnabled", enabled });
+});
+
+toggleChatPanel.addEventListener("change", () => {
+  const enabled = toggleChatPanel.checked;
+  chrome.storage.local.set({ chatPanelEnabled: enabled });
+  chrome.runtime.sendMessage({ from: "popup", action: "setChatPanelEnabled", enabled });
+});
+
+// ============================================================================
 // Fetch Actions Count
 // ============================================================================
 
@@ -280,13 +300,20 @@ async function fetchActionsCount() {
 
 // Load saved hosted credentials on popup open
 async function initialize() {
-  const data = await chrome.storage.local.get(["hostedEmail", "hostedUserCode", "hostedMcpUrl", "mode"]);
+  const data = await chrome.storage.local.get([
+    "hostedEmail", "hostedUserCode", "hostedMcpUrl", "mode",
+    "embedButtonsEnabled", "chatPanelEnabled",
+  ]);
 
   if (data.mode === "hosted" && data.hostedEmail) {
     currentStatus.mode = "hosted";
     currentStatus.email = data.hostedEmail;
     currentStatus.mcpUrl = data.hostedMcpUrl || DEFAULT_MCP_URL;
   }
+
+  // Restore feature toggle states (default: true)
+  toggleEmbed.checked = data.embedButtonsEnabled !== false;
+  toggleChatPanel.checked = data.chatPanelEnabled !== false;
 
   refreshStatus();
   fetchActionsCount();

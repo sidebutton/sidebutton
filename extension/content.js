@@ -2499,6 +2499,38 @@ function isContentHidden(element) {
 }
 
 // ============================================================================
+// Fetch Proxy (bypass Private Network Access restrictions)
+// ============================================================================
+
+// Relay fetch requests from the page to the background script.
+// This allows the website (public origin) to reach localhost via the extension.
+window.addEventListener('message', (event) => {
+  if (event.source !== window) return;
+  if (event.data?.type !== 'SIDEBUTTON_FETCH') return;
+
+  const { requestId, url, options } = event.data;
+  if (!requestId || !url) return;
+
+  chrome.runtime.sendMessage({
+    action: 'fetchProxy',
+    url,
+    options,
+  }).then((response) => {
+    window.postMessage({
+      type: 'SIDEBUTTON_FETCH_RESPONSE',
+      requestId,
+      response,
+    }, '*');
+  }).catch((error) => {
+    window.postMessage({
+      type: 'SIDEBUTTON_FETCH_RESPONSE',
+      requestId,
+      response: { ok: false, error: error.message || 'Extension relay failed' },
+    }, '*');
+  });
+});
+
+// ============================================================================
 // Initialization
 // ============================================================================
 
