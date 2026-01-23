@@ -48,12 +48,12 @@ sidebutton/
 ### Running in Dev Mode
 
 ```bash
-# Full dev mode (all packages with hot reload)
+# Full dev mode (all packages with watch rebuild)
 pnpm dev
 
 # Individual components
-pnpm dev:server        # Server with auto-restart
-pnpm dev:dashboard     # Dashboard with HMR
+pnpm dev:server        # Server with auto-restart on :9876
+pnpm dev:dashboard     # Dashboard watch build (outputs to server)
 pnpm dev:core          # Core library watch
 ```
 

@@ -8,7 +8,7 @@ The fastest way to get started:
 
 ```bash
 # Run directly with npx (no install needed)
-npx @sidebutton/server serve
+npx @sidebutton/server@latest serve
 ```
 
 Open [http://localhost:9876](http://localhost:9876) in your browser to see the dashboard.

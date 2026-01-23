@@ -50,7 +50,7 @@ SideButton is an **open-source, local-first automation platform** that connects 
 
 ```bash
 # Run the server
-npx @sidebutton/server serve
+npx @sidebutton/server@latest serve
 
 # Open http://localhost:9876
 ```

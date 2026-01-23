@@ -6,7 +6,7 @@ Run your first automation in under 2 minutes.
 
 Before continuing, make sure you have:
 
-- [x] Server running (`npx @sidebutton/server serve`)
+- [x] Server running (`npx @sidebutton/server@latest serve`)
 - [x] [Chrome extension installed](/extension)
 - [x] Extension connected to a browser tab
 
@@ -100,7 +100,7 @@ Summarizes any Wikipedia article using AI:
 ::: warning Requires API Key
 LLM workflows need an OpenAI API key. Set it in Settings or as environment variable:
 ```bash
-OPENAI_API_KEY=sk-... npx @sidebutton/server serve
+OPENAI_API_KEY=sk-... npx @sidebutton/server@latest serve
 ```
 :::
 

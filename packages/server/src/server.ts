@@ -1790,6 +1790,29 @@ export async function startServer(config: ServerConfig): Promise<void> {
     return { action };
   });
 
+  // Install action from website (receives YAML content directly)
+  fastify.post<{ Body: { id: string; slug?: string; title?: string; yaml: string } }>('/api/actions/install', async (request, reply) => {
+    const { id, slug, title, yaml: yamlContent } = request.body;
+
+    if (!id || !yamlContent) {
+      reply.status(400);
+      return { error: 'Missing required fields: id and yaml' };
+    }
+
+    const filePath = path.join(config.actionsDir, `${id}.yaml`);
+    fs.writeFileSync(filePath, yamlContent);
+    mcpHandler.reload();
+
+    // Broadcast to extension for badge update
+    extensionClient.broadcast('workflow-installed', {
+      workflowId: id,
+      title: title || id,
+      slug: slug || id,
+    });
+
+    return { success: true, id };
+  });
+
   fastify.put<{ Params: { id: string }; Body: Workflow }>('/api/actions/:id', async (request) => {
     const action = request.body;
     const content = yaml.dump(action);
@@ -2679,6 +2702,12 @@ steps:
          </div>`
       : '';
 
+    const platformSlug = workflow.platform?.name?.toLowerCase() || 'tools';
+    const workflowSegment = workflow.slug.startsWith(platformSlug + '-')
+      ? workflow.slug.slice(platformSlug.length + 1)
+      : workflow.slug;
+    const viewDetailsUrl = `${SIDEBUTTON_API_BASE}/integrations/${platformSlug}/${workflowSegment}`;
+
     const errorHtml = error
       ? `<div class="error">${error}</div>`
       : '';
@@ -2831,7 +2860,7 @@ steps:
       </button>
     </form>
 
-    <a href="${SIDEBUTTON_API_BASE}/marketplace/workflows/${workflow.slug}" class="btn btn-secondary">View Details</a>
+    <a href="${viewDetailsUrl}" class="btn btn-secondary">View Details</a>
 
     <div class="footer">
       <a href="${SIDEBUTTON_API_BASE}">sidebutton.com</a>
@@ -2963,7 +2992,7 @@ steps:
           slug: workflowId,
           title: 'Workflow Not Found',
           description: `Could not find workflow: ${workflowId}`,
-        }, 'This workflow does not exist or has been removed.'));
+        }, 'Could not fetch workflow details. Install from sidebutton.com/integrations instead.'));
         return;
       }
 
@@ -2995,7 +3024,7 @@ steps:
         slug: workflowId,
         title: 'Error',
         description: 'Failed to load workflow',
-      }, 'Could not connect to sidebutton.com. Please try again.'));
+      }, 'Could not fetch workflow details. Install from sidebutton.com/integrations instead.'));
     }
   });
 
@@ -3013,7 +3042,7 @@ steps:
           slug: workflowId,
           title: 'Workflow Not Found',
           description: `Could not find workflow: ${workflowId}`,
-        }, 'This workflow does not exist.'));
+        }, 'Could not fetch workflow details. Install from sidebutton.com/integrations instead.'));
         return;
       }
 
