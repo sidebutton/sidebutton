@@ -214,7 +214,7 @@ const program = new Command();
 program
   .name('sidebutton')
   .description('Workflow automation CLI')
-  .version('1.0.0');
+  .version('1.0.3');
 
 program
   .command('serve')
