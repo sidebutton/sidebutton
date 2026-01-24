@@ -1,0 +1,35 @@
+{
+  "name": "sidebutton",
+  "version": "1.0.4",
+  "description": "Workflow automation for AI agents - browser automation, MCP server, and CLI",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "workflow",
+    "automation",
+    "browser-automation",
+    "ai-agents",
+    "claude",
+    "sidebutton"
+  ],
+  "type": "module",
+  "bin": {
+    "sidebutton": "./bin/sidebutton.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sidebutton/sidebutton.git",
+    "directory": "packages/sidebutton"
+  },
+  "homepage": "https://sidebutton.com",
+  "bugs": {
+    "url": "https://github.com/sidebutton/sidebutton/issues"
+  },
+  "dependencies": {
+    "@sidebutton/server": "^1.0.4"
+  }
+}
