@@ -12,7 +12,7 @@ MCP (Model Context Protocol) is a standard that lets AI assistants connect to ex
 
 ## Prerequisites
 
-- SideButton server running (`npx @sidebutton/server@latest serve`)
+- SideButton server running (`npx sidebutton`)
 - Your AI tool of choice installed
 
 ## Claude Code

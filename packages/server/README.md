@@ -15,7 +15,7 @@ npm install @sidebutton/server
 
 ```bash
 # Start the server
-npx sidebutton serve
+npx sidebutton
 
 # Open http://localhost:9876
 ```
@@ -31,9 +31,9 @@ npx sidebutton serve
 ## CLI Commands
 
 ```bash
-sidebutton serve              # Start server on port 9876
-sidebutton serve --stdio      # Start with stdio transport (for Claude Desktop)
-sidebutton serve -p 8080      # Start on custom port
+sidebutton                    # Start server on port 9876 (default)
+sidebutton --stdio            # Start with stdio transport (for Claude Desktop)
+sidebutton -p 8080            # Start on custom port
 sidebutton list               # List available workflows
 sidebutton run <id>           # Run a workflow by ID
 sidebutton status             # Check server status
@@ -50,7 +50,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "sidebutton": {
       "command": "npx",
-      "args": ["@sidebutton/server@latest", "serve", "--stdio"]
+      "args": ["sidebutton", "--stdio"]
     }
   }
 }

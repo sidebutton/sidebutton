@@ -142,7 +142,7 @@ Error: OpenAI API key not configured
 Set the environment variable:
 ```bash
 export OPENAI_API_KEY=sk-your-key-here
-npx @sidebutton/server@latest serve
+npx sidebutton
 ```
 
 Or configure in Settings (dashboard).
@@ -244,7 +244,7 @@ If you can't resolve your issue:
 For more detailed logs, set the DEBUG environment variable:
 
 ```bash
-DEBUG=* npx @sidebutton/server@latest serve
+DEBUG=* npx sidebutton
 ```
 
 This will show detailed information about:

@@ -209,12 +209,18 @@ function installBundle(bundlesDir: string, bundleName: string, actionsDir: strin
   return { installed, skipped };
 }
 
+// Default to 'serve' when no command is given
+const firstArg = process.argv[2];
+if (!firstArg || (firstArg.startsWith('-') && !['--help', '-h', '--version', '-V'].includes(firstArg))) {
+  process.argv.splice(2, 0, 'serve');
+}
+
 const program = new Command();
 
 program
   .name('sidebutton')
   .description('Workflow automation CLI')
-  .version('1.0.3');
+  .version('1.0.4');
 
 program
   .command('serve')

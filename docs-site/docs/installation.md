@@ -8,7 +8,7 @@ The fastest way to get started:
 
 ```bash
 # Run directly with npx (no install needed)
-npx @sidebutton/server@latest serve
+npx sidebutton
 ```
 
 Open [http://localhost:9876](http://localhost:9876) in your browser to see the dashboard.
@@ -19,10 +19,10 @@ If you prefer a global installation:
 
 ```bash
 # Install globally
-npm install -g @sidebutton/server
+npm install -g sidebutton
 
 # Run the server
-sidebutton serve
+sidebutton
 ```
 
 ## Alternative: From Source
@@ -100,7 +100,7 @@ kill -9 <PID>
 
 ```bash
 # Use sudo (not recommended for security)
-sudo npm install -g @sidebutton/server
+sudo npm install -g sidebutton
 
 # Better: fix npm permissions
 # https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally

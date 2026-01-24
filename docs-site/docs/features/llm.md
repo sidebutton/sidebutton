@@ -18,7 +18,7 @@ Set your OpenAI API key:
 **Option 1: Environment Variable**
 ```bash
 export OPENAI_API_KEY=sk-your-key-here
-npx @sidebutton/server@latest serve
+npx sidebutton
 ```
 
 **Option 2: Settings (Dashboard)**
