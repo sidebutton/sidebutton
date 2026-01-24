@@ -210,17 +210,17 @@ function installBundle(bundlesDir: string, bundleName: string, actionsDir: strin
 }
 
 // Default to 'serve' when no command is given
-const firstArg = process.argv[2];
-if (!firstArg || (firstArg.startsWith('-') && !['--help', '-h', '--version', '-V'].includes(firstArg))) {
-  process.argv.splice(2, 0, 'serve');
-}
+const userArgs = process.argv.slice(2);
+const hasCommand = userArgs.length > 0 && !userArgs[0].startsWith('-');
+const hasHelpOrVersion = ['--help', '-h', '--version', '-V'].includes(userArgs[0]);
+const parseArgs = (hasCommand || hasHelpOrVersion) ? process.argv : ['node', 'sidebutton', 'serve', ...userArgs];
 
 const program = new Command();
 
 program
   .name('sidebutton')
   .description('Workflow automation CLI')
-  .version('1.0.4');
+  .version('1.0.5');
 
 program
   .command('serve')
@@ -479,4 +479,4 @@ program
     }
   });
 
-program.parse();
+program.parse(parseArgs);
