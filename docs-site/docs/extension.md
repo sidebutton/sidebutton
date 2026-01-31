@@ -109,9 +109,30 @@ All automation runs locally on your computer. The extension only communicates wi
 ### "Connect This Tab" button doesn't appear
 
 Make sure:
-- You're on a regular webpage (not `chrome://` pages)
+- You're on a regular webpage (not a restricted page — see below)
 - The extension is enabled in `chrome://extensions/`
 - Developer mode is on
+
+### Restricted Pages
+
+Chrome blocks all extensions from operating on certain URLs. SideButton cannot connect, inject content scripts, or automate these pages:
+
+| URL Pattern | Description |
+|-------------|-------------|
+| `chrome://*` | Chrome internal pages |
+| `chrome-extension://*` | Other extensions' pages |
+| `devtools://*` | Chrome DevTools |
+| `chrome-search://*` | New Tab Page |
+| `chrome-untrusted://*` | Sandboxed Chrome content |
+| `chrome-distiller://*` | Reader mode pages |
+| `view-source:*` | View source pages |
+| `chromewebstore.google.com/*` | Chrome Web Store |
+| `about:*` | About pages |
+| `edge://*` | Edge internal pages |
+
+`file://` URLs require opt-in: enable "Allow access to file URLs" in `chrome://extensions/` for SideButton.
+
+For the full list and workarounds, see [Troubleshooting > Restricted Pages](/troubleshooting#restricted-pages).
 
 ### Automation not working on specific site
 

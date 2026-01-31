@@ -18,6 +18,8 @@ import {
   executeBrowserExists,
   executeBrowserHover,
   executeBrowserKey,
+  executeBrowserSnapshot,
+  executeBrowserInjectCSS,
 } from './browser.js';
 
 import {
@@ -73,6 +75,10 @@ export async function executeStep(
       return executeBrowserHover(step, ctx);
     case 'browser.key':
       return executeBrowserKey(step, ctx);
+    case 'browser.snapshot':
+      return executeBrowserSnapshot(step, ctx);
+    case 'browser.injectCSS':
+      return executeBrowserInjectCSS(step, ctx);
     case 'shell.run':
       return executeShellRun(step, ctx);
     case 'terminal.open':

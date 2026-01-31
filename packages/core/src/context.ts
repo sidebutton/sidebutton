@@ -29,6 +29,8 @@ export interface ExtensionClient {
   hover(selector: string): Promise<void>;
   pressKey(key: string, selector?: string): Promise<void>;
   focus(): Promise<void>;
+  ariaSnapshot(options?: { includeContent?: boolean }): Promise<string>;
+  injectCSS(css: string, id?: string): Promise<void>;
 }
 
 /**

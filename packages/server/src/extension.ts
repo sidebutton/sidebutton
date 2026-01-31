@@ -429,6 +429,15 @@ export class ExtensionClientImpl implements ExtensionClient {
     }
   }
 
+  async injectCSS(css: string, id?: string): Promise<void> {
+    const params: Record<string, unknown> = { css };
+    if (id) params.id = id;
+    const response = await this.sendCommand('injectCSS', params);
+    if (!response.ok) {
+      throw new Error(response.error ?? 'InjectCSS failed');
+    }
+  }
+
   /**
    * Broadcast a message to the extension (no response expected)
    * Used for one-way notifications like workflow-installed

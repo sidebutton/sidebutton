@@ -13,6 +13,7 @@ import * as crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { ExtensionClientImpl } from './extension.js';
 import { McpHandler } from './mcp/handler.js';
+import { reportRunLog } from './services/report.js';
 import * as yaml from 'js-yaml';
 import type { WebSocket } from 'ws';
 import type {
@@ -184,6 +185,7 @@ function loadSettings(actionsDir: string): Settings {
         dashboard_shortcuts: settings.dashboard_shortcuts ?? [],
         user_contexts: settings.user_contexts ?? [],
         external_mcps: settings.external_mcps ?? defaults.external_mcps,
+        reporting: settings.reporting,
       };
     }
   } catch (e) {
@@ -1319,7 +1321,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
     const status = extensionClient.getStatus();
     return {
       status: 'ok',
-      version: '1.0.0',
+      version: '1.0.6',
       desktop_connected: status.server_running,
       browser_connected: status.browser_connected,
     };
@@ -1447,6 +1449,9 @@ export async function startServer(config: ServerConfig): Promise<void> {
         JSON.stringify(runLog, null, 2)
       );
 
+      // Send anonymous run report (fire-and-forget)
+      reportRunLog(runLog, settings.reporting);
+
       // Remove from running and notify
       runningWorkflows.remove(runId);
 
@@ -1537,6 +1542,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
       dashboard_shortcuts: request.body.dashboard_shortcuts ?? current.dashboard_shortcuts,
       user_contexts: request.body.user_contexts ?? current.user_contexts,
       external_mcps: request.body.external_mcps ?? current.external_mcps,
+      reporting: request.body.reporting ?? current.reporting,
     };
     saveSettings(config.actionsDir, updated);
     return { settings: updated };
@@ -3186,7 +3192,7 @@ export async function startSilentServer(config: SilentServerConfig): Promise<voi
     const status = extensionClient.getStatus();
     return {
       status: 'ok',
-      version: '1.0.0',
+      version: '1.0.6',
       mode: 'stdio',
       desktop_connected: status.server_running,
       browser_connected: status.browser_connected,

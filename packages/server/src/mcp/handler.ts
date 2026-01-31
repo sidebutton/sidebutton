@@ -17,6 +17,7 @@ import {
 } from '@sidebutton/core';
 import type { ExtensionClientImpl } from '../extension.js';
 import { MCP_TOOLS } from './tools.js';
+import { reportRunLog } from '../services/report.js';
 
 function extractDomain(url: string | undefined): string | undefined {
   if (!url) return undefined;
@@ -132,6 +133,7 @@ export class McpHandler {
           last_used_params: settings.last_used_params ?? {},
           dashboard_shortcuts: settings.dashboard_shortcuts ?? [],
           user_contexts: settings.user_contexts ?? [],
+          reporting: settings.reporting,
         };
       }
     } catch (e) {
@@ -308,7 +310,7 @@ export class McpHandler {
       },
       serverInfo: {
         name: 'sidebutton',
-        version: '1.0.0',
+        version: '1.0.6',
       },
     };
   }
@@ -473,6 +475,9 @@ export class McpHandler {
     }
     const filePath = path.join(this.runLogsDir, `${runLog.metadata.id}.json`);
     fs.writeFileSync(filePath, JSON.stringify(runLog, null, 2));
+
+    // Send anonymous run report (fire-and-forget)
+    reportRunLog(runLog, this.loadSettings().reporting);
   }
 
   private async toolGetRunLog(args: Record<string, unknown>): Promise<unknown> {

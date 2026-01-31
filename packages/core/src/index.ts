@@ -36,6 +36,8 @@ export type {
   ExternalMcpTransport,
   ExternalMcpToolConfig,
   ExternalMcpConfig,
+  // Reporting
+  ReportingConfig,
   // Recording system
   RecordedEvent,
   Recording,

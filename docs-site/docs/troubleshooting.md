@@ -87,6 +87,46 @@ This can happen if:
 
 **Solution:** Click the extension icon and reconnect.
 
+## Restricted Pages
+
+Chrome enforces restrictions on certain URLs that prevent all extensions — including SideButton — from attaching the debugger, injecting content scripts, or performing any automation. These are **Chrome-level restrictions**, not SideButton limitations.
+
+### Fully Blocked
+
+SideButton cannot operate on these pages at all:
+
+| URL Pattern | Description |
+|-------------|-------------|
+| `chrome://*` | Chrome internal pages (settings, extensions, flags, etc.) |
+| `chrome-extension://*` | Other extensions' pages |
+| `devtools://*` | Chrome DevTools |
+| `chrome-search://*` | New Tab Page |
+| `chrome-untrusted://*` | Sandboxed Chrome content |
+| `chrome-distiller://*` | Reader mode pages |
+| `view-source:*` | View source pages |
+| `chrome.google.com/webstore/*` | Chrome Web Store (legacy) |
+| `chromewebstore.google.com/*` | Chrome Web Store (current) |
+| `about:*` | About pages (`about:blank`, `about:newtab`, etc.) |
+| `edge://*` | Edge internal pages (Edge browser only) |
+
+### Partially Restricted
+
+These pages have limited functionality:
+
+| URL Pattern | Issue |
+|-------------|-------|
+| `file://*` | Requires user opt-in: go to `chrome://extensions/`, find SideButton, and enable "Allow access to file URLs" |
+| PDF viewer pages | Content scripts run but cannot interact with the PDF content itself |
+| Sites with strict CSP | Some content script features may be blocked by the site's Content Security Policy |
+
+### What Happens on Restricted Pages
+
+- **"Connect This Tab"** will show an error: *"Cannot connect to restricted URL"*
+- **Embed buttons** will not appear
+- **Workflows** that target restricted pages will fail at the browser step
+
+**Solution:** Navigate to a regular webpage (any `http://` or `https://` URL) before connecting.
+
 ## Workflow Issues
 
 ### "Workflow not found"

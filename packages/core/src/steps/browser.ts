@@ -2,7 +2,7 @@
  * Browser step executors
  * Implements: browser.navigate, browser.click, browser.type, browser.scroll,
  *             browser.extract, browser.extractAll, browser.wait, browser.exists,
- *             browser.hover, browser.key
+ *             browser.hover, browser.key, browser.snapshot
  */
 
 import type { Step } from '../types.js';
@@ -19,6 +19,8 @@ type BrowserWait = Extract<Step, { type: 'browser.wait' }>;
 type BrowserExists = Extract<Step, { type: 'browser.exists' }>;
 type BrowserHover = Extract<Step, { type: 'browser.hover' }>;
 type BrowserKey = Extract<Step, { type: 'browser.key' }>;
+type BrowserSnapshot = Extract<Step, { type: 'browser.snapshot' }>;
+type BrowserInjectCSS = Extract<Step, { type: 'browser.injectCSS' }>;
 
 function requireExtension(ctx: ExecutionContext) {
   if (!ctx.extensionClient) {
@@ -168,4 +170,30 @@ export async function executeBrowserKey(
   }
 
   await ext.pressKey(key, selector);
+}
+
+export async function executeBrowserSnapshot(
+  step: BrowserSnapshot,
+  ctx: ExecutionContext
+): Promise<void> {
+  const ext = requireExtension(ctx);
+  const includeContent = step.includeContent ?? false;
+
+  ctx.emitLog('info', `Capturing accessibility snapshot (includeContent: ${includeContent})`);
+  const snapshot = await ext.ariaSnapshot({ includeContent });
+
+  ctx.lastStepResult = snapshot;
+  ctx.variables[step.as] = snapshot;
+}
+
+export async function executeBrowserInjectCSS(
+  step: BrowserInjectCSS,
+  ctx: ExecutionContext
+): Promise<void> {
+  const ext = requireExtension(ctx);
+  const css = ctx.interpolate(step.css);
+  const id = step.id ? ctx.interpolate(step.id) : undefined;
+
+  ctx.emitLog('info', `Injecting CSS${id ? ` (id: ${id})` : ''}`);
+  await ext.injectCSS(css, id);
 }

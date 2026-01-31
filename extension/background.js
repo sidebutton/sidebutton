@@ -27,6 +27,32 @@ let hostedMcpUrl = null;
 let embedButtonsEnabled = true;
 let chatPanelEnabled = true;
 
+// URLs where Chrome blocks debugger/content script access
+const RESTRICTED_URL_PREFIXES = [
+  "chrome://",
+  "chrome-extension://",
+  "devtools://",
+  "edge://",
+  "about:",
+  "view-source:",
+  "chrome-search://",
+  "chrome-untrusted://",
+  "chrome-distiller://",
+];
+
+const RESTRICTED_URL_PATTERNS = [
+  "https://chromewebstore.google.com",
+  "https://chrome.google.com/webstore",
+];
+
+function isRestrictedUrl(url) {
+  if (!url) return true;
+  return (
+    RESTRICTED_URL_PREFIXES.some(prefix => url.startsWith(prefix)) ||
+    RESTRICTED_URL_PATTERNS.some(pattern => url.startsWith(pattern))
+  );
+}
+
 // ============================================================================
 // Chat Panel State Management
 // ============================================================================
@@ -722,7 +748,7 @@ async function executeHostedMcpMethod(method, params) {
     // Auto-connect to active tab for hosted mode
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab && !tab.url?.startsWith("chrome://")) {
+      if (tab && !isRestrictedUrl(tab.url)) {
         await attachDebugger(tab.id);
       }
     } catch (e) {
@@ -735,7 +761,7 @@ async function executeHostedMcpMethod(method, params) {
       return {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "sidebutton", version: "1.0.0" }
+        serverInfo: { name: "sidebutton", version: "1.0.6" }
       };
 
     case "tools/list":
@@ -751,6 +777,7 @@ async function executeHostedMcpMethod(method, params) {
           { name: "hover", description: "Hover element", inputSchema: { type: "object", properties: { selector: { type: "string" } }, required: ["selector"] } },
           { name: "extract", description: "Extract text", inputSchema: { type: "object", properties: { selector: { type: "string" } }, required: ["selector"] } },
           { name: "capture_page", description: "Capture page selectors", inputSchema: { type: "object", properties: {} } },
+          { name: "injectCSS", description: "Inject CSS styles into the page", inputSchema: { type: "object", properties: { css: { type: "string", description: "CSS rules to inject" }, id: { type: "string", description: "Optional style element ID for replacement" } }, required: ["css"] } },
         ]
       };
 
@@ -784,6 +811,8 @@ async function executeHostedMcpMethod(method, params) {
       return await cmdExtract({ selector: params?.selector });
     case "capture_page":
       return await cmdCaptureSelectors();
+    case "injectCSS":
+      return await cmdInjectCSS({ css: params?.css, id: params?.id });
 
     default:
       throw new Error(`Unknown method: ${method}`);
@@ -831,6 +860,9 @@ async function executeToolCall(toolName, args) {
       break;
     case "capture_page":
       result = await cmdCaptureSelectors();
+      break;
+    case "injectCSS":
+      result = await cmdInjectCSS({ css: args?.css, id: args?.id });
       break;
     default:
       throw new Error(`Unknown tool: ${toolName}`);
@@ -974,6 +1006,9 @@ async function handleCommand(msg) {
       case "focus":
         result = await cmdFocus();
         break;
+      case "injectCSS":
+        result = await cmdInjectCSS(msg);
+        break;
       default:
         throw new Error(`Unknown command: ${cmd}`);
     }
@@ -997,9 +1032,7 @@ async function cmdConnect(msg) {
   }
 
   // Check for restricted URLs before attempting to attach
-  const restrictedPrefixes = ["chrome://", "chrome-extension://", "devtools://", "edge://", "about:"];
-  const isRestricted = restrictedPrefixes.some(prefix => targetTab.url?.startsWith(prefix));
-  if (isRestricted) {
+  if (isRestrictedUrl(targetTab.url)) {
     throw new Error(`Cannot connect to restricted URL: ${targetTab.url}. Navigate to a regular webpage first.`);
   }
 
@@ -1024,6 +1057,16 @@ async function cmdFocus() {
   await chrome.tabs.update(connectedTabId, { active: true });
 
   return { focused: true, tabId: connectedTabId };
+}
+
+async function cmdInjectCSS(msg) {
+  if (!connectedTabId) throw new Error("No browser connected");
+
+  const { css, id } = msg;
+  if (!css) throw new Error("CSS content is required");
+
+  const result = await sendToContentScript("injectCSS", { css, id });
+  return result;
 }
 
 async function cmdDisconnect() {
@@ -1521,9 +1564,7 @@ async function cmdRecordingStop() {
 async function ensureContentScriptInjected(tabId) {
   // Check if tab is on a restricted URL before attempting injection
   const tab = await chrome.tabs.get(tabId);
-  const restrictedPrefixes = ["chrome://", "chrome-extension://", "devtools://", "edge://", "about:"];
-  const isRestricted = restrictedPrefixes.some(prefix => tab.url?.startsWith(prefix));
-  if (isRestricted) {
+  if (isRestrictedUrl(tab.url)) {
     throw new Error(`Cannot operate on restricted URL: ${tab.url}. Please navigate to a regular webpage first.`);
   }
 
@@ -1896,8 +1937,7 @@ async function sendEmbedConfigsToTab(tabId, url) {
   if (!embedButtonsEnabled) return;
 
   // Skip restricted URLs early - cannot inject content scripts
-  const restrictedPrefixes = ["chrome://", "chrome-extension://", "devtools://", "edge://", "about:"];
-  if (restrictedPrefixes.some(prefix => url?.startsWith(prefix))) {
+  if (isRestrictedUrl(url)) {
     return; // Silently skip - this is expected behavior
   }
 
@@ -1906,8 +1946,21 @@ async function sendEmbedConfigsToTab(tabId, url) {
     const domain = urlObj.hostname;
     const allConfigs = await fetchEmbedConfigs(domain);
 
-    // Filter configs by org/repo match
-    const configs = allConfigs.filter((config) => matchesOrgRepo(url, config.embed));
+    // Filter configs by allowed_domains policy and org/repo match
+    const configs = allConfigs.filter((config) => {
+      const allowed = config.policies?.allowed_domains;
+      if (Array.isArray(allowed) && allowed.length > 0) {
+        const domainMatch = allowed.some((d) => {
+          if (d.startsWith("*.")) {
+            const base = d.slice(2);
+            return domain === base || domain.endsWith("." + base);
+          }
+          return domain === d || domain.endsWith("." + d);
+        });
+        if (!domainMatch) return false;
+      }
+      return matchesOrgRepo(url, config.embed);
+    });
 
     console.log("[SideButton] Configs to send:", configs.length, "(filtered from", allConfigs.length, ") for URL:", url);
     if (configs.length === 0) return;
@@ -1941,8 +1994,7 @@ function broadcastEmbedStatus() {
     if (!tab?.id || !tab.url) return;
 
     // Skip restricted URLs
-    const restrictedPrefixes = ["chrome://", "chrome-extension://", "devtools://", "edge://", "about:"];
-    if (restrictedPrefixes.some(prefix => tab.url.startsWith(prefix))) {
+    if (isRestrictedUrl(tab.url)) {
       return;
     }
 
@@ -1961,8 +2013,7 @@ function broadcastPanelVisibility() {
       if (!tab?.id || !tab.url) continue;
 
       // Skip restricted URLs
-      const restrictedPrefixes = ["chrome://", "chrome-extension://", "devtools://", "edge://", "about:"];
-      if (restrictedPrefixes.some(prefix => tab.url.startsWith(prefix))) continue;
+      if (isRestrictedUrl(tab.url)) continue;
 
       chrome.tabs.sendMessage(tab.id, {
         action: "panel:setVisibility",
@@ -1980,8 +2031,7 @@ function broadcastEmbedStatusToAllTabs() {
     for (const tab of tabs) {
       if (!tab?.id || !tab.url) continue;
 
-      const restrictedPrefixes = ["chrome://", "chrome-extension://", "devtools://", "edge://", "about:"];
-      if (restrictedPrefixes.some(prefix => tab.url.startsWith(prefix))) continue;
+      if (isRestrictedUrl(tab.url)) continue;
 
       chrome.tabs.sendMessage(tab.id, {
         action: "embedStatus",
@@ -2048,53 +2098,28 @@ async function handleEmbedClick(workflowId, context, paramMap) {
       params = context || {};
     }
 
-    // Build MCP JSON-RPC request to run workflow
-    const mcpRequest = {
-      jsonrpc: "2.0",
-      id: Date.now(),
-      method: "tools/call",
-      params: {
-        name: "run_workflow",
-        arguments: {
-          workflow_id: workflowId,
-          params: params,
-        },
-      },
-    };
-
-    const response = await fetch(`${APP_API_URL}/mcp`, {
+    // Use REST API with sync mode to get result directly
+    // (MCP endpoint returns 202 with empty body when SSE client is connected)
+    const response = await fetch(`${APP_API_URL}/api/workflows/${workflowId}/run?sync=true`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(mcpRequest),
+      body: JSON.stringify({ params }),
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
 
     const result = await response.json();
-    console.log("[SideButton] Workflow triggered:", workflowId, result);
+    console.log("[SideButton] Workflow result:", workflowId, result);
 
-    // Check for MCP error response
-    if (result.error) {
-      return { error: result.error.message || "Workflow failed" };
+    if (result.status === "failed") {
+      return { error: result.output_message || "Workflow failed" };
     }
 
-    // Extract content from MCP result
-    // Format: { result: { content: [{ type: "text", text: "..." }] } }
-    let content = null;
-    if (result.result?.content) {
-      const textContent = result.result.content
-        .filter(c => c.type === "text")
-        .map(c => c.text)
-        .join("\n");
-
-      if (textContent) {
-        // Clean up: remove "Run ID: ..." prefix line if present
-        content = textContent.replace(/^Run ID:.*\n+/i, "").trim();
-      }
-    }
-
+    // Return output message as content
+    const content = result.output_message || null;
     return { success: true, content };
   } catch (e) {
     console.error("[SideButton] Failed to run workflow:", e);

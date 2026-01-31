@@ -86,6 +86,9 @@ async function handleMessage(msg) {
     case "getCoordinatesByRef":
       return getCoordinatesByRef(msg.ref);
 
+    case "injectCSS":
+      return injectCSS(msg.css, msg.id);
+
     case "recording.start":
       startRecording();
       return { recording: true };
@@ -1036,6 +1039,33 @@ function getNthChildPath(element, maxDepth = 3) {
 }
 
 // ============================================================================
+// CSS Injection
+// ============================================================================
+
+function injectCSS(css, id) {
+  if (!css) throw new Error("CSS content is required");
+
+  // If an ID is provided and a style with that ID already exists, replace it
+  if (id) {
+    const existing = document.getElementById(id);
+    if (existing && existing.tagName === "STYLE") {
+      existing.textContent = css;
+      return { injected: true, styleId: id, replaced: true };
+    }
+  }
+
+  const style = document.createElement("style");
+  style.setAttribute("data-sidebutton-injected", "true");
+  if (id) {
+    style.id = id;
+  }
+  style.textContent = css;
+  document.head.appendChild(style);
+
+  return { injected: true, styleId: id || style.id || null };
+}
+
+// ============================================================================
 // Utilities
 // ============================================================================
 
@@ -1279,6 +1309,8 @@ class EmbedManager {
     // Map: buttonId -> { button, target, config }
     // buttonId format: `${workflowId}_${targetIndex}`
     this.injectedButtons = new Map();
+    // Map: targetKey -> container element (for grouping buttons at same target)
+    this.buttonContainers = new Map();
     this.observer = null;
     this.connected = false;
     this.enabled = true;
@@ -1337,8 +1369,8 @@ class EmbedManager {
     for (const paramName of Object.keys(params)) {
       const paramSchema = params[paramName];
 
-      // Skip optional params (required: false)
-      if (paramSchema?.required === false) {
+      // Skip optional params (required: false) or params with defaults
+      if (paramSchema?.required === false || paramSchema?.default !== undefined) {
         continue;
       }
 
@@ -1378,6 +1410,12 @@ class EmbedManager {
 
     // Check "when" condition if specified
     if (embed.when && !document.querySelector(embed.when)) {
+      return;
+    }
+
+    // No selector = floating button above the FAB
+    if (!embed.selector) {
+      this.injectFloatingButton(config);
       return;
     }
 
@@ -1466,6 +1504,56 @@ class EmbedManager {
   }
 
   /**
+   * Get or create a container for buttons at a specific target
+   */
+  getOrCreateContainer(target, position) {
+    // Create a unique key for this target + position combination
+    const targetKey = `${target.tagName}_${position}_${Array.from(target.parentNode?.children || []).indexOf(target)}`;
+
+    if (this.buttonContainers.has(targetKey)) {
+      const container = this.buttonContainers.get(targetKey);
+      // Verify container is still in DOM
+      if (container.isConnected) {
+        return container;
+      }
+      this.buttonContainers.delete(targetKey);
+    }
+
+    // Create new container
+    const container = document.createElement("div");
+    container.className = "ta-embed-container";
+    container.style.cssText = `
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      gap: 4px !important;
+      margin: 8px 0 8px 8px !important;
+      z-index: 9999 !important;
+      position: relative !important;
+    `;
+
+    // Insert container at position
+    switch (position) {
+      case "before":
+        target.parentNode.insertBefore(container, target);
+        break;
+      case "after":
+        target.parentNode.insertBefore(container, target.nextSibling);
+        break;
+      case "prepend":
+        target.insertBefore(container, target.firstChild);
+        break;
+      case "append":
+      default:
+        target.appendChild(container);
+        break;
+    }
+
+    this.buttonContainers.set(targetKey, container);
+    return container;
+  }
+
+  /**
    * Create and inject a single button for a target
    */
   injectSingleButton(buttonId, target, config) {
@@ -1490,7 +1578,7 @@ class EmbedManager {
       z-index: 9999 !important;
       gap: 8px !important;
       padding: 8px 16px !important;
-      margin: 8px 12px !important;
+      margin: 2px 0 !important;
       font-size: 13px !important;
       font-weight: 600 !important;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
@@ -1526,25 +1614,115 @@ class EmbedManager {
       this.handleButtonClick(buttonId, target, config);
     });
 
-    // Insert at position
-    switch (embed.position) {
-      case "before":
-        target.parentNode.insertBefore(button, target);
-        break;
-      case "after":
-        target.parentNode.insertBefore(button, target.nextSibling);
-        break;
-      case "prepend":
-        target.insertBefore(button, target.firstChild);
-        break;
-      case "append":
-      default:
-        target.appendChild(button);
-        break;
-    }
+    // Get or create container for this target+position, then append button
+    const container = this.getOrCreateContainer(target, embed.position || "append");
+    container.appendChild(button);
 
     // Store button with its target and config for context extraction
     this.injectedButtons.set(buttonId, { button, target, config });
+  }
+
+  /**
+   * Get or create the fixed container for floating (selector-less) buttons.
+   * Anchored bottom-right, stacked vertically above the SideButton FAB.
+   */
+  getOrCreateFloatingContainer() {
+    let container = document.getElementById("ta-embed-floating");
+    if (container && container.isConnected) {
+      return container;
+    }
+
+    container = document.createElement("div");
+    container.id = "ta-embed-floating";
+    container.style.cssText = `
+      position: fixed !important;
+      right: 20px !important;
+      bottom: 84px !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: flex-end !important;
+      gap: 6px !important;
+      z-index: 9999 !important;
+      pointer-events: auto !important;
+    `;
+    document.body.appendChild(container);
+    return container;
+  }
+
+  /**
+   * Inject a floating button (no selector) into the fixed container.
+   */
+  injectFloatingButton(config) {
+    const { id, title, embed } = config;
+    const buttonId = `${id}_floating`;
+
+    // Don't inject duplicate - but check if button is still in DOM
+    if (this.injectedButtons.has(buttonId)) {
+      const entry = this.injectedButtons.get(buttonId);
+      if (entry.button.isConnected) {
+        return;
+      }
+      this.injectedButtons.delete(buttonId);
+    }
+
+    // Create button element
+    const button = document.createElement("button");
+    button.className = "ta-embed-btn";
+    button.setAttribute("data-workflow-id", id);
+    button.setAttribute("data-button-id", buttonId);
+    button.textContent = embed.label || title;
+    button.title = title;
+
+    button.style.cssText = `
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      vertical-align: middle !important;
+      position: relative !important;
+      z-index: 9999 !important;
+      gap: 8px !important;
+      padding: 8px 16px !important;
+      margin: 0 !important;
+      font-size: 13px !important;
+      font-weight: 600 !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+      background: linear-gradient(135deg, #15C39A 0%, #0EA87D 100%) !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
+      border-radius: 20px !important;
+      color: white !important;
+      cursor: pointer !important;
+      transition: all 0.15s ease !important;
+      white-space: nowrap !important;
+      box-shadow: 0 2px 8px rgba(21, 195, 154, 0.35) !important;
+      min-height: 36px !important;
+      letter-spacing: 0.2px !important;
+      outline: none !important;
+      text-decoration: none !important;
+      width: auto !important;
+      max-width: fit-content !important;
+    `;
+
+    button.addEventListener("mouseenter", () => {
+      button.style.setProperty("background", "linear-gradient(135deg, #0EA87D 0%, #0a7c6a 100%)", "important");
+      button.style.setProperty("box-shadow", "0 4px 16px rgba(21, 195, 154, 0.5), 0 0 0 3px rgba(21, 195, 154, 0.2)", "important");
+    });
+    button.addEventListener("mouseleave", () => {
+      button.style.setProperty("background", "linear-gradient(135deg, #15C39A 0%, #0EA87D 100%)", "important");
+      button.style.setProperty("box-shadow", "0 2px 8px rgba(21, 195, 154, 0.35)", "important");
+    });
+
+    // Click handler - page-level context only (no target element)
+    button.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.handleButtonClick(buttonId, null, config);
+    });
+
+    const container = this.getOrCreateFloatingContainer();
+    container.appendChild(button);
+
+    this.injectedButtons.set(buttonId, { button, target: null, config });
+    console.log(`[Assistant] ${id}: Injected floating button`);
   }
 
   /**
@@ -1608,7 +1786,7 @@ class EmbedManager {
           let el;
           if (extractConfig.selector === 'self' || !extractConfig.selector) {
             el = target;
-          } else if (useDocument) {
+          } else if (useDocument || !target) {
             el = document.querySelector(extractConfig.selector);
           } else {
             el = target.querySelector(extractConfig.selector);
@@ -1772,6 +1950,16 @@ class EmbedManager {
       entry.button.remove();
     }
     this.injectedButtons.clear();
+    // Also remove containers
+    for (const [key, container] of this.buttonContainers) {
+      container.remove();
+    }
+    this.buttonContainers.clear();
+    // Remove floating container
+    const floatingContainer = document.getElementById("ta-embed-floating");
+    if (floatingContainer) {
+      floatingContainer.remove();
+    }
   }
 
   startObserver() {

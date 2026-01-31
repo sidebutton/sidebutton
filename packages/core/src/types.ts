@@ -58,7 +58,7 @@ export interface ExtractConfig {
 
 // Configuration for embedding workflow buttons in target websites
 export interface EmbedConfig {
-  selector: string;
+  selector?: string;
   position?: EmbedPosition;
   when?: string;
   label?: string;
@@ -84,6 +84,7 @@ export type Step =
   | { type: 'browser.exists'; selector: string; as: string; timeout?: number }
   | { type: 'browser.hover'; selector: string }
   | { type: 'browser.key'; key: string; selector?: string }
+  | { type: 'browser.snapshot'; as: string; includeContent?: boolean }
   | { type: 'shell.run'; cmd: string; cwd?: string; as?: string }
   | { type: 'llm.classify'; input: string; categories: string[]; as: string }
   | { type: 'llm.generate'; prompt: string; as: string }
@@ -94,6 +95,7 @@ export type Step =
   | { type: 'terminal.open'; title?: string; cwd?: string }
   | { type: 'terminal.run'; cmd: string }
   | { type: 'data.first'; input: string; as: string; separator?: string }
+  | { type: 'browser.injectCSS'; css: string; id?: string }
   | { type: 'variable.set'; name: string; value: string };
 
 // Workflow/Action definition
@@ -288,6 +290,11 @@ export interface ExternalMcpConfig {
   tools: ExternalMcpToolConfig;
 }
 
+// Reporting configuration for anonymous run reports
+export interface ReportingConfig {
+  report_url?: string;
+}
+
 // Application settings
 export interface Settings {
   llm: FullLlmConfig;
@@ -298,6 +305,8 @@ export interface Settings {
   repos?: Record<string, string>;
   /** External MCP server configurations */
   external_mcps?: ExternalMcpConfig[];
+  /** Anonymous run reporting configuration */
+  reporting?: ReportingConfig;
 }
 
 // ============================================================================

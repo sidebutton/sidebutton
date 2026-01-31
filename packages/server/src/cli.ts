@@ -220,7 +220,7 @@ const program = new Command();
 program
   .name('sidebutton')
   .description('Workflow automation CLI')
-  .version('1.0.5');
+  .version('1.0.6');
 
 program
   .command('serve')

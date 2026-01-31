@@ -22,7 +22,7 @@ export async function startStdioTransport(handler: McpHandler): Promise<void> {
   const server = new Server(
     {
       name: 'sidebutton',
-      version: '1.0.0',
+      version: '1.0.6',
     },
     {
       capabilities: {
