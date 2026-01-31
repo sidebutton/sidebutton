@@ -761,7 +761,7 @@ async function executeHostedMcpMethod(method, params) {
       return {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "sidebutton", version: "1.0.6" }
+        serverInfo: { name: "sidebutton", version: chrome.runtime.getManifest().version }
       };
 
     case "tools/list":
@@ -1793,6 +1793,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: true });
       return false;
     }
+  }
+
+  // Return extension state to web pages via content script relay
+  if (msg.action === "getWebStatus") {
+    chrome.storage.local.get(["mode", "hostedEmail", "embedButtonsEnabled", "chatPanelEnabled"], (data) => {
+      sendResponse({
+        mode: data.mode || (connectedTabId ? "local" : "disconnected"),
+        email: data.hostedEmail || hostedEmail || null,
+        embedEnabled: data.embedButtonsEnabled !== false,
+        chatEnabled: data.chatPanelEnabled !== false,
+        connected: !!connectedTabId,
+        wsConnected: ws && ws.readyState === WebSocket.OPEN,
+        hostedConnected: hostedWs && hostedWs.readyState === WebSocket.OPEN,
+      });
+    });
+    return true;
   }
 
   // Handle fetch proxy requests from content script (bypasses Private Network Access)

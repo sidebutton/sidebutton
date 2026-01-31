@@ -18,6 +18,7 @@ import {
 import type { ExtensionClientImpl } from '../extension.js';
 import { MCP_TOOLS } from './tools.js';
 import { reportRunLog } from '../services/report.js';
+import { VERSION } from '../version.js';
 
 function extractDomain(url: string | undefined): string | undefined {
   if (!url) return undefined;
@@ -310,7 +311,7 @@ export class McpHandler {
       },
       serverInfo: {
         name: 'sidebutton',
-        version: '1.0.6',
+        version: VERSION,
       },
     };
   }

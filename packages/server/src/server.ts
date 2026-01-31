@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { ExtensionClientImpl } from './extension.js';
 import { McpHandler } from './mcp/handler.js';
 import { reportRunLog } from './services/report.js';
+import { VERSION } from './version.js';
 import * as yaml from 'js-yaml';
 import type { WebSocket } from 'ws';
 import type {
@@ -1321,7 +1322,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
     const status = extensionClient.getStatus();
     return {
       status: 'ok',
-      version: '1.0.6',
+      version: VERSION,
       desktop_connected: status.server_running,
       browser_connected: status.browser_connected,
     };
@@ -3192,7 +3193,7 @@ export async function startSilentServer(config: SilentServerConfig): Promise<voi
     const status = extensionClient.getStatus();
     return {
       status: 'ok',
-      version: '1.0.6',
+      version: VERSION,
       mode: 'stdio',
       desktop_connected: status.server_running,
       browser_connected: status.browser_connected,

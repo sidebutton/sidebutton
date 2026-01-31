@@ -2718,6 +2718,23 @@ window.addEventListener('message', (event) => {
   });
 });
 
+// Relay extension status requests from web page to background
+window.addEventListener('message', (event) => {
+  if (event.source !== window) return;
+  if (event.data?.type !== 'SIDEBUTTON_GET_STATUS') return;
+
+  const { requestId } = event.data;
+  if (!requestId) return;
+
+  chrome.runtime.sendMessage({ action: 'getWebStatus' }, (response) => {
+    window.postMessage({
+      type: 'SIDEBUTTON_STATUS_RESPONSE',
+      requestId,
+      response: response || null,
+    }, '*');
+  });
+});
+
 // ============================================================================
 // Initialization
 // ============================================================================

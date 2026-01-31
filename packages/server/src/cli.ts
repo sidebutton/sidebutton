@@ -12,6 +12,7 @@ import { loadWorkflowsFromDir, type Workflow } from '@sidebutton/core';
 import { startServer } from './server.js';
 import { startStdioMode } from './stdio-mode.js';
 import { fileURLToPath } from 'node:url';
+import { VERSION } from './version.js';
 
 const DEFAULT_PORT = 9876;
 
@@ -220,7 +221,7 @@ const program = new Command();
 program
   .name('sidebutton')
   .description('Workflow automation CLI')
-  .version('1.0.6');
+  .version(VERSION);
 
 program
   .command('serve')

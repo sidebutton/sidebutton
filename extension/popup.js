@@ -119,12 +119,21 @@ function updateUI() {
   } else if (mode === "local" && connected) {
     showView("local");
 
-    // Update status detail
-    if (recording) {
+    if (!wsConnected) {
+      statusEl.classList.remove("connected");
+      statusEl.classList.add("disconnected");
+      statusDetail.textContent = "Server not reachable";
+      recordBtn.classList.remove("active");
+      recordBtn.closest(".icon-btn-wrapper").querySelector(".tooltip").textContent = "Record";
+    } else if (recording) {
+      statusEl.classList.remove("disconnected");
+      statusEl.classList.add("connected");
       statusDetail.textContent = "Recording actions...";
       recordBtn.classList.add("active");
       recordBtn.closest(".icon-btn-wrapper").querySelector(".tooltip").textContent = "Stop Recording";
     } else {
+      statusEl.classList.remove("disconnected");
+      statusEl.classList.add("connected");
       statusDetail.textContent = "Ready for automation";
       recordBtn.classList.remove("active");
       recordBtn.closest(".icon-btn-wrapper").querySelector(".tooltip").textContent = "Record";

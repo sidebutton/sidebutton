@@ -7,9 +7,9 @@
  */
 
 import type { RunLog, ReportingConfig } from '@sidebutton/core';
+import { VERSION } from '../version.js';
 
 const DEFAULT_REPORT_URL = 'https://sidebutton.com/api/runs/report';
-const CLIENT_VERSION = '1.0.6';
 const TIMEOUT_MS = 10_000;
 
 interface ReportEvent {
@@ -57,7 +57,7 @@ function buildPayload(runLog: RunLog): RunReportPayload {
     step_count: stepCount,
     events,
     user_id: null,
-    client_version: CLIENT_VERSION,
+    client_version: VERSION,
   };
 }
 

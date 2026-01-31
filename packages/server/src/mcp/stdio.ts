@@ -13,6 +13,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { MCP_TOOLS } from './tools.js';
 import type { McpHandler } from './handler.js';
+import { VERSION } from '../version.js';
 
 /**
  * Start MCP server with stdio transport
@@ -22,7 +23,7 @@ export async function startStdioTransport(handler: McpHandler): Promise<void> {
   const server = new Server(
     {
       name: 'sidebutton',
-      version: '1.0.6',
+      version: VERSION,
     },
     {
       capabilities: {
