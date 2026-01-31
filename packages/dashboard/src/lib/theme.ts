@@ -1,26 +1,26 @@
 /**
- * Theme: Option B Graphite
+ * Theme: SideButton
  * Single source of truth for all colors, shadows, and transitions.
  *
  * UX Design Principles:
- * 1. Neutral Canvas - Let content shine on clean white backgrounds
- * 2. Sky Blue Highlights - Use accent color for links and interactive states
- * 3. Developer Familiar - Cool grays echo IDE themes
+ * 1. Teal energy meets clean white canvas
+ * 2. Orange accents for high-impact CTAs and action buttons
+ * 3. Unified brand across website, docs, extension, and dashboard
  */
 
 // =============================================================================
-// CORE PALETTE - Graphite
+// CORE PALETTE - SideButton
 // =============================================================================
 
 export const colors = {
-  // Primary - Slate gray for primary actions
-  primary: '#475569',
-  primaryHover: '#334155',
-  primaryLight: '#F1F5F9',
+  // Primary - Teal green for primary actions and brand identity
+  primary: '#15C39A',
+  primaryHover: '#0EA87D',
+  primaryLight: '#D1FAE5',
 
-  // Accent - Sky blue for links and highlights
-  accent: '#0EA5E9',
-  accentLight: '#E0F2FE',
+  // Accent - Orange for CTAs, action buttons, vibrant highlights
+  accent: '#F97316',
+  accentLight: '#FFEDD5',
 
   // Status colors
   success: '#22C55E',

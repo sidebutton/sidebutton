@@ -138,7 +138,7 @@ function findElement(selector, timeout = 0) {
     if (element) return element;
   } catch (e) {
     // Invalid selector syntax - truly invalid CSS
-    console.warn("[Assistant] Invalid selector:", selector, e.message);
+    console.warn("[SideButton] Invalid selector:", selector, e.message);
   }
 
   return null;
@@ -700,7 +700,7 @@ function startRecording() {
   document.addEventListener("keydown", onExtractKeyDown, true);
   document.addEventListener("keyup", onExtractKeyUp, true);
 
-  console.log("[Assistant] Recording started");
+  console.log("[SideButton] Recording started");
 }
 
 function stopRecording() {
@@ -722,7 +722,7 @@ function stopRecording() {
         direction,
         amount,
       };
-      console.log("[Assistant] Flushing pending scroll:", direction, amount);
+      console.log("[SideButton] Flushing pending scroll:", direction, amount);
       chrome.runtime.sendMessage(msg).catch(() => {});
       lastScrollY = currentScrollY;
     }
@@ -739,7 +739,7 @@ function stopRecording() {
 
   lastInputValue.clear();
   hideExtractOverlay();
-  console.log("[Assistant] Recording stopped");
+  console.log("[SideButton] Recording stopped");
 }
 
 function onRecordClick(e) {
@@ -771,7 +771,7 @@ function onRecordClick(e) {
       },
     };
 
-    console.log("[Assistant] Recording extract:", selector, fullText.substring(0, 50));
+    console.log("[SideButton] Recording extract:", selector, fullText.substring(0, 50));
     chrome.runtime.sendMessage(msg).catch(() => {});
     return;
   }
@@ -788,7 +788,7 @@ function onRecordClick(e) {
     },
   };
 
-  console.log("[Assistant] Recording click:", selector, text);
+  console.log("[SideButton] Recording click:", selector, text);
   chrome.runtime.sendMessage(msg).catch(() => {});
 }
 
@@ -818,7 +818,7 @@ function onRecordChange(e) {
     tag: element.tagName.toLowerCase(),
   };
 
-  console.log("[Assistant] Recording input:", selector, value.substring(0, 20));
+  console.log("[SideButton] Recording input:", selector, value.substring(0, 20));
   chrome.runtime.sendMessage(msg).catch(() => {});
 }
 
@@ -851,7 +851,7 @@ function onRecordScroll(e) {
       amount,
     };
 
-    console.log("[Assistant] Recording scroll:", direction, amount);
+    console.log("[SideButton] Recording scroll:", direction, amount);
     chrome.runtime.sendMessage(msg).catch(() => {});
 
     lastScrollY = currentScrollY;
@@ -881,7 +881,7 @@ function showExtractOverlay() {
   if (extractOverlay) return;
 
   extractOverlay = document.createElement("div");
-  extractOverlay.id = "assistant-extract-overlay";
+  extractOverlay.id = "sidebutton-extract-overlay";
   extractOverlay.innerHTML = `
     <div style="
       position: fixed;
@@ -914,7 +914,7 @@ function showExtractOverlay() {
         from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
         to { opacity: 1; transform: translateX(-50%) translateY(0); }
       }
-      #assistant-extract-overlay * {
+      #sidebutton-extract-overlay * {
         pointer-events: none;
       }
     </style>
@@ -1318,9 +1318,9 @@ class EmbedManager {
   }
 
   setConfigs(configs, connected) {
-    console.log(`[Assistant] EmbedManager.setConfigs: ${configs?.length || 0} configs, connected=${connected}`);
+    console.log(`[SideButton] EmbedManager.setConfigs: ${configs?.length || 0} configs, connected=${connected}`);
     if (configs?.length) {
-      configs.forEach(c => console.log(`[Assistant]   - ${c.id}: ${c.title}`, c.embed));
+      configs.forEach(c => console.log(`[SideButton]   - ${c.id}: ${c.title}`, c.embed));
     }
     this.configs = configs || [];
     this.connected = connected;
@@ -1450,7 +1450,7 @@ class EmbedManager {
       injectedCount++;
     });
 
-    console.log(`[Assistant] ${id}: Injected ${injectedCount} buttons, filtered out ${filteredCount}`);
+    console.log(`[SideButton] ${id}: Injected ${injectedCount} buttons, filtered out ${filteredCount}`);
   }
 
   /**
@@ -1460,7 +1460,7 @@ class EmbedManager {
     // Find ancestor matching the selector
     const parent = target.closest(filter.selector);
     if (!parent) {
-      console.log(`[Assistant] parent_filter: No parent found for selector:`, filter.selector);
+      console.log(`[SideButton] parent_filter: No parent found for selector:`, filter.selector);
       return false;
     }
 
@@ -1472,7 +1472,7 @@ class EmbedManager {
       ? parent.querySelector(match.child_selector)
       : parent;
     if (!element) {
-      console.log(`[Assistant] parent_filter: No child element found for:`, match.child_selector);
+      console.log(`[SideButton] parent_filter: No child element found for:`, match.child_selector);
       return false;
     }
 
@@ -1486,17 +1486,17 @@ class EmbedManager {
       value = element.getAttribute(match.attribute);
     }
 
-    console.log(`[Assistant] parent_filter: attribute='${match.attribute}', value='${value?.substring(0, 50)}...'`);
+    console.log(`[SideButton] parent_filter: attribute='${match.attribute}', value='${value?.substring(0, 50)}...'`);
 
     // Check match criteria
     if (match.equals !== undefined && match.equals !== null) {
       const result = value === match.equals;
-      console.log(`[Assistant] parent_filter: equals '${match.equals}' = ${result}`);
+      console.log(`[SideButton] parent_filter: equals '${match.equals}' = ${result}`);
       return result;
     }
     if (match.contains !== undefined && match.contains !== null) {
       const result = value?.includes(match.contains) || false;
-      console.log(`[Assistant] parent_filter: contains '${match.contains}' = ${result}`);
+      console.log(`[SideButton] parent_filter: contains '${match.contains}' = ${result}`);
       return result;
     }
 
@@ -1722,7 +1722,7 @@ class EmbedManager {
     container.appendChild(button);
 
     this.injectedButtons.set(buttonId, { button, target: null, config });
-    console.log(`[Assistant] ${id}: Injected floating button`);
+    console.log(`[SideButton] ${id}: Injected floating button`);
   }
 
   /**
@@ -1806,7 +1806,7 @@ class EmbedManager {
                 const match = value.match(new RegExp(extractConfig.pattern));
                 value = match ? (match[1] || match[0]) : value;
               } catch (regexErr) {
-                console.warn(`[Assistant] Invalid pattern for ${key}:`, regexErr.message);
+                console.warn(`[SideButton] Invalid pattern for ${key}:`, regexErr.message);
               }
             }
             if (value) {
@@ -1814,12 +1814,12 @@ class EmbedManager {
             }
           }
         } catch (e) {
-          console.warn(`[Assistant] Failed to extract ${key}:`, e.message);
+          console.warn(`[SideButton] Failed to extract ${key}:`, e.message);
         }
       }
     }
 
-    console.log("[Assistant] Embed click context:", context);
+    console.log("[SideButton] Embed click context:", context);
 
     // Send to background with extracted context and param_map
     chrome.runtime.sendMessage({
@@ -1876,7 +1876,7 @@ class EmbedManager {
   typeResultIntoElement(selector, content, button, originalText, buttonId) {
     const targetElement = document.querySelector(selector);
     if (!targetElement) {
-      console.warn(`[Assistant] Result target not found: ${selector}`);
+      console.warn(`[SideButton] Result target not found: ${selector}`);
       this.resultBubble.show(button, content, false); // Fallback to bubble
       return;
     }
@@ -1905,7 +1905,7 @@ class EmbedManager {
         targetElement.dispatchEvent(new Event("input", { bubbles: true }));
         targetElement.dispatchEvent(new Event("change", { bubbles: true }));
 
-        console.log(`[Assistant] Typed into contenteditable: ${selector}`);
+        console.log(`[SideButton] Typed into contenteditable: ${selector}`);
       } else if (targetElement.tagName === "INPUT" || targetElement.tagName === "TEXTAREA") {
         // Handle regular input/textarea
         targetElement.select(); // Select all
@@ -1919,7 +1919,7 @@ class EmbedManager {
       // Show success state on button
       this.showSuccessState(button, originalText, buttonId);
     } catch (e) {
-      console.error(`[Assistant] Failed to type into ${selector}:`, e);
+      console.error(`[SideButton] Failed to type into ${selector}:`, e);
       this.resultBubble.show(button, content, false); // Fallback to bubble
     }
   }
@@ -2739,7 +2739,7 @@ window.addEventListener('message', (event) => {
 // Initialization
 // ============================================================================
 
-console.log("[Assistant] Content script loaded");
+console.log("[SideButton] Content script loaded");
 
 // Set extension marker on all websites for extension detection
 // Websites can check document.documentElement.dataset.sidebutton === 'ready'
