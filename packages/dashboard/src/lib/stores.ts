@@ -113,6 +113,88 @@ export const viewState = writable<ViewState>({
 });
 
 // ============================================================================
+// URL Routing
+// ============================================================================
+
+const pageToPath: Record<string, string> = {
+  dashboard: "/",
+  actions: "/actions",
+  workflows: "/workflows",
+  recordings: "/recordings",
+  "run-logs": "/run-logs",
+};
+
+function updateUrl(path: string) {
+  if (typeof window !== "undefined" && window.location.pathname !== path) {
+    history.pushState(null, "", path);
+  }
+}
+
+/** Read URL path on startup and set viewState accordingly */
+export function initFromUrl() {
+  if (typeof window === "undefined") return;
+
+  const path = window.location.pathname;
+  const segments = path.split("/").filter(Boolean);
+
+  if (segments.length === 0 || segments[0] === "dashboard") {
+    // default — do nothing, already on dashboard
+    return;
+  }
+
+  const base: ViewState = {
+    current: "dashboard",
+    activePage: "dashboard",
+    selectedActionId: null,
+    selectedWorkflowId: null,
+    selectedRecordingId: null,
+    selectedRunLogId: null,
+  };
+
+  switch (segments[0]) {
+    case "actions":
+      if (segments[1]) {
+        viewState.set({ ...base, current: "action-detail", activePage: "actions", selectedActionId: segments[1] });
+      } else {
+        viewState.set({ ...base, current: "actions", activePage: "actions" });
+      }
+      break;
+    case "workflows":
+      if (segments[1]) {
+        viewState.set({ ...base, current: "workflow-detail", activePage: "workflows", selectedWorkflowId: segments[1] });
+      } else {
+        viewState.set({ ...base, current: "workflows", activePage: "workflows" });
+      }
+      break;
+    case "recordings":
+      if (segments[1]) {
+        viewState.set({ ...base, current: "recording-detail", activePage: "recordings", selectedRecordingId: segments[1] });
+      } else {
+        viewState.set({ ...base, current: "recordings", activePage: "recordings" });
+      }
+      break;
+    case "run-logs":
+      if (segments[1]) {
+        viewState.set({ ...base, current: "run-log-detail", activePage: "run-logs", selectedRunLogId: segments[1] });
+      } else {
+        viewState.set({ ...base, current: "run-logs", activePage: "run-logs" });
+      }
+      break;
+    case "settings":
+      viewState.set({ ...base, current: "settings" });
+      break;
+  }
+}
+
+/** Listen for browser back/forward and sync viewState */
+export function setupUrlListener() {
+  if (typeof window === "undefined") return;
+  window.addEventListener("popstate", () => {
+    initFromUrl();
+  });
+}
+
+// ============================================================================
 // Derived Stores
 // ============================================================================
 
@@ -157,6 +239,7 @@ export function navigateToDashboard() {
     selectedRecordingId: null,
     selectedRunLogId: null,
   });
+  updateUrl("/");
 }
 
 export function navigateToActions() {
@@ -168,6 +251,7 @@ export function navigateToActions() {
     selectedRecordingId: null,
     selectedRunLogId: null,
   });
+  updateUrl("/actions");
 }
 
 export function navigateToWorkflows() {
@@ -179,6 +263,7 @@ export function navigateToWorkflows() {
     selectedRecordingId: null,
     selectedRunLogId: null,
   });
+  updateUrl("/workflows");
 }
 
 export function navigateToRecordings() {
@@ -190,6 +275,7 @@ export function navigateToRecordings() {
     selectedRecordingId: null,
     selectedRunLogId: null,
   });
+  updateUrl("/recordings");
 }
 
 export function navigateToRunLogs() {
@@ -201,6 +287,7 @@ export function navigateToRunLogs() {
     selectedRecordingId: null,
     selectedRunLogId: null,
   });
+  updateUrl("/run-logs");
 }
 
 // Detail navigation
@@ -210,6 +297,7 @@ export function navigateToActionDetail(actionId: string) {
     current: "action-detail",
     selectedActionId: actionId,
   }));
+  updateUrl(`/actions/${actionId}`);
 }
 
 export function navigateToWorkflowDetail(workflowId: string) {
@@ -218,6 +306,7 @@ export function navigateToWorkflowDetail(workflowId: string) {
     current: "workflow-detail",
     selectedWorkflowId: workflowId,
   }));
+  updateUrl(`/workflows/${workflowId}`);
 }
 
 export function navigateToRecordingDetail(recordingId: string) {
@@ -226,6 +315,7 @@ export function navigateToRecordingDetail(recordingId: string) {
     current: "recording-detail",
     selectedRecordingId: recordingId,
   }));
+  updateUrl(`/recordings/${recordingId}`);
 }
 
 export function navigateToRunLogDetail(runLogId: string) {
@@ -234,6 +324,7 @@ export function navigateToRunLogDetail(runLogId: string) {
     current: "run-log-detail",
     selectedRunLogId: runLogId,
   }));
+  updateUrl(`/run-logs/${runLogId}`);
 }
 
 // Execution navigation
@@ -280,18 +371,22 @@ export function navigateToRunningExecution(runId: string, workflowId: string) {
 // Settings navigation
 export function navigateToSettings() {
   viewState.update((state) => ({ ...state, current: "settings" }));
+  updateUrl("/settings");
 }
 
 // Back navigation (returns to active page)
 export function navigateBack() {
-  viewState.update((state) => ({
-    ...state,
-    current: state.activePage,
-    selectedActionId: null,
-    selectedWorkflowId: null,
-    selectedRecordingId: null,
-    selectedRunLogId: null,
-  }));
+  viewState.update((state) => {
+    updateUrl(pageToPath[state.activePage] ?? "/");
+    return {
+      ...state,
+      current: state.activePage,
+      selectedActionId: null,
+      selectedWorkflowId: null,
+      selectedRecordingId: null,
+      selectedRunLogId: null,
+    };
+  });
 }
 
 // ============================================================================

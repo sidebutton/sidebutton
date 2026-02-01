@@ -440,15 +440,19 @@ async function callLlmApi(config: FullLlmConfig, prompt: string): Promise<string
 // ============================================================================
 
 function getWorkflowStats(runLogsDir: string, workflowId: string): WorkflowStats {
-  const stats: WorkflowStats = {
+  return getAllWorkflowStats(runLogsDir)[workflowId] ?? {
     total_runs: 0,
     success_count: 0,
     failed_count: 0,
     cancelled_count: 0,
   };
+}
+
+function getAllWorkflowStats(runLogsDir: string): Record<string, WorkflowStats> {
+  const allStats: Record<string, WorkflowStats> = {};
 
   if (!fs.existsSync(runLogsDir)) {
-    return stats;
+    return allStats;
   }
 
   for (const file of fs.readdirSync(runLogsDir)) {
@@ -456,8 +460,13 @@ function getWorkflowStats(runLogsDir: string, workflowId: string): WorkflowStats
     try {
       const content = fs.readFileSync(path.join(runLogsDir, file), 'utf-8');
       const log = JSON.parse(content);
-      if (log.metadata.workflow_id !== workflowId) continue;
+      const wfId = log.metadata.workflow_id;
+      if (!wfId) continue;
 
+      if (!allStats[wfId]) {
+        allStats[wfId] = { total_runs: 0, success_count: 0, failed_count: 0, cancelled_count: 0 };
+      }
+      const stats = allStats[wfId];
       stats.total_runs++;
       switch (log.metadata.status) {
         case 'success':
@@ -478,7 +487,7 @@ function getWorkflowStats(runLogsDir: string, workflowId: string): WorkflowStats
     }
   }
 
-  return stats;
+  return allStats;
 }
 
 export interface ServerConfig {
@@ -552,6 +561,17 @@ export async function startServer(config: ServerConfig): Promise<void> {
       root: dashboardPath,
       prefix: '/',
     });
+
+    // SPA fallback: serve index.html for any non-API/non-WS GET request
+    const indexPath = path.join(dashboardPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      fastify.setNotFoundHandler((request, reply) => {
+        if (request.method === 'GET' && !request.url.startsWith('/api/') && !request.url.startsWith('/ws')) {
+          return reply.type('text/html').sendFile('index.html');
+        }
+        reply.code(404).send({ error: 'Not found' });
+      });
+    }
   }
 
   // WebSocket endpoint for Chrome extension
@@ -1882,6 +1902,11 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
   fastify.get<{ Params: { id: string } }>('/api/workflows/:id/stats', async (request) => {
     return { stats: getWorkflowStats(config.runLogsDir, request.params.id) };
+  });
+
+  // Bulk stats: single directory scan for all workflows
+  fastify.get('/api/workflows/stats', async () => {
+    return { stats: getAllWorkflowStats(config.runLogsDir) };
   });
 
   // ============================================================================

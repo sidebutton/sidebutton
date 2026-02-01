@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { listWorkflows, getWorkflowStats, reloadAll } from "../api";
+  import { listWorkflows, getAllWorkflowStats, reloadAll } from "../api";
   import { workflows, workflowStats, navigateToWorkflowDetail } from "../stores";
-  import type { Action, CategoryLevel, WorkflowStats } from "../types";
+  import type { Action, CategoryLevel } from "../types";
   import CategoryFilter from "../components/CategoryFilter.svelte";
   import SearchInput from "../components/SearchInput.svelte";
   import WorkflowCard from "../components/WorkflowCard.svelte";
@@ -69,34 +69,17 @@
   async function loadWorkflows() {
     isLoading = true;
     try {
-      const loaded = await listWorkflows();
+      const [loaded, stats] = await Promise.all([
+        listWorkflows(),
+        getAllWorkflowStats(),
+      ]);
       workflows.set(loaded);
-      // Load stats for each workflow in parallel
-      await loadAllStats(loaded);
+      workflowStats.set(stats);
     } catch (e) {
       console.error("Failed to load workflows:", e);
     } finally {
       isLoading = false;
     }
-  }
-
-  async function loadAllStats(workflowList: Action[]) {
-    const statsPromises = workflowList.map(async (w) => {
-      try {
-        return { id: w.id, stats: await getWorkflowStats(w.id) };
-      } catch {
-        return { id: w.id, stats: null };
-      }
-    });
-
-    const results = await Promise.all(statsPromises);
-    const stats: Record<string, WorkflowStats> = {};
-    for (const r of results) {
-      if (r.stats) {
-        stats[r.id] = r.stats;
-      }
-    }
-    workflowStats.set(stats);
   }
 
   async function handleReload() {

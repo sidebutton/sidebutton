@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { listActions, getWorkflowStats, reloadAll } from "../api";
+  import { listActions, getAllWorkflowStats, reloadAll } from "../api";
   import { actions, workflowStats, navigateToActionDetail } from "../stores";
-  import type { Action, CategoryLevel, CategoryDomain, WorkflowStats } from "../types";
+  import type { Action, CategoryLevel, CategoryDomain } from "../types";
   import { domainColors } from "../theme";
   import CategoryBadge from "../components/CategoryBadge.svelte";
   import CategoryFilter from "../components/CategoryFilter.svelte";
@@ -43,27 +43,17 @@
   async function loadActions() {
     isLoading = true;
     try {
-      const loaded = await listActions();
+      const [loaded, stats] = await Promise.all([
+        listActions(),
+        getAllWorkflowStats(),
+      ]);
       actions.set(loaded);
-      // Load stats for each action
-      await loadAllStats(loaded);
+      workflowStats.set(stats);
     } catch (e) {
       console.error("Failed to load actions:", e);
     } finally {
       isLoading = false;
     }
-  }
-
-  async function loadAllStats(actionList: Action[]) {
-    const stats: Record<string, WorkflowStats> = {};
-    for (const a of actionList) {
-      try {
-        stats[a.id] = await getWorkflowStats(a.id);
-      } catch {
-        // Stats are optional
-      }
-    }
-    workflowStats.set(stats);
   }
 
   async function handleReload() {

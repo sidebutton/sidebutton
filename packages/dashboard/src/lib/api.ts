@@ -106,6 +106,11 @@ export async function getWorkflowStats(id: string): Promise<WorkflowStats> {
   return data.stats;
 }
 
+export async function getAllWorkflowStats(): Promise<Record<string, WorkflowStats>> {
+  const data = await apiFetch<{ stats: Record<string, WorkflowStats> }>('/api/workflows/stats');
+  return data.stats;
+}
+
 export async function copyWorkflowToActions(id: string): Promise<Action> {
   const data = await apiFetch<{ action: Action }>(`/api/workflows/${id}/copy-to-actions`, {
     method: 'POST',
