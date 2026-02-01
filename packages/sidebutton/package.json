@@ -1,6 +1,6 @@
 {
   "name": "sidebutton",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Workflow automation for AI agents - browser automation, MCP server, and CLI",
   "keywords": [
     "mcp",
@@ -30,6 +30,6 @@
     "url": "https://github.com/sidebutton/sidebutton/issues"
   },
   "dependencies": {
-    "@sidebutton/server": "^1.0.7"
+    "@sidebutton/server": "^1.0.8"
   }
 }
