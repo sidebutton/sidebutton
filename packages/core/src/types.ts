@@ -96,6 +96,7 @@ export type Step =
   | { type: 'terminal.run'; cmd: string }
   | { type: 'data.first'; input: string; as: string; separator?: string }
   | { type: 'browser.injectCSS'; css: string; id?: string }
+  | { type: 'browser.injectJS'; js: string; id?: string }
   | { type: 'variable.set'; name: string; value: string };
 
 // Workflow/Action definition

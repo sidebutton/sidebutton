@@ -31,6 +31,7 @@ export interface ExtensionClient {
   focus(): Promise<void>;
   ariaSnapshot(options?: { includeContent?: boolean }): Promise<string>;
   injectCSS(css: string, id?: string): Promise<void>;
+  injectJS(js: string, id?: string): Promise<void>;
 }
 
 /**

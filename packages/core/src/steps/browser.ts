@@ -21,6 +21,7 @@ type BrowserHover = Extract<Step, { type: 'browser.hover' }>;
 type BrowserKey = Extract<Step, { type: 'browser.key' }>;
 type BrowserSnapshot = Extract<Step, { type: 'browser.snapshot' }>;
 type BrowserInjectCSS = Extract<Step, { type: 'browser.injectCSS' }>;
+type BrowserInjectJS = Extract<Step, { type: 'browser.injectJS' }>;
 
 function requireExtension(ctx: ExecutionContext) {
   if (!ctx.extensionClient) {
@@ -196,4 +197,16 @@ export async function executeBrowserInjectCSS(
 
   ctx.emitLog('info', `Injecting CSS${id ? ` (id: ${id})` : ''}`);
   await ext.injectCSS(css, id);
+}
+
+export async function executeBrowserInjectJS(
+  step: BrowserInjectJS,
+  ctx: ExecutionContext
+): Promise<void> {
+  const ext = requireExtension(ctx);
+  const js = ctx.interpolate(step.js);
+  const id = step.id ? ctx.interpolate(step.id) : undefined;
+
+  ctx.emitLog('info', `Injecting JavaScript${id ? ` (id: ${id})` : ''}`);
+  await ext.injectJS(js, id);
 }

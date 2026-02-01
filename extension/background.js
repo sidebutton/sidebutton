@@ -778,6 +778,7 @@ async function executeHostedMcpMethod(method, params) {
           { name: "extract", description: "Extract text", inputSchema: { type: "object", properties: { selector: { type: "string" } }, required: ["selector"] } },
           { name: "capture_page", description: "Capture page selectors", inputSchema: { type: "object", properties: {} } },
           { name: "injectCSS", description: "Inject CSS styles into the page", inputSchema: { type: "object", properties: { css: { type: "string", description: "CSS rules to inject" }, id: { type: "string", description: "Optional style element ID for replacement" } }, required: ["css"] } },
+          { name: "injectJS", description: "Inject JavaScript into the page", inputSchema: { type: "object", properties: { js: { type: "string", description: "JavaScript code to inject" }, id: { type: "string", description: "Optional script element ID for replacement" } }, required: ["js"] } },
         ]
       };
 
@@ -813,6 +814,8 @@ async function executeHostedMcpMethod(method, params) {
       return await cmdCaptureSelectors();
     case "injectCSS":
       return await cmdInjectCSS({ css: params?.css, id: params?.id });
+    case "injectJS":
+      return await cmdInjectJS({ js: params?.js, id: params?.id });
 
     default:
       throw new Error(`Unknown method: ${method}`);
@@ -863,6 +866,9 @@ async function executeToolCall(toolName, args) {
       break;
     case "injectCSS":
       result = await cmdInjectCSS({ css: args?.css, id: args?.id });
+      break;
+    case "injectJS":
+      result = await cmdInjectJS({ js: args?.js, id: args?.id });
       break;
     default:
       throw new Error(`Unknown tool: ${toolName}`);
@@ -1009,6 +1015,9 @@ async function handleCommand(msg) {
       case "injectCSS":
         result = await cmdInjectCSS(msg);
         break;
+      case "injectJS":
+        result = await cmdInjectJS(msg);
+        break;
       default:
         throw new Error(`Unknown command: ${cmd}`);
     }
@@ -1066,6 +1075,16 @@ async function cmdInjectCSS(msg) {
   if (!css) throw new Error("CSS content is required");
 
   const result = await sendToContentScript("injectCSS", { css, id });
+  return result;
+}
+
+async function cmdInjectJS(msg) {
+  if (!connectedTabId) throw new Error("No browser connected");
+
+  const { js, id } = msg;
+  if (!js) throw new Error("JavaScript content is required");
+
+  const result = await sendToContentScript("injectJS", { js, id });
   return result;
 }
 

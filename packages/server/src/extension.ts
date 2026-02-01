@@ -438,6 +438,15 @@ export class ExtensionClientImpl implements ExtensionClient {
     }
   }
 
+  async injectJS(js: string, id?: string): Promise<void> {
+    const params: Record<string, unknown> = { js };
+    if (id) params.id = id;
+    const response = await this.sendCommand('injectJS', params);
+    if (!response.ok) {
+      throw new Error(response.error ?? 'InjectJS failed');
+    }
+  }
+
   /**
    * Broadcast a message to the extension (no response expected)
    * Used for one-way notifications like workflow-installed

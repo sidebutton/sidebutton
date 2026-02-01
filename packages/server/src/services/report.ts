@@ -16,6 +16,8 @@ interface ReportEvent {
   type: string;
   step?: number;
   success?: boolean;
+  step_type?: string;
+  error_message?: string;
 }
 
 interface RunReportPayload {
@@ -37,11 +39,28 @@ function mapStatus(status: string): 'success' | 'failure' | 'timeout' {
 }
 
 function buildPayload(runLog: RunLog): RunReportPayload {
+  // Build step_index → step_type map from step_start events
+  const stepTypeMap = new Map<number, string>();
+  for (const e of runLog.events) {
+    if (e.type === 'step_start') {
+      stepTypeMap.set(e.step_index, e.step_type);
+    }
+  }
+
   const events: ReportEvent[] = runLog.events
     .filter(e => e.type === 'step_end')
     .map(e => {
       if (e.type === 'step_end') {
-        return { type: 'step_end', step: e.step_index, success: e.success };
+        const ev: ReportEvent = {
+          type: 'step_end',
+          step: e.step_index,
+          success: e.success,
+          step_type: stepTypeMap.get(e.step_index),
+        };
+        if (!e.success && e.message) {
+          ev.error_message = e.message;
+        }
+        return ev;
       }
       return { type: e.type };
     });

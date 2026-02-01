@@ -89,6 +89,9 @@ async function handleMessage(msg) {
     case "injectCSS":
       return injectCSS(msg.css, msg.id);
 
+    case "injectJS":
+      return injectJS(msg.js, msg.id);
+
     case "recording.start":
       startRecording();
       return { recording: true };
@@ -882,43 +885,20 @@ function showExtractOverlay() {
 
   extractOverlay = document.createElement("div");
   extractOverlay.id = "sidebutton-extract-overlay";
-  extractOverlay.innerHTML = `
-    <div style="
-      position: fixed;
-      top: 12px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #15C39A;
-      color: white;
-      padding: 8px 16px;
-      border-radius: 20px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 13px;
-      font-weight: 500;
-      box-shadow: 0 4px 12px rgba(21, 195, 154, 0.4);
-      z-index: 2147483647;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      animation: slideDown 0.2s ease-out;
-    ">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"></path>
-        <rect x="9" y="3" width="6" height="4" rx="2"></rect>
-        <path d="M9 14l2 2 4-4"></path>
-      </svg>
-      Extract Mode: Click to capture text
-    </div>
-    <style>
-      @keyframes slideDown {
-        from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
-        to { opacity: 1; transform: translateX(-50%) translateY(0); }
-      }
-      #sidebutton-extract-overlay * {
-        pointer-events: none;
-      }
-    </style>
-  `;
+
+  // SVG icon (must stay inline — can't be in CSS)
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("width", "16");
+  icon.setAttribute("height", "16");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("fill", "none");
+  icon.setAttribute("stroke", "currentColor");
+  icon.setAttribute("stroke-width", "2");
+  icon.innerHTML = '<path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"></path><rect x="9" y="3" width="6" height="4" rx="2"></rect><path d="M9 14l2 2 4-4"></path>';
+  extractOverlay.appendChild(icon);
+
+  extractOverlay.appendChild(document.createTextNode("Extract Mode: Click to capture text"));
+
   document.body.appendChild(extractOverlay);
 }
 
@@ -1066,6 +1046,227 @@ function injectCSS(css, id) {
 }
 
 // ============================================================================
+// JS Injection
+// ============================================================================
+
+function injectJS(js, id) {
+  if (!js) throw new Error("JavaScript content is required");
+
+  // If an ID is provided and a script with that ID already exists, replace it
+  if (id) {
+    const existing = document.getElementById(id);
+    if (existing && existing.tagName === "SCRIPT") {
+      existing.textContent = js;
+      return { injected: true, scriptId: id, replaced: true };
+    }
+  }
+
+  const script = document.createElement("script");
+  script.setAttribute("data-sidebutton-injected", "true");
+  if (id) {
+    script.id = id;
+  }
+  script.textContent = js;
+  document.head.appendChild(script);
+
+  return { injected: true, scriptId: id || null };
+}
+
+// ============================================================================
+// Core Stylesheet
+// ============================================================================
+
+const CORE_CSS = `
+/* SideButton Core Stylesheet */
+
+/* Embed button */
+.ta-embed-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  vertical-align: middle !important;
+  position: relative !important;
+  z-index: 9999 !important;
+  gap: 8px !important;
+  padding: 8px 16px !important;
+  margin: 2px 0 !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  background: linear-gradient(135deg, #15C39A 0%, #0EA87D 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 20px !important;
+  color: white !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  white-space: nowrap !important;
+  box-shadow: 0 2px 8px rgba(21, 195, 154, 0.35) !important;
+  min-height: 36px !important;
+  letter-spacing: 0.2px !important;
+  outline: none !important;
+  text-decoration: none !important;
+  width: auto !important;
+  max-width: fit-content !important;
+}
+.ta-embed-btn:hover {
+  background: linear-gradient(135deg, #0EA87D 0%, #0a7c6a 100%) !important;
+  box-shadow: 0 4px 16px rgba(21, 195, 154, 0.5), 0 0 0 3px rgba(21, 195, 154, 0.2) !important;
+}
+
+/* Embed container - targeted buttons */
+.ta-embed-container {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 4px !important;
+  margin: 8px 0 8px 8px !important;
+  z-index: 9999 !important;
+  position: relative !important;
+}
+
+/* Floating button container */
+#ta-embed-floating {
+  position: fixed !important;
+  right: 20px !important;
+  bottom: 84px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-end !important;
+  gap: 6px !important;
+  z-index: 9999 !important;
+  pointer-events: auto !important;
+}
+#ta-embed-floating .ta-embed-btn {
+  margin: 0 !important;
+}
+
+/* Result bubble */
+.ta-result-bubble {
+  position: absolute;
+  z-index: 2147483647;
+  max-width: 520px;
+  min-width: 300px;
+  max-height: 480px;
+  background-color: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #E2E8F0;
+  border-left: 3px solid #15C39A;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #0F172A;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+  overflow: hidden;
+}
+.ta-result-bubble__arrow {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 8px solid #F8FAFC;
+  filter: drop-shadow(0 -1px 2px rgba(15, 23, 42, 0.06));
+}
+.ta-result-bubble__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #F8FAFC;
+  border-bottom: 1px solid #E2E8F0;
+}
+.ta-result-bubble__title {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: none;
+}
+.ta-result-bubble__close {
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  color: #94A3B8;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+.ta-result-bubble__close:hover {
+  background: #E2E8F0;
+  color: #475569;
+}
+.ta-result-bubble__content {
+  padding: 16px 20px;
+  max-height: 360px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 15px;
+  line-height: 1.7;
+  color: #1E293B;
+  letter-spacing: 0.1px;
+}
+.ta-result-bubble--error {
+  border-left-color: #EF4444;
+}
+.ta-result-bubble--error .ta-result-bubble__header {
+  background: #FEF2F2;
+  border-bottom-color: #FECACA;
+}
+.ta-result-bubble--error .ta-result-bubble__title {
+  color: #DC2626;
+}
+.ta-result-bubble--error .ta-result-bubble__arrow {
+  border-bottom-color: #FEF2F2;
+}
+.ta-result-bubble--error .ta-result-bubble__content {
+  color: #991B1B;
+  background-color: #FFFBFB;
+}
+
+/* Extract overlay */
+#sidebutton-extract-overlay {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #15C39A;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(21, 195, 154, 0.4);
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: sidebutton-slideDown 0.2s ease-out;
+}
+#sidebutton-extract-overlay * {
+  pointer-events: none;
+}
+@keyframes sidebutton-slideDown {
+  from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+`;
+
+// ============================================================================
 // Utilities
 // ============================================================================
 
@@ -1138,94 +1339,25 @@ class ResultBubble {
     const bubble = document.createElement("div");
     bubble.className = "ta-result-bubble";
 
-    // Inline styles for the bubble container - Sidebutton schema (teal primary)
-    Object.assign(bubble.style, {
-      position: "absolute",
-      zIndex: "2147483647",
-      maxWidth: "520px",
-      minWidth: "300px",
-      maxHeight: "480px",
-      backgroundColor: "#ffffff",
-      borderRadius: "12px",
-      border: "1px solid #E2E8F0",
-      borderLeft: "3px solid #15C39A",
-      boxShadow: "0 4px 16px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05)",
-      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-      fontSize: "14px",
-      lineHeight: "1.6",
-      color: "#0F172A",
-      opacity: "0",
-      transform: "translateY(-6px)",
-      transition: "opacity 0.2s ease-out, transform 0.2s ease-out",
-      overflow: "hidden",
-    });
-
-    // Arrow pointing up - matches header background
+    // Arrow pointing up
     const arrow = document.createElement("div");
-    Object.assign(arrow.style, {
-      position: "absolute",
-      top: "-8px",
-      left: "50%",
-      transform: "translateX(-50%)",
-      width: "0",
-      height: "0",
-      borderLeft: "8px solid transparent",
-      borderRight: "8px solid transparent",
-      borderBottom: "8px solid #F8FAFC",
-      filter: "drop-shadow(0 -1px 2px rgba(15, 23, 42, 0.06))",
-    });
+    arrow.className = "ta-result-bubble__arrow";
     bubble.appendChild(arrow);
 
-    // Header bar - subtle surface
+    // Header bar
     const header = document.createElement("div");
-    Object.assign(header.style, {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: "12px 16px",
-      background: "#F8FAFC",
-      borderBottom: "1px solid #E2E8F0",
-    });
+    header.className = "ta-result-bubble__header";
 
     // Header title
     const headerTitle = document.createElement("span");
+    headerTitle.className = "ta-result-bubble__title";
     headerTitle.textContent = isError ? "Error" : "Summary";
-    Object.assign(headerTitle.style, {
-      color: "#475569",
-      fontSize: "13px",
-      fontWeight: "600",
-      letterSpacing: "0.3px",
-      textTransform: "none",
-    });
     header.appendChild(headerTitle);
 
-    // Close button in header
+    // Close button in header (hover handled by CSS :hover)
     const closeBtn = document.createElement("button");
+    closeBtn.className = "ta-result-bubble__close";
     closeBtn.innerHTML = "✕";
-    Object.assign(closeBtn.style, {
-      background: "transparent",
-      border: "none",
-      fontSize: "14px",
-      color: "#94A3B8",
-      cursor: "pointer",
-      padding: "0",
-      lineHeight: "1",
-      width: "24px",
-      height: "24px",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: "6px",
-      transition: "all 0.15s ease",
-    });
-    closeBtn.addEventListener("mouseenter", () => {
-      closeBtn.style.background = "#E2E8F0";
-      closeBtn.style.color = "#475569";
-    });
-    closeBtn.addEventListener("mouseleave", () => {
-      closeBtn.style.background = "transparent";
-      closeBtn.style.color = "#94A3B8";
-    });
     closeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       this.hide();
@@ -1233,32 +1365,14 @@ class ResultBubble {
     header.appendChild(closeBtn);
     bubble.appendChild(header);
 
-    // Content area with refined typography - Neutral Graphite
+    // Content area
     const contentArea = document.createElement("div");
-    Object.assign(contentArea.style, {
-      padding: "16px 20px",
-      maxHeight: "360px",
-      overflowY: "auto",
-      whiteSpace: "pre-wrap",
-      wordBreak: "break-word",
-      fontSize: "15px",
-      lineHeight: "1.7",
-      color: "#1E293B",
-      letterSpacing: "0.1px",
-    });
-
-    // Display content as-is
+    contentArea.className = "ta-result-bubble__content";
     contentArea.textContent = content;
 
-    // Add error styling if needed - subtle error state
+    // Error variant via CSS class
     if (isError) {
-      bubble.style.borderLeft = "3px solid #EF4444";
-      header.style.background = "#FEF2F2";
-      header.style.borderBottom = "1px solid #FECACA";
-      headerTitle.style.color = "#DC2626";
-      arrow.style.borderBottomColor = "#FEF2F2";
-      contentArea.style.color = "#991B1B";
-      contentArea.style.backgroundColor = "#FFFBFB";
+      bubble.classList.add("ta-result-bubble--error");
     }
 
     bubble.appendChild(contentArea);
@@ -1522,15 +1636,6 @@ class EmbedManager {
     // Create new container
     const container = document.createElement("div");
     container.className = "ta-embed-container";
-    container.style.cssText = `
-      display: flex !important;
-      flex-direction: column !important;
-      align-items: flex-start !important;
-      gap: 4px !important;
-      margin: 8px 0 8px 8px !important;
-      z-index: 9999 !important;
-      position: relative !important;
-    `;
 
     // Insert container at position
     switch (position) {
@@ -1567,46 +1672,6 @@ class EmbedManager {
     button.textContent = embed.label || title;
     button.title = title;
 
-    // Style as modern button - Sidebutton schema with teal primary
-    // Using cssText with !important for site compatibility
-    button.style.cssText = `
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      vertical-align: middle !important;
-      position: relative !important;
-      z-index: 9999 !important;
-      gap: 8px !important;
-      padding: 8px 16px !important;
-      margin: 2px 0 !important;
-      font-size: 13px !important;
-      font-weight: 600 !important;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-      background: linear-gradient(135deg, #15C39A 0%, #0EA87D 100%) !important;
-      border: 1px solid rgba(255, 255, 255, 0.15) !important;
-      border-radius: 20px !important;
-      color: white !important;
-      cursor: pointer !important;
-      transition: all 0.15s ease !important;
-      white-space: nowrap !important;
-      box-shadow: 0 2px 8px rgba(21, 195, 154, 0.35) !important;
-      min-height: 36px !important;
-      letter-spacing: 0.2px !important;
-      outline: none !important;
-      text-decoration: none !important;
-      width: auto !important;
-      max-width: fit-content !important;
-    `;
-
-    button.addEventListener("mouseenter", () => {
-      button.style.setProperty("background", "linear-gradient(135deg, #0EA87D 0%, #0a7c6a 100%)", "important");
-      button.style.setProperty("box-shadow", "0 4px 16px rgba(21, 195, 154, 0.5), 0 0 0 3px rgba(21, 195, 154, 0.2)", "important");
-    });
-    button.addEventListener("mouseleave", () => {
-      button.style.setProperty("background", "linear-gradient(135deg, #15C39A 0%, #0EA87D 100%)", "important");
-      button.style.setProperty("box-shadow", "0 2px 8px rgba(21, 195, 154, 0.35)", "important");
-    });
-
     // Click handler - V2: extract context from this specific target
     button.addEventListener("click", (e) => {
       e.preventDefault();
@@ -1634,17 +1699,6 @@ class EmbedManager {
 
     container = document.createElement("div");
     container.id = "ta-embed-floating";
-    container.style.cssText = `
-      position: fixed !important;
-      right: 20px !important;
-      bottom: 84px !important;
-      display: flex !important;
-      flex-direction: column !important;
-      align-items: flex-end !important;
-      gap: 6px !important;
-      z-index: 9999 !important;
-      pointer-events: auto !important;
-    `;
     document.body.appendChild(container);
     return container;
   }
@@ -1672,44 +1726,6 @@ class EmbedManager {
     button.setAttribute("data-button-id", buttonId);
     button.textContent = embed.label || title;
     button.title = title;
-
-    button.style.cssText = `
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      vertical-align: middle !important;
-      position: relative !important;
-      z-index: 9999 !important;
-      gap: 8px !important;
-      padding: 8px 16px !important;
-      margin: 0 !important;
-      font-size: 13px !important;
-      font-weight: 600 !important;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-      background: linear-gradient(135deg, #15C39A 0%, #0EA87D 100%) !important;
-      border: 1px solid rgba(255, 255, 255, 0.15) !important;
-      border-radius: 20px !important;
-      color: white !important;
-      cursor: pointer !important;
-      transition: all 0.15s ease !important;
-      white-space: nowrap !important;
-      box-shadow: 0 2px 8px rgba(21, 195, 154, 0.35) !important;
-      min-height: 36px !important;
-      letter-spacing: 0.2px !important;
-      outline: none !important;
-      text-decoration: none !important;
-      width: auto !important;
-      max-width: fit-content !important;
-    `;
-
-    button.addEventListener("mouseenter", () => {
-      button.style.setProperty("background", "linear-gradient(135deg, #0EA87D 0%, #0a7c6a 100%)", "important");
-      button.style.setProperty("box-shadow", "0 4px 16px rgba(21, 195, 154, 0.5), 0 0 0 3px rgba(21, 195, 154, 0.2)", "important");
-    });
-    button.addEventListener("mouseleave", () => {
-      button.style.setProperty("background", "linear-gradient(135deg, #15C39A 0%, #0EA87D 100%)", "important");
-      button.style.setProperty("box-shadow", "0 2px 8px rgba(21, 195, 154, 0.35)", "important");
-    });
 
     // Click handler - page-level context only (no target element)
     button.addEventListener("click", (e) => {
@@ -1990,6 +2006,9 @@ class EmbedManager {
 }
 
 embedManager = new EmbedManager();
+
+// Inject core stylesheet once
+injectCSS(CORE_CSS, "sidebutton-core-styles");
 
 // ============================================================================
 // Accessibility Snapshot (BrowserMCP-compatible)

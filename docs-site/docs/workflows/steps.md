@@ -1,6 +1,6 @@
 # Step Types
 
-Complete reference for all 20 step types available in SideButton.
+Complete reference for all 24 step types available in SideButton.
 
 ## Browser Steps
 
@@ -172,6 +172,61 @@ Send keyboard key.
 | `selector` | string | No | Element to focus first |
 
 **Supported keys:** `Escape`, `Enter`, `Tab`, `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`, `Backspace`, `Delete`, `Space`
+
+### browser.snapshot
+
+Capture an accessibility snapshot of the page. Returns a structured YAML representation of the page's accessibility tree, useful for LLM-driven analysis.
+
+```yaml
+- type: browser.snapshot
+  as: page_snapshot
+  includeContent: true
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `as` | string | Yes | Variable name to store snapshot |
+| `includeContent` | boolean | No | Include visible text content (default: false) |
+
+### browser.injectCSS
+
+Inject CSS styles into the page.
+
+```yaml
+- type: browser.injectCSS
+  css: |
+    .highlight { background: yellow; }
+  id: "my-styles"
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `css` | string | Yes | CSS rules to inject |
+| `id` | string | No | Style element ID for replacement/idempotency |
+
+::: tip Idempotent injection
+When `id` is provided and a style element with that ID already exists, its content is replaced instead of creating a duplicate.
+:::
+
+### browser.injectJS
+
+Inject JavaScript into the page.
+
+```yaml
+- type: browser.injectJS
+  js: |
+    document.querySelector('.dropdown').click();
+  id: "my-script"
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `js` | string | Yes | JavaScript code to inject |
+| `id` | string | No | Script element ID for replacement/idempotency |
+
+::: tip Idempotent injection
+When `id` is provided and a script element with that ID already exists, its content is replaced instead of creating a duplicate.
+:::
 
 ## Shell Steps
 
@@ -356,3 +411,18 @@ Get first item from a list.
 | `input` | string | Yes | Comma-separated list |
 | `as` | string | Yes | Variable for first item |
 | `separator` | string | No | List separator (default: ", ") |
+
+### variable.set
+
+Set a variable value directly.
+
+```yaml
+- type: variable.set
+  name: base_url
+  value: "https://example.com"
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Variable name to set |
+| `value` | string | Yes | Value to assign (supports interpolation) |
