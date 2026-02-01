@@ -120,6 +120,12 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.3)(terser@5.44.1)
 
+  packages/sidebutton:
+    dependencies:
+      '@sidebutton/server':
+        specifier: workspace:^
+        version: link:../server
+
 packages:
 
   '@esbuild/aix-ppc64@0.21.5':

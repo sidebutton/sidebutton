@@ -30,6 +30,6 @@
     "url": "https://github.com/sidebutton/sidebutton/issues"
   },
   "dependencies": {
-    "@sidebutton/server": "^1.0.8"
+    "@sidebutton/server": "workspace:*"
   }
 }
