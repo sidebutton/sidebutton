@@ -67,9 +67,24 @@ export async function executeWorkflowCall(
     }
   }
 
-  // 5. Execute child workflow
+  // 5. Execute child workflow (with optional timeout)
+  const execution = executeWorkflowImpl(childWorkflow, childCtx);
+
   try {
-    await executeWorkflowImpl(childWorkflow, childCtx);
+    if (step.timeout && step.timeout > 0) {
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          childCtx.cancel();
+          reject(new WorkflowError(
+            `Workflow '${step.workflow}' timed out after ${step.timeout}ms`,
+            'NESTED_ERROR'
+          ));
+        }, step.timeout)
+      );
+      await Promise.race([execution, timeoutPromise]);
+    } else {
+      await execution;
+    }
   } catch (error) {
     if (error instanceof WorkflowError && error.code === 'STOPPED') {
       // control.stop is a successful completion

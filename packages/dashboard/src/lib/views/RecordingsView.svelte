@@ -11,8 +11,8 @@
     recordings,
     recordingStatus,
     mcpStatus,
-    navigateToRecordingDetail,
   } from "../stores";
+  import { navigateToRecordingDetail } from "../router";
   import { initWebSocket } from "../websocket";
   import type { RecordingMetadata } from "../types";
 

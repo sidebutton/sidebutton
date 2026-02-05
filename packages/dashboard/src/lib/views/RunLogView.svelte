@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { listRunLogs, getRunningWorkflows, clearRunLogs } from "../api";
-  import { runningWorkflows, navigateToRunLogDetail, navigateToRunningExecution } from "../stores";
+  import { runningWorkflows } from "../stores";
+  import { navigateToRunLogDetail, navigateToRunningExecution } from "../router";
   import { initWebSocket, dashboardWs } from "../websocket";
   import type { RunLogMetadata, RunningWorkflow } from "../types";
   import StatusBadge from "../components/StatusBadge.svelte";

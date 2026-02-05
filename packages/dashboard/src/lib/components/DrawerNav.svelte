@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { viewState, navigateToDashboard, navigateToActions, navigateToWorkflows, navigateToRecordings, navigateToRunLogs, navigateToSettings, mcpStatus } from "../stores";
+  import { viewState, mcpStatus } from "../stores";
+  import { navigateToDashboard, navigateToActions, navigateToWorkflows, navigateToRecordings, navigateToRunLogs, navigateToSettings } from "../router";
   import type { PageType } from "../types";
 
   function isActive(page: PageType): boolean {

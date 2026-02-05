@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { listWorkflows, getAllWorkflowStats, reloadAll } from "../api";
-  import { workflows, workflowStats, navigateToWorkflowDetail } from "../stores";
+  import { workflows, workflowStats } from "../stores";
+  import { navigateToWorkflowDetail } from "../router";
   import type { Action, CategoryLevel } from "../types";
   import CategoryFilter from "../components/CategoryFilter.svelte";
   import SearchInput from "../components/SearchInput.svelte";

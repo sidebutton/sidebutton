@@ -561,17 +561,6 @@ export async function startServer(config: ServerConfig): Promise<void> {
       root: dashboardPath,
       prefix: '/',
     });
-
-    // SPA fallback: serve index.html for any non-API/non-WS GET request
-    const indexPath = path.join(dashboardPath, 'index.html');
-    if (fs.existsSync(indexPath)) {
-      fastify.setNotFoundHandler((request, reply) => {
-        if (request.method === 'GET' && !request.url.startsWith('/api/') && !request.url.startsWith('/ws')) {
-          return reply.type('text/html').sendFile('index.html');
-        }
-        reply.code(404).send({ error: 'Not found' });
-      });
-    }
   }
 
   // WebSocket endpoint for Chrome extension
@@ -3142,6 +3131,17 @@ steps:
       }, `Installation failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
     }
   });
+
+  // SPA fallback: serve index.html for any non-API/non-WS GET request
+  // Must be set after all routes are registered so Fastify doesn't override it
+  if (fs.existsSync(path.join(dashboardPath, 'index.html'))) {
+    fastify.setNotFoundHandler((request, reply) => {
+      if (request.method === 'GET' && !request.url.startsWith('/api/') && !request.url.startsWith('/ws')) {
+        return reply.type('text/html').sendFile('index.html');
+      }
+      reply.code(404).send({ error: 'Not found' });
+    });
+  }
 
   // Start server
   try {

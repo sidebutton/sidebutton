@@ -8,6 +8,7 @@
 import type { Step } from '../types.js';
 import type { ExecutionContext } from '../context.js';
 import { WorkflowError } from '../types.js';
+import { resolveDelay } from '../delay.js';
 
 type BrowserNavigate = Extract<Step, { type: 'browser.navigate' }>;
 type BrowserClick = Extract<Step, { type: 'browser.click' }>;
@@ -15,6 +16,7 @@ type BrowserType = Extract<Step, { type: 'browser.type' }>;
 type BrowserScroll = Extract<Step, { type: 'browser.scroll' }>;
 type BrowserExtract = Extract<Step, { type: 'browser.extract' }>;
 type BrowserExtractAll = Extract<Step, { type: 'browser.extractAll' }>;
+type BrowserExtractMap = Extract<Step, { type: 'browser.extractMap' }>;
 type BrowserWait = Extract<Step, { type: 'browser.wait' }>;
 type BrowserExists = Extract<Step, { type: 'browser.exists' }>;
 type BrowserHover = Extract<Step, { type: 'browser.hover' }>;
@@ -88,8 +90,8 @@ export async function executeBrowserExtract(
   const ext = requireExtension(ctx);
   const selector = ctx.interpolate(step.selector);
 
-  ctx.emitLog('info', `Extracting from: ${selector}`);
-  const text = await ext.extract(selector);
+  ctx.emitLog('info', `Extracting from: ${selector}${step.attribute ? ` [${step.attribute}]` : ''}`);
+  const text = await ext.extract(selector, step.attribute);
 
   ctx.lastStepResult = text;
   ctx.variables[step.as] = text;
@@ -103,8 +105,8 @@ export async function executeBrowserExtractAll(
   const selector = ctx.interpolate(step.selector);
   const separator = step.separator ?? ', ';
 
-  ctx.emitLog('info', `Extracting all from: ${selector}`);
-  const text = await ext.extractAll(selector, separator);
+  ctx.emitLog('info', `Extracting all from: ${selector}${step.attribute ? ` [${step.attribute}]` : ''}`);
+  const text = await ext.extractAll(selector, separator, step.attribute);
 
   ctx.lastStepResult = text;
   ctx.variables[step.as] = text;
@@ -122,8 +124,9 @@ export async function executeBrowserWait(
     ctx.emitLog('info', `Waiting for: ${selector} (timeout: ${timeout}ms)`);
     await ext.waitForElement(selector, timeout);
   } else if (step.ms) {
-    ctx.emitLog('info', `Waiting ${step.ms}ms`);
-    await new Promise((resolve) => setTimeout(resolve, step.ms));
+    const ms = resolveDelay(step.ms);
+    ctx.emitLog('info', `Waiting ${ms}ms`);
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
@@ -195,6 +198,11 @@ export async function executeBrowserInjectCSS(
   const css = ctx.interpolate(step.css);
   const id = step.id ? ctx.interpolate(step.id) : undefined;
 
+  if (!css.trim()) {
+    ctx.emitLog('info', `Skipping empty CSS injection${id ? ` (id: ${id})` : ''}`);
+    return;
+  }
+
   ctx.emitLog('info', `Injecting CSS${id ? ` (id: ${id})` : ''}`);
   await ext.injectCSS(css, id);
 }
@@ -209,4 +217,19 @@ export async function executeBrowserInjectJS(
 
   ctx.emitLog('info', `Injecting JavaScript${id ? ` (id: ${id})` : ''}`);
   await ext.injectJS(js, id);
+}
+
+export async function executeBrowserExtractMap(
+  step: BrowserExtractMap,
+  ctx: ExecutionContext
+): Promise<void> {
+  const ext = requireExtension(ctx);
+  const selector = ctx.interpolate(step.selector);
+  const separator = step.separator ?? '\n';
+
+  ctx.emitLog('info', `Extracting map from: ${selector}`);
+  const text = await ext.extractMap(selector, step.fields, separator);
+
+  ctx.lastStepResult = text;
+  ctx.variables[step.as] = text;
 }

@@ -229,6 +229,8 @@ function getStepDetails(step: Step, ctx: ExecutionContext): string | undefined {
       return `${step.selector} → $${step.as}`;
     case 'browser.extractAll':
       return `${step.selector} → $${step.as} (all)`;
+    case 'browser.extractMap':
+      return `${step.selector} → $${step.as} (map: ${Object.keys(step.fields).join(', ')})`;
     case 'browser.navigate':
       return ctx.interpolate(step.url);
     case 'browser.click':
@@ -257,8 +259,12 @@ function getStepDetails(step: Step, ctx: ExecutionContext): string | undefined {
       return ctx.interpolate(step.cmd);
     case 'llm.generate':
       return `→ $${step.as}`;
+    case 'control.foreach':
+      return `${ctx.interpolate(step.items).substring(0, 50)} → $${step.as} (foreach)`;
     case 'data.first':
       return `${ctx.interpolate(step.input)} → $${step.as}`;
+    case 'data.get':
+      return `[${ctx.interpolate(step.index)}] → $${step.as}`;
     case 'variable.set':
       return `$${step.name} = ${ctx.interpolate(step.value).substring(0, 50)}`;
     default:

@@ -7,12 +7,8 @@
     convertRecordingWithLLM,
     getSettings,
   } from "../api";
-  import {
-    viewState,
-    navigateBack,
-    navigateToRecordings,
-    navigateToActionDetail,
-  } from "../stores";
+  import { viewState } from "../stores";
+  import { navigateBack, navigateToRecordings, navigateToActionDetail } from "../router";
   import type { Recording, Settings, RecordedEvent } from "../types";
 
   let recording = $state<Recording | null>(null);

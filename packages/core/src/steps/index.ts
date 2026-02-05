@@ -14,6 +14,7 @@ import {
   executeBrowserScroll,
   executeBrowserExtract,
   executeBrowserExtractAll,
+  executeBrowserExtractMap,
   executeBrowserWait,
   executeBrowserExists,
   executeBrowserHover,
@@ -37,6 +38,7 @@ import {
 import {
   executeControlIf,
   executeControlRetry,
+  executeControlForeach,
   executeControlStop,
   setExecuteStepsImpl,
 } from './control.js';
@@ -46,7 +48,7 @@ import {
   setExecuteWorkflowImpl,
 } from './workflow.js';
 
-import { executeDataFirst, executeVariableSet } from './data.js';
+import { executeDataFirst, executeDataGet, executeVariableSet } from './data.js';
 
 /**
  * Execute a single step
@@ -68,6 +70,8 @@ export async function executeStep(
       return executeBrowserExtract(step, ctx);
     case 'browser.extractAll':
       return executeBrowserExtractAll(step, ctx);
+    case 'browser.extractMap':
+      return executeBrowserExtractMap(step, ctx);
     case 'browser.wait':
       return executeBrowserWait(step, ctx);
     case 'browser.exists':
@@ -96,12 +100,16 @@ export async function executeStep(
       return executeControlIf(step, ctx);
     case 'control.retry':
       return executeControlRetry(step, ctx);
+    case 'control.foreach':
+      return executeControlForeach(step, ctx);
     case 'control.stop':
       return executeControlStop(step, ctx);
     case 'workflow.call':
       return executeWorkflowCall(step, ctx);
     case 'data.first':
       return executeDataFirst(step, ctx);
+    case 'data.get':
+      return executeDataGet(step, ctx);
     case 'variable.set':
       return executeVariableSet(step, ctx);
     default:
@@ -124,7 +132,7 @@ export function hasBrowserSteps(steps: Step[]): boolean {
       if (hasBrowserSteps(step.then)) return true;
       if (step.else_steps && hasBrowserSteps(step.else_steps)) return true;
     }
-    if (step.type === 'control.retry') {
+    if (step.type === 'control.retry' || step.type === 'control.foreach') {
       if (hasBrowserSteps(step.steps)) return true;
     }
   }
@@ -137,6 +145,7 @@ export function hasBrowserSteps(steps: Step[]): boolean {
 export function hasOwnRetryLogic(step: Step): boolean {
   return (
     step.type === 'control.retry' ||
+    step.type === 'control.foreach' ||
     step.type === 'control.if' ||
     step.type === 'workflow.call'
   );

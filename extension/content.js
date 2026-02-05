@@ -60,10 +60,13 @@ async function handleMessage(msg) {
       return getCoordinates(msg.selector);
 
     case "extract":
-      return extract(msg.selector);
+      return extract(msg.selector, msg.attribute);
 
     case "extractAll":
-      return extractAll(msg.selector, msg.separator || ", ");
+      return extractAll(msg.selector, msg.separator || ", ", msg.attribute);
+
+    case "extractMap":
+      return extractMap(msg.selector, msg.fields, msg.separator);
 
     case "waitForElement":
       return waitForElement(msg.selector, msg.timeout);
@@ -355,40 +358,63 @@ function focusElement(selector) {
 // Extract Text (Visible Only)
 // ============================================================================
 
-function extract(selector) {
-  const element = findElement(selector);
-  if (!element) {
-    return { text: null, error: `Element not found: ${selector}` };
+/**
+ * Extract a value from an element — either an attribute or visible text.
+ */
+function extractValue(element, attribute) {
+  if (!attribute) {
+    if (element.tagName === "INPUT" || element.tagName === "TEXTAREA") {
+      return element.value;
+    }
+    return getVisibleText(element);
   }
-
-  // For inputs, get value
-  if (element.tagName === "INPUT" || element.tagName === "TEXTAREA") {
-    return { text: element.value };
-  }
-
-  // Extract only visible text content
-  const visibleText = getVisibleText(element);
-  return { text: visibleText };
+  if (attribute === "textContent") return element.textContent?.trim() || '';
+  if (attribute === "innerText") return element.innerText?.trim() || '';
+  return element.getAttribute(attribute) || '';
 }
 
-function extractAll(selector, separator) {
+function extract(selector, attribute) {
+  const element = findElement(selector);
+  if (!element) {
+    return { text: '' };
+  }
+
+  return { text: extractValue(element, attribute) };
+}
+
+function extractAll(selector, separator, attribute) {
   const elements = document.querySelectorAll(selector);
   if (!elements || elements.length === 0) {
-    return { text: null, error: `No elements found: ${selector}` };
+    return { text: '' };
   }
 
   const texts = [];
   for (const element of elements) {
-    // For inputs, get value
-    if (element.tagName === "INPUT" || element.tagName === "TEXTAREA") {
-      if (element.value) texts.push(element.value);
-    } else {
-      const visibleText = getVisibleText(element);
-      if (visibleText) texts.push(visibleText);
-    }
+    const val = extractValue(element, attribute);
+    if (val) texts.push(val);
   }
 
   return { text: texts.join(separator) };
+}
+
+function extractMap(parentSelector, fields, separator) {
+  const parents = document.querySelectorAll(parentSelector);
+  if (!parents || parents.length === 0) {
+    return { text: '' };
+  }
+
+  const fieldNames = Object.keys(fields);
+  const rows = [];
+  for (const parent of parents) {
+    const values = [];
+    for (const name of fieldNames) {
+      const cfg = fields[name];
+      const el = parent.querySelector(cfg.selector);
+      values.push(el ? extractValue(el, cfg.attribute) : '');
+    }
+    rows.push(values.join(' | '));
+  }
+  return { text: fieldNames.join(' | ') + '\n' + rows.join(separator || '\n') };
 }
 
 /**
@@ -1124,17 +1150,35 @@ const CORE_CSS = `
   position: relative !important;
 }
 
-/* Floating button container */
+/* Floating button dock */
 #ta-embed-floating {
   position: fixed !important;
-  right: 20px !important;
-  bottom: 84px !important;
+  right: 10px !important;
+  bottom: calc(50% + 32px) !important;
+  top: auto !important;
+  transform: none !important;
   display: flex !important;
   flex-direction: column !important;
   align-items: flex-end !important;
   gap: 6px !important;
   z-index: 9999 !important;
   pointer-events: auto !important;
+  /* Dock backdrop */
+  padding: 10px !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border-radius: 18px !important;
+  border: 1px solid rgba(255, 255, 255, 0.45) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04) !important;
+  /* Transitions */
+  transition: opacity 0.25s ease-out, transform 0.25s ease-out !important;
+}
+/* Hide dock when no visible buttons */
+#ta-embed-floating.ta-dock--empty {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateY(8px) !important;
 }
 #ta-embed-floating .ta-embed-btn {
   margin: 0 !important;
@@ -1235,6 +1279,126 @@ const CORE_CSS = `
 .ta-result-bubble--error .ta-result-bubble__content {
   color: #991B1B;
   background-color: #FFFBFB;
+}
+
+/* Prompt popover */
+.ta-prompt-popover {
+  position: absolute;
+  z-index: 2147483647;
+  min-width: 280px;
+  max-width: 400px;
+  background-color: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #E2E8F0;
+  border-left: 3px solid #15C39A;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  color: #0F172A;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+  overflow: hidden;
+}
+.ta-prompt-popover__arrow {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 8px solid #F8FAFC;
+  filter: drop-shadow(0 -1px 2px rgba(15, 23, 42, 0.06));
+}
+.ta-prompt-popover__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #F8FAFC;
+  border-bottom: 1px solid #E2E8F0;
+}
+.ta-prompt-popover__title {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.ta-prompt-popover__close {
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  color: #94A3B8;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+.ta-prompt-popover__close:hover {
+  background: #E2E8F0;
+  color: #475569;
+}
+.ta-prompt-popover__body {
+  padding: 12px 16px 16px;
+}
+.ta-prompt-popover__textarea {
+  width: 100% !important;
+  min-height: 60px !important;
+  padding: 8px 10px !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  color: #1E293B !important;
+  background: #ffffff !important;
+  border: 1px solid #E2E8F0 !important;
+  border-radius: 8px !important;
+  resize: vertical !important;
+  outline: none !important;
+  transition: border-color 0.15s ease !important;
+  box-sizing: border-box !important;
+}
+.ta-prompt-popover__textarea:focus {
+  border-color: #15C39A !important;
+  box-shadow: 0 0 0 3px rgba(21, 195, 154, 0.15) !important;
+}
+.ta-prompt-popover__textarea::placeholder {
+  color: #94A3B8 !important;
+}
+.ta-prompt-popover__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+.ta-prompt-popover__hint {
+  font-size: 12px;
+  color: #94A3B8;
+}
+.ta-prompt-popover__submit {
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 6px 16px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  background: linear-gradient(135deg, #15C39A 0%, #0EA87D 100%) !important;
+  border: none !important;
+  border-radius: 16px !important;
+  color: white !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+.ta-prompt-popover__submit:hover {
+  background: linear-gradient(135deg, #0EA87D 0%, #0a7c6a 100%) !important;
+  box-shadow: 0 2px 8px rgba(21, 195, 154, 0.35) !important;
 }
 
 /* Extract overlay */
@@ -1414,6 +1578,167 @@ class ResultBubble {
 }
 
 // ============================================================================
+// Prompt Popover - Collects optional user instructions before running workflow
+// ============================================================================
+
+class PromptPopover {
+  constructor() {
+    this.popover = null;
+    this.currentAnchor = null;
+    this.clickOutsideHandler = this.handleClickOutside.bind(this);
+  }
+
+  /**
+   * Show the prompt popover below the anchor element
+   */
+  show(anchor, promptConfig, onSubmit) {
+    this.hide();
+
+    this.currentAnchor = anchor;
+    this.popover = this.createPopoverElement(promptConfig, onSubmit);
+    document.body.appendChild(this.popover);
+
+    this.positionAt(anchor);
+
+    requestAnimationFrame(() => {
+      this.popover.style.opacity = "1";
+      this.popover.style.transform = "translateY(0)";
+    });
+
+    // Focus the textarea
+    const textarea = this.popover.querySelector("textarea");
+    if (textarea) {
+      setTimeout(() => textarea.focus(), 50);
+    }
+
+    setTimeout(() => {
+      document.addEventListener("click", this.clickOutsideHandler, true);
+    }, 100);
+  }
+
+  hide() {
+    if (this.popover) {
+      document.removeEventListener("click", this.clickOutsideHandler, true);
+      this.popover.remove();
+      this.popover = null;
+      this.currentAnchor = null;
+    }
+  }
+
+  handleClickOutside(e) {
+    if (this.popover && !this.popover.contains(e.target) && e.target !== this.currentAnchor) {
+      this.hide();
+    }
+  }
+
+  createPopoverElement(promptConfig, onSubmit) {
+    const popover = document.createElement("div");
+    popover.className = "ta-prompt-popover";
+
+    // Arrow
+    const arrow = document.createElement("div");
+    arrow.className = "ta-prompt-popover__arrow";
+    popover.appendChild(arrow);
+
+    // Header
+    const header = document.createElement("div");
+    header.className = "ta-prompt-popover__header";
+
+    const title = document.createElement("span");
+    title.className = "ta-prompt-popover__title";
+    title.textContent = promptConfig.title || "Instructions";
+    header.appendChild(title);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "ta-prompt-popover__close";
+    closeBtn.innerHTML = "\u2715";
+    closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.hide();
+    });
+    header.appendChild(closeBtn);
+    popover.appendChild(header);
+
+    // Body
+    const body = document.createElement("div");
+    body.className = "ta-prompt-popover__body";
+
+    const textarea = document.createElement("textarea");
+    textarea.className = "ta-prompt-popover__textarea";
+    textarea.placeholder = promptConfig.placeholder || "Add instructions...";
+    textarea.rows = 3;
+
+    const submit = () => {
+      const text = textarea.value;
+      this.hide();
+      onSubmit(text);
+    };
+
+    // Keyboard: Cmd/Ctrl+Enter submits, Escape dismisses
+    textarea.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        submit();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        this.hide();
+      }
+    });
+
+    body.appendChild(textarea);
+
+    // Footer
+    const footer = document.createElement("div");
+    footer.className = "ta-prompt-popover__footer";
+
+    const hint = document.createElement("span");
+    hint.className = "ta-prompt-popover__hint";
+    hint.textContent = "Optional";
+    footer.appendChild(hint);
+
+    const submitBtn = document.createElement("button");
+    submitBtn.className = "ta-prompt-popover__submit";
+    submitBtn.textContent = "Run";
+    submitBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      submit();
+    });
+    footer.appendChild(submitBtn);
+
+    body.appendChild(footer);
+    popover.appendChild(body);
+
+    return popover;
+  }
+
+  positionAt(anchor) {
+    if (!this.popover || !anchor) return;
+
+    const anchorRect = anchor.getBoundingClientRect();
+    const popoverRect = this.popover.getBoundingClientRect();
+
+    let left = anchorRect.left + (anchorRect.width / 2) - (popoverRect.width / 2);
+    let top = anchorRect.bottom + window.scrollY + 12;
+
+    const padding = 10;
+    if (left < padding) {
+      left = padding;
+    } else if (left + popoverRect.width > window.innerWidth - padding) {
+      left = window.innerWidth - popoverRect.width - padding;
+    }
+
+    const arrow = this.popover.querySelector(".ta-prompt-popover__arrow");
+    if (arrow) {
+      const arrowOffset = anchorRect.left + (anchorRect.width / 2) - left;
+      arrow.style.left = `${arrowOffset}px`;
+    }
+
+    this.popover.style.left = `${left}px`;
+    this.popover.style.top = `${top}px`;
+  }
+}
+
+// ============================================================================
 // Embedded Workflow Buttons (V2 - Multi-target with context extraction)
 // ============================================================================
 
@@ -1428,7 +1753,17 @@ class EmbedManager {
     this.observer = null;
     this.connected = false;
     this.enabled = true;
+    this.panelButtonVisible = true;
+    this.panelButtonTop = 50;
     this.resultBubble = new ResultBubble();
+    this.promptPopover = new PromptPopover();
+
+    // Listen for panel button position/visibility updates
+    document.addEventListener("sidebutton:panelButtonInfo", (e) => {
+      this.panelButtonVisible = e.detail.visible;
+      this.panelButtonTop = e.detail.top;
+      this.updateDockState();
+    });
   }
 
   setConfigs(configs, connected) {
@@ -1461,6 +1796,9 @@ class EmbedManager {
       this.injectButtons(config);
     }
 
+    // Update dock backdrop state after injecting
+    this.updateDockState();
+
     // Start observing DOM for dynamic content
     this.startObserver();
   }
@@ -1478,6 +1816,7 @@ class EmbedManager {
 
     const paramMap = embed?.param_map || {};
     const extractKeys = embed?.extract ? Object.keys(embed.extract) : [];
+    const promptKey = embed?.prompt?.param || null;
     const builtinKeys = ['_url', '_domain', '_pathname', '_title', '_path'];
 
     for (const paramName of Object.keys(params)) {
@@ -1501,7 +1840,7 @@ class EmbedManager {
         const contextKey = templateMatch[1];
         // Built-in context keys are always available
         const isBuiltin = builtinKeys.includes(contextKey) || contextKey.startsWith('_path.');
-        if (!isBuiltin && !extractKeys.includes(contextKey)) {
+        if (!isBuiltin && !extractKeys.includes(contextKey) && contextKey !== promptKey) {
           return false;
         }
       }
@@ -1669,7 +2008,8 @@ class EmbedManager {
     button.className = "ta-embed-btn";
     button.setAttribute("data-workflow-id", id);
     button.setAttribute("data-button-id", buttonId);
-    button.textContent = embed.label || title;
+    const label = embed.label || title;
+    button.textContent = embed.prompt ? label + "\u2026" : label;
     button.title = title;
 
     // Click handler - V2: extract context from this specific target
@@ -1724,7 +2064,8 @@ class EmbedManager {
     button.className = "ta-embed-btn";
     button.setAttribute("data-workflow-id", id);
     button.setAttribute("data-button-id", buttonId);
-    button.textContent = embed.label || title;
+    const label = embed.label || title;
+    button.textContent = embed.prompt ? label + "\u2026" : label;
     button.title = title;
 
     // Click handler - page-level context only (no target element)
@@ -1745,6 +2086,32 @@ class EmbedManager {
    * V2: Handle button click with context extraction
    */
   handleButtonClick(buttonId, target, config) {
+    const { embed } = config;
+    const entry = this.injectedButtons.get(buttonId);
+    if (!entry) return;
+
+    const { button } = entry;
+
+    // If prompt is configured, show popover first
+    if (embed.prompt) {
+      this.promptPopover.hide();
+      this.resultBubble.hide();
+      this.promptPopover.show(button, {
+        title: embed.prompt.title || (embed.label || config.title),
+        placeholder: embed.prompt.placeholder || "Add instructions...",
+      }, (userText) => {
+        this.executeWorkflow(buttonId, target, config, userText);
+      });
+      return;
+    }
+
+    this.executeWorkflow(buttonId, target, config, null);
+  }
+
+  /**
+   * Execute workflow with optional prompt text
+   */
+  executeWorkflow(buttonId, target, config, promptText) {
     const { id, title, embed } = config;
     const entry = this.injectedButtons.get(buttonId);
     if (!entry) return;
@@ -1763,6 +2130,11 @@ class EmbedManager {
       _title: document.title,
       _path: window.location.pathname.split('/').filter(Boolean),
     };
+
+    // Inject prompt text into context if configured
+    if (embed.prompt && promptText != null) {
+      context[embed.prompt.param] = promptText;
+    }
 
     // Extract configured values relative to target
     if (embed.extract) {
@@ -1856,7 +2228,8 @@ class EmbedManager {
     if (!entry) return;
 
     const { button, config } = entry;
-    const originalText = config.embed.label || config.title;
+    const baseLabel = config.embed.label || config.title;
+    const originalText = config.embed.prompt ? baseLabel + "\u2026" : baseLabel;
     const resultConfig = config.embed.result || {};
     const action = resultConfig.action || "bubble";
 
@@ -1959,9 +2332,43 @@ class EmbedManager {
     for (const [id, entry] of this.injectedButtons) {
       entry.button.style.display = shouldShow ? "inline-flex" : "none";
     }
+    this.updateDockState();
+  }
+
+  /**
+   * Update dock backdrop visibility and position.
+   * Positions dock directly above the S button (8px gap) when present.
+   */
+  updateDockState() {
+    const container = document.getElementById("ta-embed-floating");
+    if (!container) return;
+
+    // Check if any floating buttons should be visible
+    const shouldShow = this.connected && this.enabled;
+    const hasFloatingButtons = Array.from(this.injectedButtons.values()).some(
+      (entry) => entry.target === null
+    );
+
+    if (!shouldShow || !hasFloatingButtons) {
+      container.classList.add("ta-dock--empty");
+      return;
+    }
+
+    container.classList.remove("ta-dock--empty");
+
+    if (this.panelButtonVisible && this.panelButtonTop != null) {
+      // Position dock so its bottom edge sits 8px above the S button's top edge
+      // S button center at panelButtonTop%, height 48px → top edge at (panelButtonTop% - 24px)
+      // Dock bottom from viewport bottom = (100 - panelButtonTop)% + 24px + 8px
+      container.style.bottom = `calc(${100 - this.panelButtonTop}% + 32px)`;
+    } else {
+      // No panel button or unknown position - use default
+      container.style.bottom = "calc(50% + 32px)";
+    }
   }
 
   removeAllButtons() {
+    this.promptPopover.hide();
     for (const [id, entry] of this.injectedButtons) {
       entry.button.remove();
     }

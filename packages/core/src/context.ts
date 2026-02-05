@@ -22,8 +22,9 @@ export interface ExtensionClient {
   click(selector: string): Promise<void>;
   typeText(selector: string, text: string, submit: boolean): Promise<void>;
   scroll(direction: string, amount: number): Promise<void>;
-  extract(selector: string): Promise<string>;
-  extractAll(selector: string, separator: string): Promise<string>;
+  extract(selector: string, attribute?: string): Promise<string>;
+  extractAll(selector: string, separator: string, attribute?: string): Promise<string>;
+  extractMap(selector: string, fields: Record<string, { selector: string; attribute?: string }>, separator?: string): Promise<string>;
   waitForElement(selector: string, timeout: number): Promise<void>;
   exists(selector: string, timeout: number): Promise<boolean>;
   hover(selector: string): Promise<void>;

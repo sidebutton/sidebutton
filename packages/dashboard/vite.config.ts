@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [svelte()],
   build: {
     outDir: '../server/dashboard',
-    emptyDirBeforeWrite: true,
+    emptyOutDir: true,
   },
   server: {
     port: 5173,

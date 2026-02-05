@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { listWorkflows, listActions, runWorkflow, getSettings, saveSettings } from "../api";
-  import { navigateToExecution, mcpStatus, addLog, clearLogs, isRunning, settings as settingsStore, showToast } from "../stores";
+  import { mcpStatus, addLog, clearLogs, isRunning, settings as settingsStore, showToast } from "../stores";
+  import { navigateToExecution } from "../router";
   import type { Action as Workflow, DashboardShortcut, Settings } from "../types";
   import ShortcutCard from "../components/ShortcutCard.svelte";
   import AddShortcutModal from "../components/AddShortcutModal.svelte";

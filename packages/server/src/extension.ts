@@ -221,18 +221,26 @@ export class ExtensionClientImpl implements ExtensionClient {
     }
   }
 
-  async extract(selector: string): Promise<string> {
-    const response = await this.sendCommand('extract', { selector });
+  async extract(selector: string, attribute?: string): Promise<string> {
+    const response = await this.sendCommand('extract', { selector, attribute });
     if (!response.ok) {
       throw new Error(response.error ?? 'Extract failed');
     }
     return (response.result?.text as string) ?? '';
   }
 
-  async extractAll(selector: string, separator: string): Promise<string> {
-    const response = await this.sendCommand('extractAll', { selector, separator });
+  async extractAll(selector: string, separator: string, attribute?: string): Promise<string> {
+    const response = await this.sendCommand('extractAll', { selector, separator, attribute });
     if (!response.ok) {
       throw new Error(response.error ?? 'ExtractAll failed');
+    }
+    return (response.result?.text as string) ?? '';
+  }
+
+  async extractMap(selector: string, fields: Record<string, { selector: string; attribute?: string }>, separator?: string): Promise<string> {
+    const response = await this.sendCommand('extractMap', { selector, fields, separator });
+    if (!response.ok) {
+      throw new Error(response.error ?? 'ExtractMap failed');
     }
     return (response.result?.text as string) ?? '';
   }

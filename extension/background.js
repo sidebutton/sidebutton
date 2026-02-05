@@ -809,7 +809,9 @@ async function executeHostedMcpMethod(method, params) {
     case "hover":
       return await cmdHover({ selector: params?.selector });
     case "extract":
-      return await cmdExtract({ selector: params?.selector });
+      return await cmdExtract({ selector: params?.selector, attribute: params?.attribute });
+    case "extractAll":
+      return await cmdExtractAll({ selector: params?.selector, separator: params?.separator, attribute: params?.attribute });
     case "capture_page":
       return await cmdCaptureSelectors();
     case "injectCSS":
@@ -859,7 +861,10 @@ async function executeToolCall(toolName, args) {
       result = await cmdHover({ selector: args?.selector });
       break;
     case "extract":
-      result = await cmdExtract({ selector: args?.selector });
+      result = await cmdExtract({ selector: args?.selector, attribute: args?.attribute });
+      break;
+    case "extractAll":
+      result = await cmdExtractAll({ selector: args?.selector, separator: args?.separator, attribute: args?.attribute });
       break;
     case "capture_page":
       result = await cmdCaptureSelectors();
@@ -969,6 +974,9 @@ async function handleCommand(msg) {
         break;
       case "extractAll":
         result = await cmdExtractAll(msg);
+        break;
+      case "extractMap":
+        result = await cmdExtractMap(msg);
         break;
       case "screenshot":
         result = await cmdScreenshot();
@@ -1225,14 +1233,20 @@ async function cmdScroll(msg) {
 }
 
 async function cmdExtract(msg) {
-  const { selector } = msg;
-  const result = await sendToContentScript("extract", { selector });
+  const { selector, attribute } = msg;
+  const result = await sendToContentScript("extract", { selector, attribute });
   return { text: result.text };
 }
 
 async function cmdExtractAll(msg) {
-  const { selector, separator } = msg;
-  const result = await sendToContentScript("extractAll", { selector, separator });
+  const { selector, separator, attribute } = msg;
+  const result = await sendToContentScript("extractAll", { selector, separator, attribute });
+  return { text: result.text };
+}
+
+async function cmdExtractMap(msg) {
+  const { selector, fields, separator } = msg;
+  const result = await sendToContentScript("extractMap", { selector, fields, separator });
   return { text: result.text };
 }
 

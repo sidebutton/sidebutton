@@ -10,8 +10,9 @@
   }
   let { level = 'task', domain = undefined, showDomain = false, size = 'sm' }: Props = $props();
 
-  let levelInfo = $derived(CATEGORY_LEVELS[level]);
-  let domainInfo = $derived(domain ? CATEGORY_DOMAINS[domain] : null);
+  const fallbackLevel = { label: level, badge: level, color: '#6B7280', bgColor: '#F3F4F6', description: level };
+  let levelInfo = $derived(CATEGORY_LEVELS[level] ?? fallbackLevel);
+  let domainInfo = $derived(domain ? (CATEGORY_DOMAINS[domain] ?? null) : null);
 </script>
 
 <span

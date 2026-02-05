@@ -99,12 +99,16 @@ Wait for element or delay.
 # Fixed delay
 - type: browser.wait
   ms: 2000
+
+# Named delay constant (resolves to base value ±10% jitter)
+- type: browser.wait
+  ms: "mid"
 ```
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `selector` | string | No | Wait for element to appear |
-| `ms` | number | No | Fixed delay in milliseconds |
+| `ms` | number \| [DelayConstant](#delay-constants) | No | Fixed delay in milliseconds or named constant |
 | `timeout` | number | No | Max wait time (default: 30000) |
 
 ### browser.extract
@@ -358,7 +362,32 @@ Retry steps on failure.
 |-----------|------|----------|-------------|
 | `steps` | array | Yes | Steps to retry |
 | `max_attempts` | number | No | Max retries (default: 3) |
-| `delay_ms` | number | No | Delay between retries (default: 1000) |
+| `delay_ms` | number \| [DelayConstant](#delay-constants) | No | Delay between retries (default: 1000) |
+
+### control.foreach
+
+Iterate over a list of items.
+
+```yaml
+- type: control.foreach
+  items: "{{user_list}}"
+  as: user
+  separator: ","
+  delay_ms: "small"
+  steps:
+    - type: browser.click
+      selector: "button[data-user='{{user}}']"
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `items` | string | Yes | Interpolated string to split into items |
+| `as` | string | Yes | Variable name for current item |
+| `steps` | array | Yes | Steps to execute per item |
+| `separator` | string | No | Item separator (default: `,`) |
+| `index_as` | string | No | Variable name for current index |
+| `max_items` | number | No | Max items to process (default: 1000) |
+| `delay_ms` | number \| [DelayConstant](#delay-constants) | No | Delay between iterations (default: 0) |
 
 ### control.stop
 
@@ -426,3 +455,17 @@ Set a variable value directly.
 |-----------|------|----------|-------------|
 | `name` | string | Yes | Variable name to set |
 | `value` | string | Yes | Value to assign (supports interpolation) |
+
+## Delay Constants
+
+Any `delay_ms` or `ms` parameter that accepts a number also accepts a named delay constant. Named constants resolve to a base millisecond value with ±10% random jitter on each invocation, making automation timing less predictable and more human-like.
+
+| Constant | Base | Range |
+|----------|------|-------|
+| `"small"` | 500ms | 450–550ms |
+| `"mid"` | 1000ms | 900–1100ms |
+| `"large"` | 5000ms | 4500–5500ms |
+
+Raw numeric values are used as-is without jitter.
+
+**Applies to:** `browser.wait` → `ms`, `control.retry` → `delay_ms`, `control.foreach` → `delay_ms`

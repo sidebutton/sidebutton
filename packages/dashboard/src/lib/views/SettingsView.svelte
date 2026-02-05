@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { getSettings, saveSettings } from "../api";
-  import { navigateBack, settings as settingsStore } from "../stores";
+  import { settings as settingsStore } from "../stores";
+  import { navigateBack } from "../router";
   import type { Settings, FullLlmConfig, UserContext } from "../types";
   import { isLlmContext, isEnvContext } from "../types";
   import ContextModal from "../components/ContextModal.svelte";

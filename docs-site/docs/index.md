@@ -1,22 +1,10 @@
 ---
 layout: home
 
-hero:
-  name: SideButton
-  text: Local Workflow Automation
-  tagline: Define workflows in YAML. Run them with one click. Keep your data private.
-  actions:
-    - theme: brand
-      text: Get Started
-      link: /installation
-    - theme: alt
-      text: View on GitHub
-      link: https://github.com/sidebutton/sidebutton
-    - theme: alt
-      text: Visit Website
-      link: https://sidebutton.com
-
 features:
+  - icon: 🚀
+    title: One Command Setup
+    details: "npx sidebutton@latest — no sign-up, no config, just run it."
   - icon: 🔁
     title: Reusable Workflows
     details: Define once in YAML, run forever. No re-prompting AI every time.
@@ -32,9 +20,6 @@ features:
   - icon: 🔌
     title: MCP Server
     details: Connect Claude Code, Cursor, VS Code to your browser.
-  - icon: 🖥️
-    title: Full Dashboard
-    details: Visual workflow management, run logs, and settings.
 ---
 
 ## What is SideButton?
@@ -45,17 +30,6 @@ SideButton is an **open-source, local-first automation platform** that connects 
 - **Record actions** by clicking through a task and exporting as automation
 - **Embed buttons** directly into the pages you use (GitHub, Wikipedia, etc.)
 - **Use AI steps** for text classification and generation
-
-## Quick Start
-
-```bash
-# Run the server
-npx sidebutton
-
-# Open http://localhost:9876
-```
-
-Then [install the Chrome extension](/extension) and run your first workflow.
 
 ## How It Works
 

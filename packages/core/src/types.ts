@@ -2,6 +2,8 @@
  * Core types for SideButton workflow engine
  */
 
+import type { DelayValue } from './delay.js';
+
 // Category level for workflow complexity (atomic design inspired)
 export type CategoryLevel = 'primitive' | 'task' | 'process' | 'workflow' | 'pipeline';
 
@@ -65,6 +67,11 @@ export interface EmbedConfig {
   parent_filter?: ParentFilter;
   extract?: Record<string, ExtractConfig>;
   param_map?: Record<string, string>;
+  prompt?: {
+    param: string;
+    placeholder?: string;
+    title?: string;
+  };
   org?: string;  // Filter by org name (empty = match all orgs)
   repo?: string; // Filter by repo name (empty = match all repos)
 }
@@ -78,9 +85,10 @@ export type Step =
   | { type: 'browser.click'; selector: string; new_tab?: boolean }
   | { type: 'browser.type'; selector: string; text: string }
   | { type: 'browser.scroll'; direction?: ScrollDirection; amount?: number }
-  | { type: 'browser.extract'; selector: string; as: string }
-  | { type: 'browser.extractAll'; selector: string; as: string; separator?: string }
-  | { type: 'browser.wait'; selector?: string; ms?: number; timeout?: number }
+  | { type: 'browser.extract'; selector: string; as: string; attribute?: string }
+  | { type: 'browser.extractAll'; selector: string; as: string; separator?: string; attribute?: string }
+  | { type: 'browser.extractMap'; selector: string; fields: Record<string, { selector: string; attribute?: string }>; as: string; separator?: string }
+  | { type: 'browser.wait'; selector?: string; ms?: DelayValue; timeout?: number }
   | { type: 'browser.exists'; selector: string; as: string; timeout?: number }
   | { type: 'browser.hover'; selector: string }
   | { type: 'browser.key'; key: string; selector?: string }
@@ -89,12 +97,14 @@ export type Step =
   | { type: 'llm.classify'; input: string; categories: string[]; as: string }
   | { type: 'llm.generate'; prompt: string; as: string }
   | { type: 'control.if'; condition: string; then: Step[]; else_steps?: Step[] }
-  | { type: 'control.retry'; max_attempts?: number; delay_ms?: number; steps: Step[] }
+  | { type: 'control.retry'; max_attempts?: number; delay_ms?: DelayValue; steps: Step[] }
+  | { type: 'control.foreach'; items: string; as: string; separator?: string; index_as?: string; steps: Step[]; max_items?: number; delay_ms?: DelayValue; continue_on_error?: boolean }
   | { type: 'control.stop'; message?: string }
-  | { type: 'workflow.call'; workflow: string; params?: Record<string, string>; as?: string }
+  | { type: 'workflow.call'; workflow: string; params?: Record<string, string>; as?: string; timeout?: number }
   | { type: 'terminal.open'; title?: string; cwd?: string }
   | { type: 'terminal.run'; cmd: string }
   | { type: 'data.first'; input: string; as: string; separator?: string }
+  | { type: 'data.get'; input: string; separator?: string; index: string; as: string }
   | { type: 'browser.injectCSS'; css: string; id?: string }
   | { type: 'browser.injectJS'; js: string; id?: string }
   | { type: 'variable.set'; name: string; value: string };

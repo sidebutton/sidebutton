@@ -84,5 +84,9 @@ export type { ExtensionClient } from './context.js';
 // Executor
 export { executeWorkflow, executeSteps } from './executor.js';
 
+// Delay
+export type { DelayConstant, DelayValue } from './delay.js';
+export { resolveDelay, DELAY_BASE } from './delay.js';
+
 // Steps
 export { executeStep, hasBrowserSteps, hasOwnRetryLogic } from './steps/index.js';

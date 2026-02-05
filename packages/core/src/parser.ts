@@ -106,7 +106,7 @@ export function countSteps(steps: { type: string; then?: unknown[]; else_steps?:
       if (Array.isArray(step.else_steps)) {
         count += countSteps(step.else_steps as typeof steps);
       }
-    } else if (step.type === 'control.retry') {
+    } else if (step.type === 'control.retry' || step.type === 'control.foreach') {
       if (Array.isArray(step.steps)) {
         count += countSteps(step.steps as typeof steps);
       }
@@ -130,7 +130,7 @@ export function hasStepType(steps: { type: string; then?: unknown[]; else_steps?
       if (Array.isArray(step.else_steps) && hasStepType(step.else_steps as typeof steps, typePrefix)) {
         return true;
       }
-    } else if (step.type === 'control.retry') {
+    } else if (step.type === 'control.retry' || step.type === 'control.foreach') {
       if (Array.isArray(step.steps) && hasStepType(step.steps as typeof steps, typePrefix)) {
         return true;
       }
@@ -155,7 +155,7 @@ export function countStepType(steps: { type: string; then?: unknown[]; else_step
       if (Array.isArray(step.else_steps)) {
         count += countStepType(step.else_steps as typeof steps, typePrefix);
       }
-    } else if (step.type === 'control.retry') {
+    } else if (step.type === 'control.retry' || step.type === 'control.foreach') {
       if (Array.isArray(step.steps)) {
         count += countStepType(step.steps as typeof steps, typePrefix);
       }

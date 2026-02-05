@@ -3,11 +3,9 @@
   import { getAction, runWorkflow, deleteAction, publishAction, updateAction, getSettings, saveSettings, getWorkflowStats } from "../api";
   import {
     viewState,
-    navigateBack,
-    navigateToActions,
-    navigateToExecution,
     showToast,
   } from "../stores";
+  import { navigateBack, navigateToActions, navigateToExecution } from "../router";
   import type { Action, DashboardShortcut, CategoryLevel, CategoryDomain, WorkflowStats } from "../types";
   import DetailViewHero from "../components/DetailViewHero.svelte";
   import DetailViewStatsBar from "../components/DetailViewStatsBar.svelte";

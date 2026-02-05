@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { getRunLog, deleteRunLog } from "../api";
-  import { navigateBack, navigateToRunLogs, viewState } from "../stores";
+  import { viewState } from "../stores";
+  import { navigateBack, navigateToRunLogs } from "../router";
   import type { RunLog, WorkflowEvent } from "../types";
   import StatusBadge from "../components/StatusBadge.svelte";
 

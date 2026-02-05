@@ -2,7 +2,8 @@
   import { onMount, onDestroy } from "svelte";
   import { getBrowserStatus } from "./lib/api";
   import { dashboardWs } from "./lib/websocket";
-  import { viewState, mcpStatus, initFromUrl, setupUrlListener } from "./lib/stores";
+  import { viewState, mcpStatus } from "./lib/stores";
+  import { startRouter } from "./lib/router";
   import DrawerNav from "./lib/components/DrawerNav.svelte";
   import DashboardView from "./lib/views/DashboardView.svelte";
   import ActionsView from "./lib/views/ActionsView.svelte";
@@ -38,9 +39,7 @@
   }
 
   onMount(() => {
-    // Sync view state from URL path (e.g. /actions, /workflows/123)
-    initFromUrl();
-    setupUrlListener();
+    startRouter();
 
     // Connect WebSocket
     dashboardWs.connect();

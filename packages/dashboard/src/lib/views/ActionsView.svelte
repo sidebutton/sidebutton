@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { listActions, getAllWorkflowStats, reloadAll } from "../api";
-  import { actions, workflowStats, navigateToActionDetail } from "../stores";
+  import { actions, workflowStats } from "../stores";
+  import { navigateToActionDetail } from "../router";
   import type { Action, CategoryLevel, CategoryDomain } from "../types";
   import { domainColors } from "../theme";
   import CategoryBadge from "../components/CategoryBadge.svelte";

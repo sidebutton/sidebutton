@@ -1,12 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { getWorkflow, runWorkflow, copyWorkflowToActions, getWorkflowStats } from "../api";
-  import {
-    viewState,
-    navigateBack,
-    navigateToWorkflowExecution,
-    navigateToActionDetail,
-  } from "../stores";
+  import { viewState } from "../stores";
+  import { navigateBack, navigateToWorkflowExecution, navigateToActionDetail } from "../router";
   import type { Action, WorkflowStats } from "../types";
   import DetailViewHero from "../components/DetailViewHero.svelte";
   import DetailViewStatsBar from "../components/DetailViewStatsBar.svelte";

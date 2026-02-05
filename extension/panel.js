@@ -12,7 +12,7 @@ class ChatPanel {
     this.isOpen = false;
     this.isLoading = false;
     this.messages = [];
-    this.buttonPosition = { bottom: 24 };
+    this.buttonPosition = { top: 50 };
     this.contextOptions = {
       includePageInfo: true,
       includeElementScreenshot: false,
@@ -119,6 +119,9 @@ class ChatPanel {
       // Default: visible
     }
 
+    // Broadcast button info so embed dock can position relative to S button
+    this.broadcastButtonInfo();
+
     // Listen for state changes from background
     chrome.runtime.onMessage.addListener((msg) => {
       if (msg.action === "panel:stateChanged") {
@@ -132,6 +135,7 @@ class ChatPanel {
       } else if (msg.action === "panel:setVisibility") {
         if (this.shadowHost) {
           this.shadowHost.style.display = msg.enabled ? "" : "none";
+          this.broadcastButtonInfo();
         }
       }
     });
@@ -158,7 +162,7 @@ class ChatPanel {
     this.messages = state.messages || [];
     this.isOpen = state.isOpen || false;
     this.isLoading = state.isLoading || false;
-    this.buttonPosition = state.buttonPosition || { bottom: 24 };
+    this.buttonPosition = state.buttonPosition || { top: 50 };
     // Merge saved contextOptions with defaults to ensure all properties exist
     this.contextOptions = {
       includePageInfo: true,
@@ -252,7 +256,6 @@ class ChatPanel {
       .sb-button {
         position: fixed;
         right: 20px;
-        bottom: 24px;
         width: 48px;
         height: 48px;
         border-radius: 14px;
@@ -263,19 +266,18 @@ class ChatPanel {
         align-items: center;
         justify-content: center;
         box-shadow: 0 4px 14px rgba(21, 195, 154, 0.35), 0 2px 6px rgba(0,0,0,0.08);
-        transition: all 0.2s ease;
+        transition: box-shadow 0.2s ease, opacity 0.2s ease;
         opacity: 1;
         pointer-events: auto;
         z-index: 2147483646;
       }
 
       .sb-button:hover {
-        transform: scale(1.08);
         box-shadow: 0 6px 20px rgba(21, 195, 154, 0.45), 0 4px 10px rgba(0,0,0,0.1);
       }
 
       .sb-button:active {
-        transform: scale(0.95);
+        opacity: 0.85;
       }
 
       .sb-button svg {
@@ -309,7 +311,7 @@ class ChatPanel {
         pointer-events: auto;
         z-index: 2147483644;
         opacity: 0;
-        transform: translateY(12px) scale(0.96);
+        transform: scale(0.96);
         transition: opacity 0.25s ease-out, transform 0.25s ease-out;
         visibility: hidden;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -318,7 +320,7 @@ class ChatPanel {
 
       .sb-panel--open {
         opacity: 1;
-        transform: translateY(0) scale(1);
+        transform: scale(1);
         visibility: visible;
       }
 
@@ -1508,8 +1510,23 @@ class ChatPanel {
 
   updateButtonPosition() {
     if (this.button) {
-      this.button.style.bottom = `${this.buttonPosition.bottom}px`;
+      this.button.style.top = `${this.buttonPosition.top}%`;
+      this.button.style.transform = `translateY(-50%)`;
     }
+    this.broadcastButtonInfo();
+  }
+
+  /**
+   * Broadcast panel button position and visibility to content.js
+   * so the embed dock can position itself relative to the S button.
+   */
+  broadcastButtonInfo() {
+    const visible = this.shadowHost && this.shadowHost.style.display !== "none";
+    // Handle both {top: N} and {bottom: N} formats; default to 50% from top
+    const top = this.buttonPosition.top ?? 50;
+    document.dispatchEvent(new CustomEvent("sidebutton:panelButtonInfo", {
+      detail: { visible, top },
+    }));
   }
 
   // ============================================================================
@@ -1669,8 +1686,11 @@ class ChatPanel {
 
   updatePanelPosition(panel = this.panel) {
     if (panel) {
-      // Panel appears above the button with 12px gap
-      const panelBottom = this.buttonPosition.bottom + 48; // button height + gap
+      // Panel appears above the button, anchored so its bottom aligns with the button top
+      // Button center is at top%, so button top = top% - 24px (half of 48px button)
+      // Panel bottom = button top - 12px gap
+      const buttonTopPx = (window.innerHeight * this.buttonPosition.top / 100) + 24;
+      const panelBottom = window.innerHeight - buttonTopPx + 12;
       panel.style.bottom = `${panelBottom}px`;
     }
   }

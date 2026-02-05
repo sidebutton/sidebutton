@@ -6,10 +6,8 @@
     logs,
     isRunning,
     currentRunId,
-    navigateBack,
-    navigateToWorkflowDetail,
-    navigateToActionDetail,
   } from "../stores";
+  import { navigateBack, navigateToWorkflowDetail, navigateToActionDetail } from "../router";
   import { initWebSocket } from "../websocket";
   import type { Action } from "../types";
 
