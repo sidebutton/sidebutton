@@ -1381,9 +1381,9 @@ export async function startServer(config: ServerConfig): Promise<void> {
       throw { statusCode: 400, message: 'Browser not connected' };
     }
 
-    // Generate run ID
+    // Generate run ID with ms precision + random suffix to avoid collisions
     const timestamp = new Date().toISOString();
-    const runId = `${workflowId}_${timestamp.replace(/[:.]/g, '').slice(0, 15)}`;
+    const runId = `${workflowId}_${timestamp.replace(/[:.]/g, '').slice(0, 18)}_${Math.random().toString(16).slice(2, 5)}`;
 
     // Load settings for LLM config and user contexts
     const settings = loadSettings(config.actionsDir);
