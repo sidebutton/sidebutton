@@ -379,7 +379,8 @@ export class McpHandler {
     // Execute workflow
     const startTime = Date.now();
     const timestamp = new Date().toISOString();
-    const runId = `${workflowId}_${timestamp.replace(/[:.]/g, '').slice(0, 15)}`;
+    const suffix = Math.random().toString(16).slice(2, 5);
+    const runId = `${workflowId}_${timestamp.replace(/[:.]/g, '').slice(0, 18)}_${suffix}`;
 
     // Load settings for LLM config and user contexts
     const settings = this.loadSettings();
