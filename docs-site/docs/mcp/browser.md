@@ -209,13 +209,26 @@ Returns:
 
 ## Screenshots
 
-Capture the current page:
+Capture the full page:
 
 ```json
 { "name": "screenshot" }
 ```
 
-Returns base64-encoded PNG that AI can analyze.
+Crop to a specific element using its ref from `snapshot`:
+
+```json
+{ "name": "screenshot", "arguments": { "ref": 42 } }
+```
+
+Crop to a CSS selector or manual region:
+
+```json
+{ "name": "screenshot", "arguments": { "selector": "#main-form" } }
+{ "name": "screenshot", "arguments": { "region": { "x": 0, "y": 0, "width": 800, "height": 400 } } }
+```
+
+Cropped screenshots are 10-100x smaller, saving context tokens. Returns base64-encoded PNG.
 
 ## Example: Research Task
 

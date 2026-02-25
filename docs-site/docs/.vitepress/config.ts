@@ -34,6 +34,7 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/installation' },
       { text: 'Workflows', link: '/workflows/overview' },
+      { text: 'Skill Packs', link: '/skill-packs/overview' },
       { text: 'MCP', link: '/mcp/overview' },
       // { text: 'API', link: '/api/rest' }, // Hidden until Phase 2
       {
@@ -67,6 +68,15 @@ export default defineConfig({
             { text: 'Step Types', link: '/workflows/steps' },
             { text: 'Variables', link: '/workflows/variables' },
             { text: 'Examples', link: '/workflows/examples' }
+          ]
+        },
+        {
+          text: 'Skill Packs',
+          items: [
+            { text: 'Overview', link: '/skill-packs/overview' },
+            { text: 'Creating Packs', link: '/skill-packs/creating' },
+            { text: 'CLI Reference', link: '/skill-packs/cli' },
+            { text: 'Publishing', link: '/skill-packs/cli#creator-commands' }
           ]
         },
         {

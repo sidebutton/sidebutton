@@ -25,7 +25,7 @@ MCP is an open standard that lets AI tools like Claude, Cursor, and VS Code Copi
 ```
 
 SideButton exposes:
-- **15 MCP tools** for workflow and browser control
+- **17 MCP tools** for workflow and browser control
 - **Streamable HTTP transport** (protocol version 2025-06-18)
 - **JSON-RPC 2.0** protocol
 
@@ -70,6 +70,8 @@ Direct browser automation:
 | `screenshot` | Capture page image |
 | `hover` | Position cursor |
 | `capture_page` | Get all selectors |
+| `select_option` | Select from dropdown |
+| `evaluate` | Execute JavaScript in browser |
 
 ## How It Works
 

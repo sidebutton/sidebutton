@@ -15,6 +15,23 @@ import { ExtensionClientImpl } from './extension.js';
 import { McpHandler } from './mcp/handler.js';
 import { reportRunLog } from './services/report.js';
 import { VERSION } from './version.js';
+import {
+  loadContextAll,
+  loadPersona,
+  savePersona,
+  loadRoles,
+  loadRole,
+  saveRole,
+  deleteRole,
+  loadTargets,
+  loadTarget,
+  saveTarget,
+  deleteTarget,
+  parseFrontmatter,
+} from './context.js';
+import { matchTarget } from './matching.js';
+import { listInstalledPacks, installSkillPack, uninstallSkillPack } from './skill-pack.js';
+import { listRegistries, addRegistry, removeRegistry, getRegistryDir, readRegistryIndex } from './registry.js';
 import * as yaml from 'js-yaml';
 import type { WebSocket } from 'ws';
 import type {
@@ -33,8 +50,15 @@ import type {
   WorkflowSummary,
   RunLogMetadata,
   ExternalMcpConfig,
+  SkillPackDetail,
+  ContextSummary,
+  InstalledPack,
+  SkillModule,
+  AgentJob,
+  SkillRegistry,
 } from '@sidebutton/core';
-import { ExecutionContext, executeWorkflow } from '@sidebutton/core';
+import { ExecutionContext, executeWorkflow, JiraProvider, PROVIDER_DEFINITIONS, getProviderStatuses, getActiveUsageFile, detectCli, getContextSource } from '@sidebutton/core';
+import type { ConnectorType } from '@sidebutton/core';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -171,8 +195,8 @@ function substituteEnvVars(content: string): string {
   });
 }
 
-function loadSettings(actionsDir: string): Settings {
-  const settingsPath = path.join(actionsDir, 'settings.json');
+function loadSettings(configDir: string): Settings {
+  const settingsPath = path.join(configDir, 'settings.json');
   try {
     if (fs.existsSync(settingsPath)) {
       const rawContent = fs.readFileSync(settingsPath, 'utf-8');
@@ -187,6 +211,9 @@ function loadSettings(actionsDir: string): Settings {
         user_contexts: settings.user_contexts ?? [],
         external_mcps: settings.external_mcps ?? defaults.external_mcps,
         reporting: settings.reporting,
+        repos: settings.repos,
+        provider_connectors: settings.provider_connectors,
+        skill_registries: settings.skill_registries,
       };
     }
   } catch (e) {
@@ -195,9 +222,17 @@ function loadSettings(actionsDir: string): Settings {
   return getDefaultSettings();
 }
 
-function saveSettings(actionsDir: string, settings: Settings): void {
-  const settingsPath = path.join(actionsDir, 'settings.json');
+function saveSettings(configDir: string, settings: Settings): void {
+  const settingsPath = path.join(configDir, 'settings.json');
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+}
+
+function getEnvVarsFromSettings(settings: Settings): Record<string, string> {
+  const envVars: Record<string, string> = {};
+  for (const uc of settings.user_contexts ?? []) {
+    if (uc.type === 'env') envVars[uc.name] = uc.value;
+  }
+  return envVars;
 }
 
 // ============================================================================
@@ -496,6 +531,7 @@ export interface ServerConfig {
   workflowsDir: string;
   templatesDir: string;
   runLogsDir: string;
+  configDir: string;
   dashboardDir?: string;
 }
 
@@ -538,7 +574,8 @@ export async function startServer(config: ServerConfig): Promise<void> {
     config.workflowsDir,
     config.templatesDir,
     config.runLogsDir,
-    extensionClient
+    extensionClient,
+    config.configDir,
   );
 
   // Connect MCP handler to broadcaster and running workflows tracker
@@ -1386,7 +1423,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
     const runId = `${workflowId}_${timestamp.replace(/[:.]/g, '').slice(0, 15)}`;
 
     // Load settings for LLM config and user contexts
-    const settings = loadSettings(config.actionsDir);
+    const settings = loadSettings(config.configDir);
 
     // Create execution context with event broadcasting
     const ctx = new ExecutionContext(runId);
@@ -1395,6 +1432,13 @@ export async function startServer(config: ServerConfig): Promise<void> {
     ctx.actionsRegistry = mcpHandler.getAllActions();
     ctx.workflowsRegistry = mcpHandler.getAllWorkflows();
     ctx.llmConfig = settings.llm;
+
+    // Inject env-type user contexts as envVars (for platform providers)
+    for (const uc of settings.user_contexts ?? []) {
+      if (uc.type === 'env') {
+        ctx.envVars[uc.name] = uc.value;
+      }
+    }
 
     // Filter user contexts by type and domain match
     const pageUrl = params.page_url;
@@ -1407,6 +1451,35 @@ export async function startServer(config: ServerConfig): Promise<void> {
         return requestDomain === uc.domain || requestDomain.endsWith('.' + uc.domain);
       })
       .map(uc => uc.context) ?? [];
+
+    // Inject persona, enabled roles, and matching targets into userContexts
+    const contextConfig = loadContextAll(config.configDir, ctx.envVars, settings.provider_connectors);
+
+    // Persona first (if non-empty)
+    if (contextConfig.persona.body.trim()) {
+      ctx.userContexts.unshift(`[Persona]\n${contextConfig.persona.body}`);
+    }
+
+    // All enabled roles
+    for (const role of contextConfig.roles) {
+      if (role.enabled !== false && role.body.trim()) {
+        ctx.userContexts.push(`[Role: ${role.name}]\n${role.body}`);
+      }
+    }
+
+    // Enabled targets that match domain / workflow / tag (skip _system.md)
+    const categoryDomain = workflow?.category?.domain;
+    for (const target of contextConfig.targets) {
+      if (target.filename === '_system.md') continue;
+      if (target.enabled === false) continue;
+      if (!target.body.trim()) continue;
+
+      if (target.match.length > 0) {
+        if (!matchTarget(target.match, requestDomain, workflowId, categoryDomain)) continue;
+      }
+
+      ctx.userContexts.push(`[Target: ${target.name}]\n${target.body}`);
+    }
 
     // Wire up event callback to broadcast via WebSocket
     ctx.onEvent((event) => {
@@ -1541,11 +1614,11 @@ export async function startServer(config: ServerConfig): Promise<void> {
   // ============================================================================
 
   fastify.get('/api/settings', async () => {
-    return { settings: loadSettings(config.actionsDir) };
+    return { settings: loadSettings(config.configDir) };
   });
 
   fastify.post<{ Body: Partial<Settings> }>('/api/settings', async (request) => {
-    const current = loadSettings(config.actionsDir);
+    const current = loadSettings(config.configDir);
     const updated: Settings = {
       llm: request.body.llm ?? current.llm,
       last_used_params: request.body.last_used_params ?? current.last_used_params,
@@ -1553,19 +1626,318 @@ export async function startServer(config: ServerConfig): Promise<void> {
       user_contexts: request.body.user_contexts ?? current.user_contexts,
       external_mcps: request.body.external_mcps ?? current.external_mcps,
       reporting: request.body.reporting ?? current.reporting,
+      skill_registries: request.body.skill_registries ?? current.skill_registries,
     };
-    saveSettings(config.actionsDir, updated);
+    saveSettings(config.configDir, updated);
     return { settings: updated };
   });
 
   // Get specific external MCP configuration
   fastify.get<{ Params: { mcpName: string } }>('/api/settings/mcp/:mcpName', async (request) => {
-    const settings = loadSettings(config.actionsDir);
+    const settings = loadSettings(config.configDir);
     const mcpConfig = settings.external_mcps?.find(m => m.name === request.params.mcpName);
     if (!mcpConfig) {
       return { enabled: false, error: `MCP "${request.params.mcpName}" not configured` };
     }
     return mcpConfig;
+  });
+
+  // ============================================================================
+  // Context API (persona, roles, targets)
+  // ============================================================================
+
+  function validateFilenameParam(filename: string, reply: FastifyReply): boolean {
+    if (!filename.endsWith('.md') || filename.includes('/') || filename.includes('\\')) {
+      reply.status(400);
+      reply.send({ error: 'Invalid filename' });
+      return false;
+    }
+    return true;
+  }
+
+  // GET /api/context — full context config
+  fastify.get('/api/context', async () => {
+    const settings = loadSettings(config.configDir);
+    const envVars = getEnvVarsFromSettings(settings);
+    return loadContextAll(config.configDir, envVars, settings.provider_connectors);
+  });
+
+  // GET /api/context/persona
+  fastify.get('/api/context/persona', async () => {
+    return { persona: loadPersona(config.configDir) };
+  });
+
+  // PUT /api/context/persona
+  fastify.put<{ Body: { body: string } }>('/api/context/persona', async (request) => {
+    const body = request.body?.body ?? '';
+    savePersona(config.configDir, body);
+    return { persona: { body } };
+  });
+
+  // GET /api/context/roles
+  fastify.get('/api/context/roles', async () => {
+    return { roles: loadRoles(config.configDir) };
+  });
+
+  // GET /api/context/roles/:filename
+  fastify.get<{ Params: { filename: string } }>('/api/context/roles/:filename', async (request, reply) => {
+    if (!validateFilenameParam(request.params.filename, reply)) return;
+    const role = loadRole(config.configDir, request.params.filename);
+    if (!role) {
+      reply.status(404);
+      return { error: 'Role not found' };
+    }
+    return { role };
+  });
+
+  // POST /api/context/roles — create
+  fastify.post<{ Body: { name: string; match: string[]; enabled?: boolean; body: string } }>('/api/context/roles', async (request, reply) => {
+    const { name, match, enabled, body } = request.body || {};
+    if (!name?.trim()) {
+      reply.status(400);
+      return { error: 'name is required' };
+    }
+    if (!Array.isArray(match) || match.length === 0) {
+      reply.status(400);
+      return { error: 'match must be a non-empty array' };
+    }
+    try {
+      const { role } = saveRole(config.configDir, { name: name.trim(), match, enabled, body: body || '' });
+      reply.status(201);
+      return { role };
+    } catch (e: any) {
+      reply.status(e.statusCode || 500);
+      return { error: e.message };
+    }
+  });
+
+  // PUT /api/context/roles/:filename — update
+  fastify.put<{ Params: { filename: string }; Body: { name: string; match: string[]; enabled?: boolean; body: string } }>('/api/context/roles/:filename', async (request, reply) => {
+    if (!validateFilenameParam(request.params.filename, reply)) return;
+    const { name, match, enabled, body } = request.body || {};
+    if (!name?.trim()) {
+      reply.status(400);
+      return { error: 'name is required' };
+    }
+    if (!Array.isArray(match) || match.length === 0) {
+      reply.status(400);
+      return { error: 'match must be a non-empty array' };
+    }
+    try {
+      const { role } = saveRole(config.configDir, { name: name.trim(), match, enabled, body: body || '' }, request.params.filename);
+      return { role };
+    } catch (e: any) {
+      reply.status(e.statusCode || 500);
+      return { error: e.message };
+    }
+  });
+
+  // DELETE /api/context/roles/:filename
+  fastify.delete<{ Params: { filename: string } }>('/api/context/roles/:filename', async (request, reply) => {
+    if (!validateFilenameParam(request.params.filename, reply)) return;
+    try {
+      deleteRole(config.configDir, request.params.filename);
+      return { deleted: true };
+    } catch (e: any) {
+      reply.status(e.statusCode || 500);
+      return { error: e.message };
+    }
+  });
+
+  // GET /api/context/targets
+  fastify.get('/api/context/targets', async () => {
+    return { targets: loadTargets(config.configDir) };
+  });
+
+  // GET /api/context/targets/:filename
+  fastify.get<{ Params: { filename: string } }>('/api/context/targets/:filename', async (request, reply) => {
+    if (!validateFilenameParam(request.params.filename, reply)) return;
+    const target = loadTarget(config.configDir, request.params.filename);
+    if (!target) {
+      reply.status(404);
+      return { error: 'Target not found' };
+    }
+    return { target };
+  });
+
+  // POST /api/context/targets — create
+  fastify.post<{ Body: { name: string; match: string[]; enabled?: boolean; body: string } }>('/api/context/targets', async (request, reply) => {
+    const { name, match, enabled, body } = request.body || {};
+    if (!name?.trim()) {
+      reply.status(400);
+      return { error: 'name is required' };
+    }
+    if (!Array.isArray(match) || match.length === 0) {
+      reply.status(400);
+      return { error: 'match must be a non-empty array' };
+    }
+    try {
+      const { target } = saveTarget(config.configDir, { name: name.trim(), match, enabled, body: body || '' });
+      reply.status(201);
+      return { target };
+    } catch (e: any) {
+      reply.status(e.statusCode || 500);
+      return { error: e.message };
+    }
+  });
+
+  // PUT /api/context/targets/:filename — update
+  fastify.put<{ Params: { filename: string }; Body: { name: string; match: string[]; enabled?: boolean; body: string } }>('/api/context/targets/:filename', async (request, reply) => {
+    if (!validateFilenameParam(request.params.filename, reply)) return;
+    const { name, match, enabled, body } = request.body || {};
+    if (!name?.trim()) {
+      reply.status(400);
+      return { error: 'name is required' };
+    }
+    if (!Array.isArray(match) || match.length === 0) {
+      reply.status(400);
+      return { error: 'match must be a non-empty array' };
+    }
+    try {
+      const { target } = saveTarget(config.configDir, { name: name.trim(), match, enabled, body: body || '' }, request.params.filename);
+      return { target };
+    } catch (e: any) {
+      reply.status(e.statusCode || 500);
+      return { error: e.message };
+    }
+  });
+
+  // DELETE /api/context/targets/:filename
+  fastify.delete<{ Params: { filename: string } }>('/api/context/targets/:filename', async (request, reply) => {
+    if (!validateFilenameParam(request.params.filename, reply)) return;
+    try {
+      deleteTarget(config.configDir, request.params.filename);
+      return { deleted: true };
+    } catch (e: any) {
+      reply.status(e.statusCode || 500);
+      return { error: e.message };
+    }
+  });
+
+  // ============================================================================
+  // Provider Status API
+  // ============================================================================
+
+  fastify.get('/api/providers/status', async () => {
+    const settings = loadSettings(config.configDir);
+    const envVars = getEnvVarsFromSettings(settings);
+    const activeChoices: Record<string, ConnectorType> = settings.provider_connectors ?? {};
+
+    // Detect CLIs for all connectors that need it
+    const cliCommands = new Set<string>();
+    for (const def of PROVIDER_DEFINITIONS) {
+      for (const conn of def.connectors) {
+        if (conn.detectCommand) cliCommands.add(conn.detectCommand);
+      }
+    }
+    const cliChecks: Record<string, boolean> = {};
+    await Promise.all(
+      [...cliCommands].map(async (cmd) => {
+        cliChecks[cmd] = await detectCli(cmd);
+      }),
+    );
+
+    const statuses = getProviderStatuses({ envVars, activeChoices, cliChecks });
+
+    // Sync usage files: only the active connector's usage file should be present
+    const defaultsDir = path.resolve(__dirname, '../defaults');
+    const targetsDir = path.join(config.configDir, 'targets');
+    fs.mkdirSync(targetsDir, { recursive: true });
+
+    for (const def of PROVIDER_DEFINITIONS) {
+      const activeUsageFile = getActiveUsageFile(def.id, activeChoices);
+      const status = statuses.find((s) => s.id === def.id);
+      const isConnected = status?.connected ?? false;
+
+      for (const conn of def.connectors) {
+        const destPath = path.join(targetsDir, conn.usageFile);
+        const srcPath = path.join(defaultsDir, 'targets', conn.usageFile);
+        const isActive = isConnected && conn.usageFile === activeUsageFile;
+
+        if (isActive) {
+          // Active connector: copy usage file from defaults if missing, ensure enabled
+          if (!fs.existsSync(destPath) && fs.existsSync(srcPath)) {
+            fs.copyFileSync(srcPath, destPath);
+          }
+          if (fs.existsSync(destPath)) {
+            const existing = loadTarget(config.configDir, conn.usageFile);
+            if (existing && existing.enabled === false) {
+              saveTarget(
+                config.configDir,
+                { name: existing.name, match: existing.match, enabled: true, provider: existing.provider, body: existing.body },
+                conn.usageFile,
+              );
+            }
+          }
+        } else {
+          // Inactive connector: remove usage file (template stays in defaults/)
+          if (fs.existsSync(destPath)) {
+            fs.unlinkSync(destPath);
+          }
+        }
+      }
+    }
+
+    return { providers: statuses };
+  });
+
+  // Set active connector for a provider
+  fastify.post<{
+    Params: { providerId: string };
+    Body: { connector: ConnectorType | null };
+  }>('/api/providers/:providerId/connector', async (request, reply) => {
+    const { providerId } = request.params;
+    const { connector } = request.body;
+
+    const def = PROVIDER_DEFINITIONS.find((p) => p.id === providerId);
+    if (!def) {
+      reply.status(404);
+      return { error: `Unknown provider: ${providerId}` };
+    }
+
+    if (connector !== null) {
+      const connDef = def.connectors.find((c) => c.id === connector);
+      if (!connDef) {
+        reply.status(400);
+        return { error: `Provider "${providerId}" has no "${connector}" connector. Available: ${def.connectors.map((c) => c.id).join(', ')}` };
+      }
+    }
+
+    // Update settings
+    const settings = loadSettings(config.configDir);
+    if (!settings.provider_connectors) settings.provider_connectors = {};
+
+    const defaultsDir = path.resolve(__dirname, '../defaults');
+    const targetsDir = path.join(config.configDir, 'targets');
+    fs.mkdirSync(targetsDir, { recursive: true });
+
+    // Remove old connector's usage file
+    const oldConnectorId = settings.provider_connectors[providerId];
+    if (oldConnectorId) {
+      const oldConn = def.connectors.find((c) => c.id === oldConnectorId);
+      if (oldConn) {
+        const oldPath = path.join(targetsDir, oldConn.usageFile);
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      }
+    }
+
+    if (connector === null) {
+      delete settings.provider_connectors[providerId];
+    } else {
+      settings.provider_connectors[providerId] = connector;
+
+      // Copy new connector's usage file from defaults
+      const newConn = def.connectors.find((c) => c.id === connector)!;
+      const srcPath = path.join(defaultsDir, 'targets', newConn.usageFile);
+      const destPath = path.join(targetsDir, newConn.usageFile);
+      if (fs.existsSync(srcPath)) {
+        fs.copyFileSync(srcPath, destPath);
+      }
+    }
+
+    saveSettings(config.configDir, settings);
+
+    return { success: true, provider: providerId, connector };
   });
 
   // ============================================================================
@@ -1581,7 +1953,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
     const params = request.body;
 
     // Get MCP config from settings
-    const settings = loadSettings(config.actionsDir);
+    const settings = loadSettings(config.configDir);
     const mcpConfig = settings.external_mcps?.find(m => m.name === mcpName && m.enabled);
 
     if (!mcpConfig) {
@@ -1592,18 +1964,14 @@ export async function startServer(config: ServerConfig): Promise<void> {
     // Route based on transport type
     switch (mcpConfig.transport.type) {
       case 'claude-code': {
-        // For Atlassian, try direct API call if credentials are available
+        // For Atlassian, try direct API call via JiraProvider if credentials are available
         if (mcpName === 'atlassian' && toolName === 'createJiraIssue') {
-          // Helper to get env value from user_contexts
-          const getEnvValue = (name: string): string | undefined => {
-            const ctx = settings.user_contexts?.find(c => c.type === 'env' && c.name === name);
-            return ctx?.type === 'env' ? ctx.value : undefined;
-          };
-          const userEmail = getEnvValue('JIRA_USER_EMAIL');
-          const apiToken = getEnvValue('JIRA_API_TOKEN');
+          const envVars: Record<string, string> = {};
+          for (const uc of settings.user_contexts ?? []) {
+            if (uc.type === 'env') envVars[uc.name] = uc.value;
+          }
 
-          if (userEmail && apiToken) {
-            // Call Atlassian REST API directly
+          if (envVars.JIRA_USER_EMAIL && envVars.JIRA_API_TOKEN) {
             try {
               const { cloudId, projectKey, issueTypeName, summary, description, screenshots } = params as {
                 cloudId: string;
@@ -1614,107 +1982,34 @@ export async function startServer(config: ServerConfig): Promise<void> {
                 screenshots?: Array<{ name: string; data: string }>;
               };
 
-              const baseUrl = cloudId.includes('.atlassian.net')
-                ? `https://${cloudId}`
-                : `https://${cloudId}.atlassian.net`;
-
-              const apiUrl = `${baseUrl}/rest/api/3/issue`;
-              const auth = Buffer.from(`${userEmail}:${apiToken}`).toString('base64');
-
-              const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Basic ${auth}`,
-                  'Accept': 'application/json',
-                },
-                body: JSON.stringify({
-                  fields: {
-                    project: { key: projectKey },
-                    issuetype: { name: issueTypeName || 'Task' },
-                    summary: summary,
-                    description: description ? {
-                      type: 'doc',
-                      version: 1,
-                      content: [{
-                        type: 'paragraph',
-                        content: [{ type: 'text', text: description }]
-                      }]
-                    } : undefined,
-                  }
-                }),
+              // Use JiraProvider for issue creation
+              const site = cloudId.includes('.atlassian.net') ? cloudId : `${cloudId}.atlassian.net`;
+              const provider = new JiraProvider(envVars, site);
+              const created = await provider.create({
+                project: projectKey,
+                summary,
+                description,
+                issueType: issueTypeName || 'Task',
               });
 
-              if (!response.ok) {
-                const errorText = await response.text();
-                reply.status(response.status);
-                return { error: `Atlassian API error: ${errorText}` };
-              }
-
-              const result = await response.json() as { id: string; key: string; self: string };
-
-              // Upload screenshots as attachments if present
-              const attachmentResults: Array<{ name: string; success: boolean; error?: string }> = [];
+              // Upload screenshots as attachments via provider
+              let attachmentResults;
               if (screenshots && screenshots.length > 0) {
-                const attachmentUrl = `${baseUrl}/rest/api/3/issue/${result.key}/attachments`;
-
-                for (const screenshot of screenshots) {
-                  try {
-                    // Convert base64 data URL to binary
-                    const base64Data = screenshot.data.replace(/^data:image\/\w+;base64,/, '');
-                    const binaryData = Buffer.from(base64Data, 'base64');
-
-                    // Create form data with the file
-                    const boundary = '----FormBoundary' + crypto.randomUUID();
-                    const formData = [
-                      `--${boundary}`,
-                      `Content-Disposition: form-data; name="file"; filename="${screenshot.name}"`,
-                      'Content-Type: image/png',
-                      '',
-                      '',
-                    ].join('\r\n');
-
-                    const formDataEnd = `\r\n--${boundary}--\r\n`;
-                    const formDataBuffer = Buffer.concat([
-                      Buffer.from(formData),
-                      binaryData,
-                      Buffer.from(formDataEnd),
-                    ]);
-
-                    const attachResponse = await fetch(attachmentUrl, {
-                      method: 'POST',
-                      headers: {
-                        'Authorization': `Basic ${auth}`,
-                        'X-Atlassian-Token': 'no-check',
-                        'Content-Type': `multipart/form-data; boundary=${boundary}`,
-                      },
-                      body: formDataBuffer,
-                    });
-
-                    if (attachResponse.ok) {
-                      attachmentResults.push({ name: screenshot.name, success: true });
-                      console.log(`Attached ${screenshot.name} to ${result.key}`);
-                    } else {
-                      const errText = await attachResponse.text();
-                      attachmentResults.push({ name: screenshot.name, success: false, error: errText });
-                      console.error(`Failed to attach ${screenshot.name}: ${errText}`);
-                    }
-                  } catch (attachErr) {
-                    attachmentResults.push({
-                      name: screenshot.name,
-                      success: false,
-                      error: (attachErr as Error).message
-                    });
-                  }
-                }
+                attachmentResults = await provider.attach({
+                  issueKey: created.key,
+                  attachments: screenshots.map(s => ({
+                    filename: s.name,
+                    data: s.data,
+                    contentType: 'image/png',
+                  })),
+                });
               }
 
               return {
                 success: true,
-                key: result.key,
-                id: result.id,
-                self: result.self,
-                attachments: attachmentResults.length > 0 ? attachmentResults : undefined,
+                key: created.key,
+                url: created.url,
+                attachments: attachmentResults,
               };
             } catch (e) {
               reply.status(500);
@@ -2065,540 +2360,271 @@ export async function startServer(config: ServerConfig): Promise<void> {
   });
 
   // ============================================================================
-  // Chat Panel API
+  // Skills API
   // ============================================================================
 
-  interface ChatMessage {
-    role: 'user' | 'assistant' | 'context';
-    content: string;
-    pickedElements?: Array<{ tagName?: string; label?: string; text?: string }>;
-    pageInfo?: { url?: string; title?: string };
-  }
+  fastify.get('/api/skills', async () => {
+    const packs = listInstalledPacks(config.configDir);
+    return { packs };
+  });
 
-  interface ChatRequest {
-    messages: ChatMessage[];
-    context?: {
-      url?: string;
-      title?: string;
-    };
-  }
-
-  interface ToolCall {
-    id: string;
-    tool: string;
-    params: Record<string, unknown>;
-    status: 'pending' | 'running' | 'complete' | 'error';
-    result?: unknown;
-    error?: string;
-  }
-
-  interface ChatResponse {
-    content: string;
-    toolCalls?: ToolCall[];
-  }
-
-  // Browser tools for chat assistant
-  const CHAT_BROWSER_TOOLS = [
-    {
-      name: 'navigate',
-      description: 'Navigate to a URL in the browser',
-      input_schema: {
-        type: 'object',
-        properties: {
-          url: { type: 'string', description: 'The URL to navigate to' },
-        },
-        required: ['url'],
-      },
-    },
-    {
-      name: 'click',
-      description: 'Click an element on the page. Use a CSS selector.',
-      input_schema: {
-        type: 'object',
-        properties: {
-          selector: { type: 'string', description: 'CSS selector for the element' },
-        },
-        required: ['selector'],
-      },
-    },
-    {
-      name: 'type',
-      description: 'Type text into an input field',
-      input_schema: {
-        type: 'object',
-        properties: {
-          selector: { type: 'string', description: 'CSS selector for the input element' },
-          text: { type: 'string', description: 'Text to type' },
-          submit: { type: 'boolean', description: 'Press Enter after typing' },
-        },
-        required: ['selector', 'text'],
-      },
-    },
-    {
-      name: 'scroll',
-      description: 'Scroll the page',
-      input_schema: {
-        type: 'object',
-        properties: {
-          direction: { type: 'string', enum: ['up', 'down', 'left', 'right'] },
-          amount: { type: 'number', description: 'Pixels to scroll (default 300)' },
-        },
-        required: ['direction'],
-      },
-    },
-    {
-      name: 'extract',
-      description: 'Extract text content from an element',
-      input_schema: {
-        type: 'object',
-        properties: {
-          selector: { type: 'string', description: 'CSS selector for the element' },
-        },
-        required: ['selector'],
-      },
-    },
-    {
-      name: 'screenshot',
-      description: 'Take a screenshot of the current page',
-      input_schema: {
-        type: 'object',
-        properties: {},
-      },
-    },
-    {
-      name: 'snapshot',
-      description: 'Get an accessibility snapshot of the page structure',
-      input_schema: {
-        type: 'object',
-        properties: {
-          includeContent: { type: 'boolean', description: 'Include page text content' },
-        },
-      },
-    },
-  ];
-
-  // Execute a browser tool via extension client
-  async function executeChatBrowserTool(toolName: string, params: Record<string, unknown>): Promise<unknown> {
-    if (!(await extensionClient.isConnected())) {
-      throw new Error('Browser not connected. Please connect a tab first.');
+  fastify.get<{ Params: { domain: string } }>('/api/skills/:domain', async (request) => {
+    const { domain } = request.params;
+    const packs = listInstalledPacks(config.configDir);
+    const pack = packs.find(p => p.domain === domain);
+    if (!pack) {
+      throw { statusCode: 404, message: `Skill pack not found: ${domain}` };
     }
 
-    switch (toolName) {
-      case 'navigate':
-        await extensionClient.navigate(params.url as string);
-        return { ok: true, message: `Navigated to ${params.url}` };
-      case 'click':
-        await extensionClient.click(params.selector as string);
-        return { ok: true, message: `Clicked ${params.selector}` };
-      case 'type':
-        await extensionClient.typeText(
-          params.selector as string,
-          params.text as string,
-          params.submit as boolean ?? false
-        );
-        return { ok: true, message: `Typed text into ${params.selector}` };
-      case 'scroll':
-        await extensionClient.scroll(
-          params.direction as string,
-          params.amount as number ?? 300
-        );
-        return { ok: true, message: `Scrolled ${params.direction}` };
-      case 'extract':
-        const text = await extensionClient.extract(params.selector as string);
-        return { ok: true, text };
-      case 'screenshot':
-        const image = await extensionClient.screenshot();
-        return { ok: true, message: 'Screenshot captured', hasImage: !!image };
-      case 'snapshot':
-        const snapshot = await extensionClient.ariaSnapshot({ includeContent: params.includeContent as boolean ?? false });
-        return { ok: true, snapshot };
-      default:
-        throw new Error(`Unknown tool: ${toolName}`);
-    }
-  }
+    const roles = loadRoles(config.configDir).filter(r => {
+      const source = getContextSource(r.filename);
+      return source.type === 'skill' && source.domain === domain;
+    });
 
-  // OpenAI-compatible tools format (used by OpenAI, Ollama, and compatible providers)
-  const OPENAI_TOOLS = CHAT_BROWSER_TOOLS.map(tool => ({
-    type: 'function' as const,
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.input_schema,
-    },
-  }));
+    const targets = loadTargets(config.configDir).filter(t => {
+      const source = getContextSource(t.filename);
+      return source.type === 'skill' && source.domain === domain;
+    });
 
-  // Chat endpoint - handles LLM calls with tool use
-  fastify.post<{ Body: ChatRequest }>('/api/chat', async (request): Promise<ChatResponse> => {
-    const { messages, context } = request.body;
-
-    // Load settings for LLM config
-    const settings = loadSettings(config.actionsDir);
-    const llmConfig = settings.llm;
-
-    if (!llmConfig.api_key) {
-      return {
-        content: 'LLM not configured. Please set your API key in the SideButton dashboard settings.',
+    // Count workflows from skill pack directory
+    const skillDir = path.join(config.configDir, 'skills', domain);
+    let workflowCount = 0;
+    if (fs.existsSync(skillDir)) {
+      const countYaml = (dir: string) => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          if (entry.isFile() && entry.name.endsWith('.yaml')) workflowCount++;
+          if (entry.isDirectory() && !entry.name.startsWith('.')) countYaml(path.join(dir, entry.name));
+        }
       };
+      countYaml(skillDir);
     }
 
-    // Build system prompt
-    let pageContext = '';
-    if (context?.url) {
-      pageContext += `Current page: ${context.url}\n`;
+    const detail: SkillPackDetail = { pack, roles, targets, workflowCount };
+    return detail;
+  });
+
+  fastify.post<{ Body: { source: string } }>('/api/skills/install', async (request) => {
+    const { source } = request.body as { source: string };
+    if (!source) {
+      throw { statusCode: 400, message: 'Missing "source" field (path to skill pack directory)' };
     }
-    if (context?.title) {
-      pageContext += `Page title: ${context.title}\n`;
+    const result = installSkillPack(source, config.configDir, { force: true });
+    mcpHandler.reload();
+    return result;
+  });
+
+  fastify.delete<{ Params: { domain: string } }>('/api/skills/:domain', async (request) => {
+    const { domain } = request.params;
+    uninstallSkillPack(domain, config.configDir);
+    mcpHandler.reload();
+    return { deleted: true, domain };
+  });
+
+  // Skill pack modules — parse subdirectories to return module structure
+  fastify.get<{ Params: { domain: string } }>('/api/skills/:domain/modules', async (request) => {
+    const { domain } = request.params;
+    const skillDir = path.join(config.configDir, 'skills', domain);
+
+    if (!fs.existsSync(skillDir)) {
+      throw { statusCode: 404, message: `Skill pack not found: ${domain}` };
     }
 
-    const systemPrompt = `You are a helpful browser assistant that can interact with web pages. You have access to tools for clicking, typing, scrolling, extracting content, and taking screenshots.
+    const modules: SkillModule[] = [];
+    const entries = fs.readdirSync(skillDir, { withFileTypes: true });
 
-${pageContext ? `Context:\n${pageContext}` : ''}
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name.startsWith('_')) continue;
 
-When helping users:
-1. Be concise and direct
-2. Use tools to take actions when asked
-3. Explain what you did after completing an action
-4. If you need to see the page structure, use the snapshot tool first
-5. For clicking elements, use specific CSS selectors
+      const moduleDir = path.join(skillDir, entry.name);
+      const hasSkillDoc = fs.existsSync(path.join(moduleDir, '_skill.md'));
 
-Always confirm when an action is complete.`;
+      // Find workflows in this module
+      const workflows: { id: string; title: string }[] = [];
+      const moduleFiles = fs.readdirSync(moduleDir, { withFileTypes: true });
+      for (const file of moduleFiles) {
+        if (file.isFile() && file.name.endsWith('.yaml')) {
+          try {
+            const raw = fs.readFileSync(path.join(moduleDir, file.name), 'utf-8');
+            const parsed = yaml.load(raw) as { id?: string; title?: string } | null;
+            workflows.push({
+              id: parsed?.id || file.name.replace('.yaml', ''),
+              title: parsed?.title || file.name.replace('.yaml', ''),
+            });
+          } catch {
+            workflows.push({ id: file.name.replace('.yaml', ''), title: file.name.replace('.yaml', '') });
+          }
+        }
+      }
+
+      // Find roles in _roles subdirectory
+      const rolesDir = path.join(moduleDir, '_roles');
+      const hasRoles: string[] = [];
+      if (fs.existsSync(rolesDir)) {
+        for (const r of fs.readdirSync(rolesDir)) {
+          if (r.endsWith('.md')) hasRoles.push(r.replace('.md', ''));
+        }
+      }
+
+      // Parse display name from _skill.md frontmatter if available
+      let displayName = entry.name.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      if (hasSkillDoc) {
+        try {
+          const skillContent = fs.readFileSync(path.join(moduleDir, '_skill.md'), 'utf-8');
+          const fm = parseFrontmatter(skillContent);
+          if (fm.frontmatter.name) displayName = fm.frontmatter.name as string;
+        } catch { /* use default */ }
+      }
+
+      modules.push({
+        name: entry.name,
+        displayName,
+        path: entry.name,
+        workflowCount: workflows.length,
+        workflows,
+        hasSkillDoc,
+        hasRoles,
+      });
+    }
+
+    return { modules };
+  });
+
+  // ============================================================================
+  // Agents API
+  // ============================================================================
+
+  // In-memory agent job tracking
+  const agentJobs = new Map<string, AgentJob>();
+
+  fastify.get('/api/agents', async () => {
+    const jobs = Array.from(agentJobs.values());
+    const running = jobs.filter(j => j.status === 'running');
+    const completed = jobs.filter(j => j.status !== 'running')
+      .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
+      .slice(0, 20);
+    return { running, completed };
+  });
+
+  fastify.post<{ Body: { role: string; prompt: string; workflow_id?: string; skill_pack?: string } }>(
+    '/api/agents/start', async (request) => {
+      const { role, prompt, workflow_id, skill_pack } = request.body as {
+        role: string; prompt: string; workflow_id?: string; skill_pack?: string;
+      };
+
+      if (!role || !prompt) {
+        throw { statusCode: 400, message: 'Missing required fields: role, prompt' };
+      }
+
+      const runId = `agent_${crypto.randomUUID()}`;
+      const job: AgentJob = {
+        run_id: runId,
+        workflow_id: workflow_id || `agent_${role}_manual`,
+        workflow_title: `${role.toUpperCase()} Agent`,
+        role,
+        started_at: new Date().toISOString(),
+        status: 'running',
+        initial_prompt: prompt,
+        metrics: { action_count: 0, token_count: 0 },
+      };
+
+      agentJobs.set(runId, job);
+      return { agent: job };
+    }
+  );
+
+  fastify.post<{ Params: { id: string } }>('/api/agents/:id/stop', async (request) => {
+    const { id } = request.params;
+    const job = agentJobs.get(id);
+    if (!job) {
+      throw { statusCode: 404, message: `Agent not found: ${id}` };
+    }
+
+    job.status = 'failed';
+    job.result_summary = 'Stopped by user';
+    job.duration_ms = Date.now() - new Date(job.started_at).getTime();
+
+    // Also try to cancel the underlying workflow if tracked
+    if (runningWorkflows.cancel(id)) {
+      job.result_summary = 'Cancelled';
+    }
+
+    return { stopped: true, agent: job };
+  });
+
+  // ============================================================================
+  // Registries API
+  // ============================================================================
+
+  fastify.get('/api/registries', async () => {
+    const registries = listRegistries(config.configDir);
+    return { registries };
+  });
+
+  fastify.post<{ Body: { url: string; name?: string } }>('/api/registries', async (request) => {
+    const { url, name } = request.body as { url: string; name?: string };
+    if (!url) {
+      throw { statusCode: 400, message: 'Missing "url" field' };
+    }
+    const result = await addRegistry(url, config.configDir, { name });
+    mcpHandler.reload();
+    return result;
+  });
+
+  fastify.delete<{ Params: { name: string } }>('/api/registries/:name', async (request) => {
+    const { name } = request.params;
+    const uninstalled = removeRegistry(name, config.configDir);
+    mcpHandler.reload();
+    return { deleted: true, name, uninstalled };
+  });
+
+  fastify.get<{ Params: { name: string } }>('/api/registries/:name/catalog', async (request) => {
+    const { name } = request.params;
+    const settings = loadSettings(config.configDir);
+    const registry = (settings.skill_registries ?? []).find((r: SkillRegistry) => r.name === name);
+    if (!registry) {
+      throw { statusCode: 404, message: `Registry not found: ${name}` };
+    }
 
     try {
-      // Route to appropriate provider handler
-      if (llmConfig.provider === 'anthropic') {
-        return await handleAnthropicChat(llmConfig, systemPrompt, messages);
-      } else {
-        // OpenAI, Ollama, and other OpenAI-compatible providers
-        return await handleOpenAIChat(llmConfig, systemPrompt, messages);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { content: `Error: ${message}` };
+      const dir = getRegistryDir(registry, config.configDir);
+      const index = readRegistryIndex(dir);
+      const installed = listInstalledPacks(config.configDir);
+      const installedDomains = new Set(installed.map(p => p.domain));
+
+      const packs = index.packs.map(p => ({
+        ...p,
+        installed: installedDomains.has(p.domain),
+        installedVersion: installed.find(i => i.domain === p.domain)?.version,
+      }));
+
+      return { name: index.name, packs };
+    } catch (e: unknown) {
+      throw { statusCode: 500, message: `Failed to read registry catalog: ${e instanceof Error ? e.message : e}` };
     }
   });
 
-  // Handle OpenAI-compatible API with tool support (OpenAI, Ollama, etc.)
-  async function handleOpenAIChat(
-    llmConfig: FullLlmConfig,
-    systemPrompt: string,
-    messages: ChatMessage[]
-  ): Promise<ChatResponse> {
-    const baseUrl = llmConfig.base_url || 'https://api.openai.com/v1';
+  // ============================================================================
+  // Context Summary API
+  // ============================================================================
 
-    // Format messages for OpenAI API
-    // Filter and convert context messages to user messages
-    const formattedMessages = messages.map(m => {
-      if (m.role === 'context') {
-        // Convert context message to user message with picked elements info
-        let contextContent = '[Selected elements context]\n';
-        if ((m as any).pickedElements && Array.isArray((m as any).pickedElements)) {
-          for (const elem of (m as any).pickedElements) {
-            contextContent += `- ${elem.tagName || 'element'}: "${elem.label}"`;
-            if (elem.text) {
-              contextContent += `\n  Content: ${elem.text.substring(0, 200)}${elem.text.length > 200 ? '...' : ''}`;
-            }
-            contextContent += '\n';
-          }
-        }
-        if ((m as any).pageInfo) {
-          contextContent += `Page: ${(m as any).pageInfo.title || ''} (${(m as any).pageInfo.url || ''})\n`;
-        }
-        return { role: 'user', content: contextContent };
-      }
-      return { role: m.role, content: m.content };
-    });
+  fastify.get('/api/context/summary', async () => {
+    const persona = loadPersona(config.configDir);
+    const roles = loadRoles(config.configDir);
+    const targets = loadTargets(config.configDir);
+    const packs = listInstalledPacks(config.configDir);
 
-    const apiMessages: Array<{ role: string; content: string | null; tool_calls?: unknown[]; tool_call_id?: string }> = [
-      { role: 'system', content: systemPrompt },
-      ...formattedMessages,
-    ];
-
-    const requestBody = {
-      model: llmConfig.model || 'gpt-5.2',
-      messages: apiMessages,
-      tools: OPENAI_TOOLS,
-      tool_choice: 'auto',
+    const summary: ContextSummary = {
+      persona: persona.body.trim()
+        ? { name: 'Persona', preview: persona.body.trim().slice(0, 200) }
+        : null,
+      activeRoles: roles.filter(r => r.enabled !== false).length,
+      totalRoles: roles.length,
+      matchedTargets: targets.filter(t => t.enabled !== false).length,
+      totalTargets: targets.length,
+      installedPacks: packs.length,
     };
-
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${llmConfig.api_key}`,
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`API error: ${response.status} - ${error}`);
-    }
-
-    const result = await response.json() as {
-      choices: Array<{
-        message: {
-          role: string;
-          content: string | null;
-          tool_calls?: Array<{
-            id: string;
-            type: string;
-            function: {
-              name: string;
-              arguments: string;
-            };
-          }>;
-        };
-        finish_reason: string;
-      }>;
-    };
-
-    const choice = result.choices[0];
-    if (!choice) {
-      throw new Error('No response from API');
-    }
-
-    const assistantMessage = choice.message;
-    let textContent = assistantMessage.content || '';
-    const toolCalls: ToolCall[] = [];
-
-    // Check for tool calls
-    if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-      for (const tc of assistantMessage.tool_calls) {
-        let params: Record<string, unknown> = {};
-        try {
-          params = JSON.parse(tc.function.arguments);
-        } catch {
-          // Invalid JSON in arguments
-        }
-        toolCalls.push({
-          id: tc.id,
-          tool: tc.function.name,
-          params,
-          status: 'pending',
-        });
-      }
-    }
-
-    // If there are tool calls, execute them
-    if (choice.finish_reason === 'tool_calls' && toolCalls.length > 0) {
-      const toolResults: Array<{ role: string; tool_call_id: string; content: string }> = [];
-
-      for (const tc of toolCalls) {
-        tc.status = 'running';
-        try {
-          const toolResult = await executeChatBrowserTool(tc.tool, tc.params);
-          tc.status = 'complete';
-          tc.result = toolResult;
-          toolResults.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            content: JSON.stringify(toolResult),
-          });
-        } catch (e) {
-          tc.status = 'error';
-          tc.error = e instanceof Error ? e.message : String(e);
-          toolResults.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            content: `Error: ${tc.error}`,
-          });
-        }
-      }
-
-      // Continue conversation with tool results
-      const continueMessages = [
-        ...apiMessages,
-        {
-          role: 'assistant',
-          content: assistantMessage.content,
-          tool_calls: assistantMessage.tool_calls,
-        },
-        ...toolResults,
-      ];
-
-      const continueResponse = await fetch(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${llmConfig.api_key}`,
-        },
-        body: JSON.stringify({
-          model: llmConfig.model || 'gpt-5.2',
-          messages: continueMessages,
-          tools: OPENAI_TOOLS,
-          tool_choice: 'auto',
-        }),
-      });
-
-      if (!continueResponse.ok) {
-        throw new Error(`API error: ${continueResponse.status}`);
-      }
-
-      const continueResult = await continueResponse.json() as {
-        choices: Array<{ message: { content: string | null } }>;
-      };
-
-      const finalText = continueResult.choices[0]?.message?.content || '';
-
-      return {
-        content: textContent + (finalText ? '\n\n' + finalText : ''),
-        toolCalls,
-      };
-    }
-
-    return { content: textContent, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
-  }
-
-  // Handle Anthropic API with tool support
-  async function handleAnthropicChat(
-    llmConfig: FullLlmConfig,
-    systemPrompt: string,
-    messages: ChatMessage[]
-  ): Promise<ChatResponse> {
-    const baseUrl = llmConfig.base_url || 'https://api.anthropic.com/v1';
-
-    // Format messages for Anthropic API
-    // Filter and convert context messages to user messages
-    const apiMessages = messages.map(m => {
-      if (m.role === 'context') {
-        // Convert context message to user message with picked elements info
-        let contextContent = '[Selected elements context]\n';
-        if ((m as any).pickedElements && Array.isArray((m as any).pickedElements)) {
-          for (const elem of (m as any).pickedElements) {
-            contextContent += `- ${elem.tagName || 'element'}: "${elem.label}"`;
-            if (elem.text) {
-              contextContent += `\n  Content: ${elem.text.substring(0, 200)}${elem.text.length > 200 ? '...' : ''}`;
-            }
-            contextContent += '\n';
-          }
-        }
-        if ((m as any).pageInfo) {
-          contextContent += `Page: ${(m as any).pageInfo.title || ''} (${(m as any).pageInfo.url || ''})\n`;
-        }
-        return { role: 'user', content: contextContent };
-      }
-      return { role: m.role, content: m.content };
-    });
-
-    const requestBody = {
-      model: llmConfig.model || 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      system: systemPrompt,
-      tools: CHAT_BROWSER_TOOLS,
-      messages: apiMessages,
-    };
-
-    const response = await fetch(`${baseUrl}/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': llmConfig.api_key,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`API error: ${response.status} - ${error}`);
-    }
-
-    const result = await response.json() as {
-      content: Array<{ type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }>;
-      stop_reason: string;
-    };
-
-    // Extract text content and tool calls
-    let textContent = '';
-    const toolCalls: ToolCall[] = [];
-
-    for (const block of result.content) {
-      if (block.type === 'text' && block.text) {
-        textContent += block.text;
-      } else if (block.type === 'tool_use' && block.id && block.name) {
-        toolCalls.push({
-          id: block.id,
-          tool: block.name,
-          params: block.input || {},
-          status: 'pending',
-        });
-      }
-    }
-
-    // If there are tool calls, execute them
-    if (result.stop_reason === 'tool_use' && toolCalls.length > 0) {
-      const toolResults: Array<{ type: string; tool_use_id: string; content: string; is_error?: boolean }> = [];
-
-      for (const tc of toolCalls) {
-        tc.status = 'running';
-        try {
-          const toolResult = await executeChatBrowserTool(tc.tool, tc.params);
-          tc.status = 'complete';
-          tc.result = toolResult;
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: tc.id,
-            content: JSON.stringify(toolResult),
-          });
-        } catch (e) {
-          tc.status = 'error';
-          tc.error = e instanceof Error ? e.message : String(e);
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: tc.id,
-            content: `Error: ${tc.error}`,
-            is_error: true,
-          });
-        }
-      }
-
-      // Continue conversation with tool results
-      const continueMessages = [
-        ...apiMessages,
-        { role: 'assistant' as const, content: result.content },
-        { role: 'user' as const, content: toolResults },
-      ];
-
-      const continueResponse = await fetch(`${baseUrl}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': llmConfig.api_key,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: llmConfig.model || 'claude-sonnet-4-20250514',
-          max_tokens: 1024,
-          system: systemPrompt,
-          tools: CHAT_BROWSER_TOOLS,
-          messages: continueMessages,
-        }),
-      });
-
-      if (!continueResponse.ok) {
-        throw new Error(`API error: ${continueResponse.status}`);
-      }
-
-      const continueResult = await continueResponse.json() as {
-        content: Array<{ type: string; text?: string }>;
-      };
-
-      // Extract final text
-      let finalText = '';
-      for (const block of continueResult.content) {
-        if (block.type === 'text' && block.text) {
-          finalText += block.text;
-        }
-      }
-
-      return {
-        content: textContent + (finalText ? '\n\n' + finalText : ''),
-        toolCalls,
-      };
-    }
-
-    return { content: textContent, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
-  }
+    return summary;
+  });
 
   // ============================================================================
   // Running Workflows API
@@ -2639,7 +2665,7 @@ Always confirm when an action is complete.`;
     }
 
     // Load settings to get LLM config
-    const settings = loadSettings(config.actionsDir);
+    const settings = loadSettings(config.configDir);
     if (!settings.llm.api_key) {
       throw { statusCode: 400, message: 'LLM API key not configured in settings' };
     }
@@ -3168,6 +3194,7 @@ export interface SilentServerConfig {
   workflowsDir: string;
   templatesDir: string;
   runLogsDir: string;
+  configDir: string;
   dashboardDir?: string;
   extensionClient: ExtensionClientImpl;
   mcpHandler: import('./mcp/handler.js').McpHandler;

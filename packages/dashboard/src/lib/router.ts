@@ -10,6 +10,9 @@ const base: ViewState = {
   selectedWorkflowId: null,
   selectedRecordingId: null,
   selectedRunLogId: null,
+  selectedSkillDomain: null,
+  selectedModulePath: null,
+  selectedAgentId: null,
 };
 
 const router = navaid("/", () => {
@@ -21,28 +24,44 @@ router
   .on("/", () => {
     viewState.set({ ...base });
   })
-  .on("/actions", () => {
-    viewState.set({ ...base, current: "actions", activePage: "actions" });
+  // Skills (replaces Actions)
+  .on("/skills", () => {
+    viewState.set({ ...base, current: "skills", activePage: "skills" });
   })
-  .on("/actions/:id", (params) => {
+  .on("/skills/:domain", (params) => {
     viewState.set({
       ...base,
-      current: "action-detail",
-      activePage: "actions",
-      selectedActionId: params!.id,
+      current: "skill-detail",
+      activePage: "skills",
+      selectedSkillDomain: params!.domain,
     });
   })
-  .on("/workflows", () => {
-    viewState.set({ ...base, current: "workflows", activePage: "workflows" });
-  })
-  .on("/workflows/:id", (params) => {
+  .on("/skills/:domain/:module", (params) => {
     viewState.set({
       ...base,
-      current: "workflow-detail",
-      activePage: "workflows",
-      selectedWorkflowId: params!.id,
+      current: "module-detail",
+      activePage: "dashboard",
+      selectedSkillDomain: params!.domain,
+      selectedModulePath: params!.module,
     });
   })
+  // Library (replaces Workflows)
+  .on("/library", () => {
+    viewState.set({ ...base, current: "library", activePage: "library" });
+  })
+  // Agents (new)
+  .on("/agents", () => {
+    viewState.set({ ...base, current: "agents", activePage: "agents" });
+  })
+  .on("/agents/:id", (params) => {
+    viewState.set({
+      ...base,
+      current: "agent-detail",
+      activePage: "agents",
+      selectedAgentId: params!.id,
+    });
+  })
+  // Recordings (unchanged)
   .on("/recordings", () => {
     viewState.set({ ...base, current: "recordings", activePage: "recordings" });
   })
@@ -54,17 +73,32 @@ router
       selectedRecordingId: params!.id,
     });
   })
+  // Run logs (still accessible, just not in nav)
   .on("/run-logs", () => {
-    viewState.set({ ...base, current: "run-logs", activePage: "run-logs" });
+    viewState.set({ ...base, current: "run-logs", activePage: "skills" });
   })
   .on("/run-logs/:id", (params) => {
     viewState.set({
       ...base,
       current: "run-log-detail",
-      activePage: "run-logs",
+      activePage: "skills",
       selectedRunLogId: params!.id,
     });
   })
+  // Redirects for old routes
+  .on("/actions", () => {
+    router.route("/skills");
+  })
+  .on("/actions/:id", () => {
+    router.route("/skills");
+  })
+  .on("/workflows", () => {
+    router.route("/library");
+  })
+  .on("/workflows/:id", () => {
+    router.route("/library");
+  })
+  // Settings
   .on("/settings", () => {
     viewState.set({ ...base, current: "settings" });
   });
@@ -79,10 +113,10 @@ export function startRouter() {
 
 const pageToPath: Record<string, string> = {
   dashboard: "/",
-  actions: "/actions",
-  workflows: "/workflows",
+  skills: "/skills",
+  library: "/library",
+  agents: "/agents",
   recordings: "/recordings",
-  "run-logs": "/run-logs",
 };
 
 // Main page navigation (drawer)
@@ -90,12 +124,16 @@ export function navigateToDashboard() {
   router.route("/");
 }
 
-export function navigateToActions() {
-  router.route("/actions");
+export function navigateToSkills() {
+  router.route("/skills");
 }
 
-export function navigateToWorkflows() {
-  router.route("/workflows");
+export function navigateToLibrary() {
+  router.route("/library");
+}
+
+export function navigateToAgents() {
+  router.route("/agents");
 }
 
 export function navigateToRecordings() {
@@ -107,12 +145,16 @@ export function navigateToRunLogs() {
 }
 
 // Detail navigation
-export function navigateToActionDetail(actionId: string) {
-  router.route(`/actions/${actionId}`);
+export function navigateToSkillDetail(domain: string) {
+  router.route(`/skills/${domain}`);
 }
 
-export function navigateToWorkflowDetail(workflowId: string) {
-  router.route(`/workflows/${workflowId}`);
+export function navigateToModuleDetail(domain: string, modulePath: string) {
+  router.route(`/skills/${domain}/${modulePath}`);
+}
+
+export function navigateToAgentDetail(agentId: string) {
+  router.route(`/agents/${agentId}`);
 }
 
 export function navigateToRecordingDetail(recordingId: string) {

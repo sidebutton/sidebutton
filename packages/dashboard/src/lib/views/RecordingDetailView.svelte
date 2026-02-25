@@ -8,7 +8,7 @@
     getSettings,
   } from "../api";
   import { viewState } from "../stores";
-  import { navigateBack, navigateToRecordings, navigateToActionDetail } from "../router";
+  import { navigateBack, navigateToRecordings, navigateToSkills } from "../router";
   import type { Recording, Settings, RecordedEvent } from "../types";
 
   let recording = $state<Recording | null>(null);
@@ -52,7 +52,7 @@
     error = null;
     try {
       const action = await convertRecording(recording.id);
-      navigateToActionDetail(action.id);
+      navigateToSkills();
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to convert";
       console.error("Failed to convert:", e);
@@ -67,7 +67,7 @@
     error = null;
     try {
       const action = await convertRecordingWithLLM(recording.id);
-      navigateToActionDetail(action.id);
+      navigateToSkills();
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to convert with AI";
       console.error("Failed to convert:", e);

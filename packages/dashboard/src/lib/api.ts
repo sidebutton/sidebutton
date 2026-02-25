@@ -12,6 +12,18 @@ import type {
   RunLog,
   RunningWorkflow,
   WorkflowStats,
+  ContextConfig,
+  PersonaContext,
+  RoleContext,
+  TargetContext,
+  ProviderStatus,
+  ConnectorType,
+  InstalledPack,
+  SkillPackDetail,
+  ContextSummary,
+  SkillModule,
+  AgentJob,
+  Publisher,
 } from './types';
 
 const API_BASE = 'http://localhost:9876';
@@ -305,4 +317,197 @@ export async function reloadAll(): Promise<void> {
 
 export function getWebSocketUrl(): string {
   return `ws://localhost:9876/ws/dashboard`;
+}
+
+// ============================================================================
+// Context API (persona, roles, targets)
+// ============================================================================
+
+export async function getContextAll(): Promise<ContextConfig> {
+  return apiFetch<ContextConfig>('/api/context');
+}
+
+export async function updatePersona(body: string): Promise<PersonaContext> {
+  const data = await apiFetch<{ persona: PersonaContext }>('/api/context/persona', {
+    method: 'PUT',
+    body: JSON.stringify({ body }),
+  });
+  return data.persona;
+}
+
+export async function getRoles(): Promise<RoleContext[]> {
+  const data = await apiFetch<{ roles: RoleContext[] }>('/api/context/roles');
+  return data.roles;
+}
+
+export async function createRole(role: { name: string; match: string[]; enabled?: boolean; body: string }): Promise<RoleContext> {
+  const data = await apiFetch<{ role: RoleContext }>('/api/context/roles', {
+    method: 'POST',
+    body: JSON.stringify(role),
+  });
+  return data.role;
+}
+
+export async function updateRole(filename: string, role: { name: string; match: string[]; enabled?: boolean; body: string }): Promise<RoleContext> {
+  const data = await apiFetch<{ role: RoleContext }>(`/api/context/roles/${encodeURIComponent(filename)}`, {
+    method: 'PUT',
+    body: JSON.stringify(role),
+  });
+  return data.role;
+}
+
+export async function deleteRole(filename: string): Promise<void> {
+  await apiFetch<{ deleted: boolean }>(`/api/context/roles/${encodeURIComponent(filename)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getTargets(): Promise<TargetContext[]> {
+  const data = await apiFetch<{ targets: TargetContext[] }>('/api/context/targets');
+  return data.targets;
+}
+
+export async function createTarget(target: { name: string; match: string[]; enabled?: boolean; body: string }): Promise<TargetContext> {
+  const data = await apiFetch<{ target: TargetContext }>('/api/context/targets', {
+    method: 'POST',
+    body: JSON.stringify(target),
+  });
+  return data.target;
+}
+
+export async function updateTarget(filename: string, target: { name: string; match: string[]; enabled?: boolean; body: string }): Promise<TargetContext> {
+  const data = await apiFetch<{ target: TargetContext }>(`/api/context/targets/${encodeURIComponent(filename)}`, {
+    method: 'PUT',
+    body: JSON.stringify(target),
+  });
+  return data.target;
+}
+
+export async function deleteTarget(filename: string): Promise<void> {
+  await apiFetch<{ deleted: boolean }>(`/api/context/targets/${encodeURIComponent(filename)}`, {
+    method: 'DELETE',
+  });
+}
+
+// ============================================================================
+// Provider Status API
+// ============================================================================
+
+export async function getProviderStatuses(): Promise<ProviderStatus[]> {
+  const data = await apiFetch<{ providers: ProviderStatus[] }>('/api/providers/status');
+  return data.providers;
+}
+
+export async function setProviderConnector(
+  providerId: string,
+  connector: ConnectorType | null,
+): Promise<{ success: boolean; provider: string; connector: ConnectorType | null }> {
+  return apiFetch(`/api/providers/${encodeURIComponent(providerId)}/connector`, {
+    method: 'POST',
+    body: JSON.stringify({ connector }),
+  });
+}
+
+// ============================================================================
+// Skills API
+// ============================================================================
+
+export async function fetchSkillPacks(): Promise<InstalledPack[]> {
+  const data = await apiFetch<{ packs: InstalledPack[] }>('/api/skills');
+  return data.packs;
+}
+
+export async function fetchSkillPackDetail(domain: string): Promise<SkillPackDetail> {
+  return apiFetch<SkillPackDetail>(`/api/skills/${encodeURIComponent(domain)}`);
+}
+
+export async function installSkillPack(source: string): Promise<InstalledPack> {
+  return apiFetch<InstalledPack>('/api/skills/install', {
+    method: 'POST',
+    body: JSON.stringify({ source }),
+  });
+}
+
+export async function uninstallSkillPack(domain: string): Promise<void> {
+  await apiFetch<{ deleted: boolean }>(`/api/skills/${encodeURIComponent(domain)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function fetchContextSummary(): Promise<ContextSummary> {
+  return apiFetch<ContextSummary>('/api/context/summary');
+}
+
+// ============================================================================
+// Skill Modules API
+// ============================================================================
+
+export async function fetchSkillModules(domain: string): Promise<SkillModule[]> {
+  const data = await apiFetch<{ modules: SkillModule[] }>(`/api/skills/${encodeURIComponent(domain)}/modules`);
+  return data.modules;
+}
+
+// ============================================================================
+// Agents API
+// ============================================================================
+
+export async function fetchAgents(): Promise<{ running: AgentJob[]; completed: AgentJob[] }> {
+  return apiFetch<{ running: AgentJob[]; completed: AgentJob[] }>('/api/agents');
+}
+
+export async function startAgent(params: {
+  role: string;
+  prompt: string;
+  workflow_id?: string;
+  skill_pack?: string;
+}): Promise<AgentJob> {
+  const data = await apiFetch<{ agent: AgentJob }>('/api/agents/start', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+  return data.agent;
+}
+
+export async function stopAgent(agentId: string): Promise<void> {
+  await apiFetch<{ stopped: boolean }>(`/api/agents/${encodeURIComponent(agentId)}/stop`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+// ============================================================================
+// Registries (Publishers) API
+// ============================================================================
+
+export async function fetchRegistries(): Promise<Publisher[]> {
+  const data = await apiFetch<{ registries: Publisher[] }>('/api/registries');
+  return data.registries;
+}
+
+export async function addRegistry(url: string, name?: string): Promise<void> {
+  await apiFetch<unknown>('/api/registries', {
+    method: 'POST',
+    body: JSON.stringify({ url, name }),
+  });
+}
+
+export async function removeRegistry(name: string): Promise<void> {
+  await apiFetch<{ deleted: boolean }>(`/api/registries/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  });
+}
+
+export interface CatalogPack {
+  name: string;
+  domain: string;
+  version: string;
+  title: string;
+  description: string;
+  path: string;
+  installed: boolean;
+  installedVersion?: string;
+}
+
+export async function fetchRegistryCatalog(registryName: string): Promise<{ name: string; packs: CatalogPack[] }> {
+  return apiFetch<{ name: string; packs: CatalogPack[] }>(`/api/registries/${encodeURIComponent(registryName)}/catalog`);
 }

@@ -1,6 +1,6 @@
 /**
  * LLM step executors
- * Implements: llm.classify, llm.generate
+ * Implements: llm.classify, llm.generate, llm.decide
  */
 
 import type { Step, LlmConfig } from '../types.js';
@@ -9,6 +9,7 @@ import { WorkflowError } from '../types.js';
 
 type LlmClassify = Extract<Step, { type: 'llm.classify' }>;
 type LlmGenerate = Extract<Step, { type: 'llm.generate' }>;
+type LlmDecide = Extract<Step, { type: 'llm.decide' }>;
 
 /**
  * Generate text using the configured LLM provider
@@ -130,6 +131,9 @@ Respond with ONLY the category name, nothing else.`;
     ? `=== IMPORTANT USER CONTEXT ===\n${ctx.userContexts.join('\n\n')}\n\n=== TASK ===\n${prompt}`
     : prompt;
 
+  console.log(`\n[llm.classify] Full prompt (${fullPrompt.length} chars, ${ctx.userContexts.length} contexts):\n${fullPrompt}\n`);
+  ctx.emitLog('info', `LLM classify prompt: ${fullPrompt.length} chars, ${ctx.userContexts.length} contexts, sample: "${fullPrompt.slice(0, 100)}..."`);
+
   const result = await generateText(fullPrompt, ctx.llmConfig);
   const cleaned = result.trim();
 
@@ -148,13 +152,70 @@ export async function executeLlmGenerate(
     ? `=== IMPORTANT USER CONTEXT ===\n${ctx.userContexts.join('\n\n')}\n\n=== TASK ===\n${prompt}`
     : prompt;
 
+  console.log(`\n[llm.generate] Full prompt (${fullPrompt.length} chars, ${ctx.userContexts.length} contexts):\n${fullPrompt}\n`);
   ctx.emitLog(
     'info',
-    `Generating with LLM (prompt: ${fullPrompt.length} chars, contexts: ${ctx.userContexts.length}, provider: ${ctx.llmConfig.provider})`
+    `Generating with LLM (prompt: ${fullPrompt.length} chars, contexts: ${ctx.userContexts.length}, provider: ${ctx.llmConfig.provider}, sample: "${fullPrompt.slice(0, 100)}...")`
   );
 
   const result = await generateText(fullPrompt, ctx.llmConfig);
 
   ctx.lastStepResult = result;
   ctx.variables[step.as] = result;
+}
+
+export async function executeLlmDecide(
+  step: LlmDecide,
+  ctx: ExecutionContext
+): Promise<void> {
+  const input = ctx.interpolate(step.input);
+  const actions = step.actions;
+  const actionIds = actions.map((a) => a.id);
+
+  ctx.emitLog('info', `Deciding action from: ${actionIds.join(', ')}`);
+
+  const actionList = actions
+    .map((a) => `- ${a.id}: ${a.description}`)
+    .join('\n');
+
+  const prompt = `You received this situation and need to decide what to do.
+
+Situation:
+${input}
+
+Available actions:
+${actionList}
+
+Pick the single action that best fits your role and expertise. Respond with ONLY the action id, nothing else.`;
+
+  // Prepend user contexts if available
+  const fullPrompt = ctx.userContexts.length > 0
+    ? `=== IMPORTANT USER CONTEXT ===\n${ctx.userContexts.join('\n\n')}\n\n=== TASK ===\n${prompt}`
+    : prompt;
+
+  console.log(`\n[llm.decide] Full prompt (${fullPrompt.length} chars, ${ctx.userContexts.length} contexts):\n${fullPrompt}\n`);
+  ctx.emitLog('info', `LLM decide prompt: ${fullPrompt.length} chars, ${ctx.userContexts.length} contexts, actions: [${actionIds.join(', ')}]`);
+
+  const result = await generateText(fullPrompt, ctx.llmConfig);
+  const cleaned = result.trim();
+
+  // Validate the result is one of the action IDs
+  if (!actionIds.includes(cleaned)) {
+    ctx.emitLog('warn', `LLM returned "${cleaned}" which is not a valid action ID, finding closest match`);
+    const match = actionIds.find((id) => cleaned.toLowerCase().includes(id.toLowerCase()));
+    if (match) {
+      ctx.lastStepResult = match;
+      ctx.variables[step.as] = match;
+      ctx.emitLog('info', `Matched to action: ${match}`);
+      return;
+    }
+    // Fall back to first action
+    ctx.emitLog('warn', `No match found, defaulting to: ${actionIds[0]}`);
+    ctx.lastStepResult = actionIds[0];
+    ctx.variables[step.as] = actionIds[0];
+    return;
+  }
+
+  ctx.lastStepResult = cleaned;
+  ctx.variables[step.as] = cleaned;
 }

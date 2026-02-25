@@ -1,11 +1,14 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { getSettings, saveSettings } from "../api";
+  import { onMount, tick } from "svelte";
+  import { getSettings, saveSettings, getContextAll, updatePersona, createRole, updateRole, deleteRole as apiDeleteRole, createTarget, updateTarget, deleteTarget as apiDeleteTarget, getProviderStatuses as apiGetProviderStatuses, setProviderConnector } from "../api";
   import { settings as settingsStore } from "../stores";
   import { navigateBack } from "../router";
-  import type { Settings, FullLlmConfig, UserContext } from "../types";
+  import type { Settings, FullLlmConfig, UserContext, RoleContext, TargetContext, PersonaContext, ProviderStatus, ConnectorType } from "../types";
   import { isLlmContext, isEnvContext } from "../types";
   import ContextModal from "../components/ContextModal.svelte";
+  import ContextTabs from "../components/ContextTabs.svelte";
+  import PersonaEditor from "../components/PersonaEditor.svelte";
+  import RoleTargetModal from "../components/RoleTargetModal.svelte";
 
   let isLoading = $state(true);
   let isSaving = $state(false);
@@ -15,21 +18,56 @@
   let testResult = $state<{ success: boolean; message: string } | null>(null);
   let showApiKey = $state(false);
 
+  // Top-level settings tab
+  let settingsTab = $state<'context' | 'llm'>('context');
+
   // LLM config form state
   let provider = $state<string>('openai');
   let baseUrl = $state<string>('');
   let apiKey = $state<string>('');
   let model = $state<string>('');
 
-  // User contexts state
+  // User contexts state (inline tab)
   let userContexts = $state<UserContext[]>([]);
 
-  // Modal state
+  // Inline context modal state
   let showModal = $state(false);
   let editingContext = $state<UserContext | null>(null);
 
-  // Delete confirmation state
+  // Delete confirmation state (inline tab)
   let deletingId = $state<string | null>(null);
+
+  // Connector UI state
+  let expandedSetup = $state<string | null>(null);
+  let connectorSaving = $state(false);
+
+  // Provider integrations state
+  let providerStatuses = $state<ProviderStatus[]>([]);
+
+  // Context sub-tabs state
+  let activeContextTab = $state<'persona' | 'roles' | 'targets' | 'integrations' | 'inline'>('persona');
+  let persona = $state<PersonaContext>({ body: '' });
+  let roles = $state<RoleContext[]>([]);
+  let targets = $state<TargetContext[]>([]);
+  let isSavingPersona = $state(false);
+
+  // Role/Target modal state
+  let showRoleTargetModal = $state(false);
+  let roleTargetMode = $state<'role' | 'target'>('role');
+  let editingRoleTarget = $state<RoleContext | TargetContext | null>(null);
+
+  // Role/target delete confirmation
+  let deletingFilename = $state<string | null>(null);
+
+  // Scroll preservation
+  let contentEl = $state<HTMLElement | null>(null);
+
+  async function preserveScroll(fn: () => void | Promise<void>) {
+    const scrollTop = contentEl?.scrollTop ?? 0;
+    await fn();
+    await tick();
+    if (contentEl) contentEl.scrollTop = scrollTop;
+  }
 
   const providers = [
     { id: 'openai', name: 'OpenAI', defaultUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4o' },
@@ -37,24 +75,43 @@
     { id: 'ollama', name: 'Ollama', defaultUrl: 'http://localhost:11434/v1', defaultModel: 'llama3.2' },
   ];
 
-  // Derived state for filtering contexts
+  // Derived state
   let llmContexts = $derived(userContexts.filter(isLlmContext));
   let envContexts = $derived(userContexts.filter(isEnvContext));
 
-  async function loadSettings() {
+  let topTabs = $derived([
+    { id: 'context', label: 'AI Context' },
+    { id: 'llm', label: 'LLM Provider' },
+  ]);
+
+  // Filter out provider-managed targets (shown in Integrations tab instead)
+  let siteTargets = $derived(targets.filter(t => !t.provider));
+
+  let contextTabs = $derived([
+    { id: 'persona', label: 'Persona' },
+    { id: 'roles', label: 'Roles', count: roles.length },
+    { id: 'targets', label: 'Targets', count: siteTargets.length },
+    { id: 'integrations', label: 'Integrations', count: providerStatuses.filter(p => p.connected).length },
+    { id: 'inline', label: 'Inline', count: userContexts.length },
+  ]);
+
+  async function loadAll() {
     isLoading = true;
     error = null;
     try {
-      const loaded = await getSettings();
-      settingsStore.set(loaded);
-      // Populate form
-      if (loaded.llm) {
-        provider = loaded.llm.provider || 'openai';
-        baseUrl = loaded.llm.base_url || '';
-        apiKey = loaded.llm.api_key || '';
-        model = loaded.llm.model || '';
+      const [settings, context, providerData] = await Promise.all([getSettings(), getContextAll(), apiGetProviderStatuses()]);
+      settingsStore.set(settings);
+      if (settings.llm) {
+        provider = settings.llm.provider || 'openai';
+        baseUrl = settings.llm.base_url || '';
+        apiKey = settings.llm.api_key || '';
+        model = settings.llm.model || '';
       }
-      userContexts = loaded.user_contexts || [];
+      userContexts = settings.user_contexts || [];
+      persona = context.persona;
+      roles = context.roles;
+      targets = context.targets;
+      providerStatuses = providerData;
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load settings";
       console.error("Failed to load:", e);
@@ -76,7 +133,6 @@
     testResult = null;
 
     try {
-      // Simple validation - check if API key format looks correct
       if (!apiKey.trim()) {
         testResult = { success: false, message: 'API key is required' };
         return;
@@ -87,7 +143,6 @@
         return;
       }
 
-      // For now, just validate format - actual connection test would need server endpoint
       testResult = { success: true, message: 'Configuration looks valid' };
     } finally {
       isTesting = false;
@@ -120,6 +175,141 @@
     }
   }
 
+  // Persona handlers
+  async function handleSavePersona(body: string) {
+    isSavingPersona = true;
+    error = null;
+    try {
+      persona = await updatePersona(body);
+      saveSuccess = true;
+      setTimeout(() => saveSuccess = false, 3000);
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to save persona";
+    } finally {
+      isSavingPersona = false;
+    }
+  }
+
+  // Role/Target handlers
+  function openAddRoleTarget(mode: 'role' | 'target') {
+    roleTargetMode = mode;
+    editingRoleTarget = null;
+    showRoleTargetModal = true;
+  }
+
+  function openEditRoleTarget(item: RoleContext | TargetContext, mode: 'role' | 'target') {
+    roleTargetMode = mode;
+    editingRoleTarget = item;
+    showRoleTargetModal = true;
+  }
+
+  async function handleRoleTargetSave(data: { name: string; match: string[]; body: string }) {
+    error = null;
+    try {
+      if (roleTargetMode === 'role') {
+        if (editingRoleTarget) {
+          const updated = await updateRole((editingRoleTarget as RoleContext).filename, data);
+          await preserveScroll(() => {
+            roles = roles.map(r => r.filename === (editingRoleTarget as RoleContext).filename ? updated : r);
+          });
+        } else {
+          const created = await createRole(data);
+          await preserveScroll(() => {
+            roles = [...roles, created].sort((a, b) => a.name.localeCompare(b.name));
+          });
+        }
+      } else {
+        if (editingRoleTarget) {
+          const updated = await updateTarget((editingRoleTarget as TargetContext).filename, data);
+          await preserveScroll(() => {
+            targets = targets.map(t => t.filename === (editingRoleTarget as TargetContext).filename ? updated : t);
+          });
+        } else {
+          const created = await createTarget(data);
+          await preserveScroll(() => {
+            targets = [...targets, created].sort((a, b) => a.name.localeCompare(b.name));
+          });
+        }
+      }
+      saveSuccess = true;
+      setTimeout(() => saveSuccess = false, 3000);
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to save";
+    }
+  }
+
+  // Toggle enabled state for roles/targets
+  async function toggleRoleEnabled(role: RoleContext) {
+    error = null;
+    const newEnabled = role.enabled === false ? true : false;
+    try {
+      const updated = await updateRole(role.filename, {
+        name: role.name,
+        match: role.match,
+        enabled: newEnabled,
+        body: role.body,
+      });
+      await preserveScroll(() => {
+        roles = roles.map(r => r.filename === role.filename ? updated : r);
+      });
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to update role";
+    }
+  }
+
+  async function toggleTargetEnabled(target: TargetContext) {
+    error = null;
+    const newEnabled = target.enabled === false ? true : false;
+    try {
+      const updated = await updateTarget(target.filename, {
+        name: target.name,
+        match: target.match,
+        enabled: newEnabled,
+        body: target.body,
+      });
+      await preserveScroll(() => {
+        targets = targets.map(t => t.filename === target.filename ? updated : t);
+      });
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to update target";
+    }
+  }
+
+  function confirmDeleteRoleTarget(filename: string) {
+    deletingFilename = filename;
+  }
+
+  function cancelDeleteRoleTarget() {
+    deletingFilename = null;
+  }
+
+  async function executeDeleteRole(filename: string) {
+    error = null;
+    try {
+      await apiDeleteRole(filename);
+      await preserveScroll(() => {
+        roles = roles.filter(r => r.filename !== filename);
+      });
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to delete role";
+    }
+    deletingFilename = null;
+  }
+
+  async function executeDeleteTarget(filename: string) {
+    error = null;
+    try {
+      await apiDeleteTarget(filename);
+      await preserveScroll(() => {
+        targets = targets.filter(t => t.filename !== filename);
+      });
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to delete target";
+    }
+    deletingFilename = null;
+  }
+
+  // Inline context handlers
   function openAddModal() {
     editingContext = null;
     showModal = true;
@@ -132,13 +322,10 @@
 
   function handleModalSave(ctx: UserContext) {
     if (editingContext) {
-      // Update existing
       userContexts = userContexts.map(c => c.id === ctx.id ? ctx : c);
     } else {
-      // Add new
       userContexts = [...userContexts, ctx];
     }
-    // Auto-save contexts
     handleSave();
   }
 
@@ -156,8 +343,30 @@
     handleSave();
   }
 
+  async function handleConnectorChange(providerId: string, connectorId: ConnectorType | null) {
+    connectorSaving = true;
+    error = null;
+    try {
+      await setProviderConnector(providerId, connectorId);
+      providerStatuses = await apiGetProviderStatuses();
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to set connector";
+    } finally {
+      connectorSaving = false;
+    }
+  }
+
+  function toggleSetup(key: string) {
+    expandedSetup = expandedSetup === key ? null : key;
+  }
+
+  function getProviderTypeLabel(type: string | string[]): string {
+    if (Array.isArray(type)) return type.join(', ');
+    return type;
+  }
+
   onMount(() => {
-    loadSettings();
+    loadAll();
   });
 </script>
 
@@ -180,181 +389,410 @@
     <div class="success-banner">Settings saved successfully</div>
   {/if}
 
-  <div class="content">
+  <div class="content" bind:this={contentEl}>
     {#if isLoading}
       <div class="loading">Loading settings...</div>
     {:else}
-      <div class="settings-columns">
-        <!-- Left Column: LLM Provider -->
-        <section class="settings-card llm-card">
-          <h2>LLM Provider</h2>
+      <div class="settings-panel">
+        <!-- Top-level tabs -->
+        <ContextTabs
+          tabs={topTabs}
+          activeTab={settingsTab}
+          onTabChange={(id) => settingsTab = id as typeof settingsTab}
+        />
 
-          <div class="form-section">
-            <div class="form-group">
-              <label for="provider">Provider</label>
-              <select id="provider" bind:value={provider} onchange={handleProviderChange}>
-                {#each providers as p}
-                  <option value={p.id}>{p.name}</option>
-                {/each}
-              </select>
-            </div>
+        <!-- AI Context Tab -->
+        {#if settingsTab === 'context'}
+          <ContextTabs
+            tabs={contextTabs}
+            activeTab={activeContextTab}
+            onTabChange={(id) => activeContextTab = id as typeof activeContextTab}
+          />
 
-            <div class="form-group">
-              <label for="base-url">Base URL</label>
-              <input
-                id="base-url"
-                type="text"
-                bind:value={baseUrl}
-                placeholder="https://api.openai.com/v1"
-              />
-            </div>
-
-            <div class="form-group">
-              <label for="api-key">
-                API Key
-                <button class="toggle-visibility" onclick={() => showApiKey = !showApiKey}>
-                  {showApiKey ? 'Hide' : 'Show'}
-                </button>
-              </label>
-              <input
-                id="api-key"
-                type={showApiKey ? 'text' : 'password'}
-                bind:value={apiKey}
-                placeholder="sk-..."
-              />
-            </div>
-
-            <div class="form-group">
-              <label for="model">Model</label>
-              <input
-                id="model"
-                type="text"
-                bind:value={model}
-                placeholder="gpt-4o"
-              />
-            </div>
-          </div>
-
-          <div class="status-section">
-            <div class="status-row">
-              <span class="status-label">LLM Configured</span>
-              <span class="status-value" class:yes={apiKey} class:no={!apiKey}>
-                {apiKey ? 'Yes' : 'No'}
-              </span>
-            </div>
-            <div class="status-row">
-              <span class="status-label">Provider</span>
-              <span class="status-value">{providers.find(p => p.id === provider)?.name || provider}</span>
-            </div>
-            <div class="status-row">
-              <span class="status-label">Model</span>
-              <span class="status-value">{model || 'Not set'}</span>
-            </div>
-          </div>
-
-          {#if testResult}
-            <div class="test-result" class:success={testResult.success} class:error={!testResult.success}>
-              {testResult.message}
-            </div>
+          <!-- Persona Tab -->
+          {#if activeContextTab === 'persona'}
+            <PersonaEditor
+              body={persona.body}
+              isSaving={isSavingPersona}
+              onSave={handleSavePersona}
+            />
           {/if}
 
-          <div class="actions">
-            <button class="btn-secondary" onclick={handleTestConnection} disabled={isTesting}>
-              {isTesting ? 'Testing...' : 'Test Connection'}
-            </button>
-            <button class="btn-primary" onclick={handleSave} disabled={isSaving}>
-              {isSaving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </section>
-
-        <!-- Right Column: User Context -->
-        <section class="settings-card context-card">
-          <div class="card-header">
-            <h2>User Context</h2>
-            <button class="btn-add" onclick={openAddModal}>+ Add</button>
-          </div>
-
-          <div class="context-sections">
-            <!-- LLM Contexts -->
-            <div class="context-section">
-              <h3>LLM Contexts</h3>
-              {#if llmContexts.length === 0}
-                <div class="empty-state">
-                  <p>No LLM contexts configured</p>
-                  <span>Add custom AI instructions for specific industries or domains</span>
-                </div>
-              {:else}
-                <div class="context-list">
-                  {#each llmContexts as ctx (ctx.id)}
-                    {#if deletingId === ctx.id}
-                      <div class="context-item deleting">
-                        <p>Delete this context?</p>
-                        <div class="delete-actions">
-                          <button class="btn-cancel-sm" onclick={cancelDelete}>Cancel</button>
-                          <button class="btn-delete-confirm" onclick={() => executeDelete(ctx.id)}>Delete</button>
-                        </div>
+          <!-- Roles Tab -->
+          {#if activeContextTab === 'roles'}
+            <div class="tab-header">
+              <button class="btn-add" onclick={() => openAddRoleTarget('role')}>+ Add Role</button>
+            </div>
+            {#if roles.length === 0}
+              <div class="empty-state">
+                <p>No roles configured</p>
+                <span>Roles define behavior for @category tags (e.g., @sales, @support)</span>
+              </div>
+            {:else}
+              <div class="context-list">
+                {#each roles as role (role.filename)}
+                  {#if deletingFilename === role.filename}
+                    <div class="context-item deleting">
+                      <p>Delete "{role.name}"?</p>
+                      <div class="delete-actions">
+                        <button class="btn-cancel-sm" onclick={cancelDeleteRoleTarget}>Cancel</button>
+                        <button class="btn-delete-confirm" onclick={() => executeDeleteRole(role.filename)}>Delete</button>
                       </div>
-                    {:else}
-                      <div class="context-item">
+                    </div>
+                  {:else}
+                    <div class="context-item" class:inactive={role.enabled === false}>
+                      <div class="context-header">
                         <div class="context-meta">
-                          {#if ctx.industry}
-                            <span class="tag industry">{ctx.industry}</span>
+                          <span class="item-name">{role.name}</span>
+                          {#if role.filename.startsWith('_')}
+                            <span class="tag system">system</span>
                           {/if}
-                          {#if ctx.domain}
-                            <span class="tag domain">{ctx.domain}</span>
-                          {/if}
-                          {#if !ctx.industry && !ctx.domain}
-                            <span class="tag global">Global</span>
-                          {/if}
+                          {#each role.match as pattern}
+                            <span class="tag match">{pattern}</span>
+                          {/each}
                         </div>
-                        <p class="context-text">{ctx.context}</p>
-                        <div class="item-actions">
-                          <button class="btn-edit" onclick={() => openEditModal(ctx)}>Edit</button>
-                          <button class="btn-delete" onclick={() => confirmDelete(ctx.id)}>×</button>
+                        <div class="context-controls">
+                          <div class="item-actions">
+                            <button class="btn-edit" onclick={() => openEditRoleTarget(role, 'role')}>Edit</button>
+                            {#if !role.filename.startsWith('_')}
+                              <button class="btn-delete" onclick={() => confirmDeleteRoleTarget(role.filename)}>×</button>
+                            {/if}
+                          </div>
+                          <button
+                            class="toggle-switch"
+                            class:on={role.enabled !== false}
+                            onclick={() => toggleRoleEnabled(role)}
+                            title={role.enabled !== false ? 'Enabled' : 'Disabled'}
+                          >
+                            <span class="toggle-knob"></span>
+                          </button>
                         </div>
                       </div>
-                    {/if}
-                  {/each}
-                </div>
-              {/if}
+                      <p class="context-text">{role.body}</p>
+                    </div>
+                  {/if}
+                {/each}
+              </div>
+            {/if}
+          {/if}
+
+          <!-- Targets Tab -->
+          {#if activeContextTab === 'targets'}
+            <div class="tab-header">
+              <button class="btn-add" onclick={() => openAddRoleTarget('target')}>+ Add Target</button>
+            </div>
+            {#if siteTargets.length === 0}
+              <div class="empty-state">
+                <p>No targets configured</p>
+                <span>Targets define behavior for specific domains or URL patterns</span>
+              </div>
+            {:else}
+              <div class="context-list">
+                {#each siteTargets as target (target.filename)}
+                  {#if deletingFilename === target.filename}
+                    <div class="context-item deleting">
+                      <p>Delete "{target.name}"?</p>
+                      <div class="delete-actions">
+                        <button class="btn-cancel-sm" onclick={cancelDeleteRoleTarget}>Cancel</button>
+                        <button class="btn-delete-confirm" onclick={() => executeDeleteTarget(target.filename)}>Delete</button>
+                      </div>
+                    </div>
+                  {:else}
+                    <div class="context-item" class:inactive={target.enabled === false}>
+                      <div class="context-header">
+                        <div class="context-meta">
+                          <span class="item-name">{target.name}</span>
+                          {#if target.filename.startsWith('_')}
+                            <span class="tag system">system</span>
+                          {/if}
+                          {#each target.match as pattern}
+                            <span class="tag match">{pattern}</span>
+                          {/each}
+                        </div>
+                        <div class="context-controls">
+                          <div class="item-actions">
+                            <button class="btn-edit" onclick={() => openEditRoleTarget(target, 'target')}>Edit</button>
+                            {#if !target.filename.startsWith('_')}
+                              <button class="btn-delete" onclick={() => confirmDeleteRoleTarget(target.filename)}>×</button>
+                            {/if}
+                          </div>
+                          <button
+                            class="toggle-switch"
+                            class:on={target.enabled !== false}
+                            onclick={() => toggleTargetEnabled(target)}
+                            title={target.enabled !== false ? 'Enabled' : 'Disabled'}
+                          >
+                            <span class="toggle-knob"></span>
+                          </button>
+                        </div>
+                      </div>
+                      <p class="context-text">{target.body}</p>
+                    </div>
+                  {/if}
+                {/each}
+              </div>
+            {/if}
+          {/if}
+
+          <!-- Integrations Tab -->
+          {#if activeContextTab === 'integrations'}
+            {#if providerStatuses.length === 0}
+              <div class="empty-state">
+                <p>No provider integrations available</p>
+              </div>
+            {:else}
+              <div class="context-list">
+                {#each providerStatuses as prov (prov.id)}
+                  <div class="provider-card">
+                    <div class="provider-header">
+                      <div class="provider-info">
+                        <span class="item-name">{prov.name}</span>
+                        <span class="tag match">{getProviderTypeLabel(prov.type)} provider</span>
+                        {#if prov.connected}
+                          <span class="tag provider-connected">Connected</span>
+                        {:else if prov.activeConnector}
+                          <span class="tag provider-missing">Not available</span>
+                        {:else}
+                          <span class="tag provider-not-configured">Not connected</span>
+                        {/if}
+                      </div>
+                    </div>
+
+                    <div class="connector-list">
+                      {#each prov.connectors as conn, i}
+                        {@const status = prov.connectorStatuses[i]}
+                        {@const isActive = status?.active ?? false}
+                        {@const setupKey = `${prov.id}-${conn.id}`}
+                        <div class="connector-row" class:active={isActive}>
+                          <div class="connector-main">
+                            <label class="connector-radio">
+                              <input
+                                type="radio"
+                                name={`connector-${prov.id}`}
+                                checked={isActive}
+                                disabled={connectorSaving}
+                                onchange={() => handleConnectorChange(prov.id, isActive ? null : conn.id)}
+                              />
+                              <span class="connector-name">{conn.name}</span>
+                              {#if isActive}
+                                <span class="tag connector-active">active</span>
+                              {/if}
+                            </label>
+                            <span class="connector-level">{conn.featureLevel} features</span>
+                          </div>
+
+                          <div class="connector-status">
+                            {#if status?.available}
+                              <span class="req-met">Ready</span>
+                            {:else if status?.error}
+                              <span class="req-missing">{status.error}</span>
+                            {/if}
+                          </div>
+
+                          <button
+                            class="btn-setup-toggle"
+                            onclick={() => toggleSetup(setupKey)}
+                          >
+                            {expandedSetup === setupKey ? 'Hide setup' : 'Setup'}
+                          </button>
+
+                          {#if expandedSetup === setupKey}
+                            <div class="setup-instructions">
+                              <p>{conn.setupInstructions}</p>
+                              {#if conn.requiredEnvVars.length > 0}
+                                <div class="env-requirements">
+                                  {#each conn.requiredEnvVars as envVar}
+                                    <code class="env-var-check">{envVar}</code>
+                                  {/each}
+                                </div>
+                              {/if}
+                            </div>
+                          {/if}
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          {/if}
+
+          <!-- Inline Tab -->
+          {#if activeContextTab === 'inline'}
+            <div class="tab-header">
+              <button class="btn-add" onclick={openAddModal}>+ Add</button>
             </div>
 
-            <!-- Environment Variables -->
-            <div class="context-section">
-              <h3>Environment Variables</h3>
-              {#if envContexts.length === 0}
-                <div class="empty-state">
-                  <p>No environment variables configured</p>
-                  <span>Add variables accessible via {"{{env.name}}"}</span>
-                </div>
-              {:else}
-                <div class="context-list">
-                  {#each envContexts as ctx (ctx.id)}
-                    {#if deletingId === ctx.id}
-                      <div class="context-item env-item deleting">
-                        <p>Delete this variable?</p>
-                        <div class="delete-actions">
-                          <button class="btn-cancel-sm" onclick={cancelDelete}>Cancel</button>
-                          <button class="btn-delete-confirm" onclick={() => executeDelete(ctx.id)}>Delete</button>
+            <div class="context-sections">
+              <!-- LLM Contexts -->
+              <div class="context-section">
+                <h3>LLM Contexts</h3>
+                {#if llmContexts.length === 0}
+                  <div class="empty-state">
+                    <p>No LLM contexts configured</p>
+                    <span>Add custom AI instructions for specific industries or domains</span>
+                  </div>
+                {:else}
+                  <div class="context-list">
+                    {#each llmContexts as ctx (ctx.id)}
+                      {#if deletingId === ctx.id}
+                        <div class="context-item deleting">
+                          <p>Delete this context?</p>
+                          <div class="delete-actions">
+                            <button class="btn-cancel-sm" onclick={cancelDelete}>Cancel</button>
+                            <button class="btn-delete-confirm" onclick={() => executeDelete(ctx.id)}>Delete</button>
+                          </div>
                         </div>
-                      </div>
-                    {:else}
-                      <div class="context-item env-item">
-                        <code class="env-name">{ctx.name}</code>
-                        <span class="env-value">{ctx.value}</span>
-                        <div class="item-actions">
-                          <button class="btn-edit" onclick={() => openEditModal(ctx)}>Edit</button>
-                          <button class="btn-delete" onclick={() => confirmDelete(ctx.id)}>×</button>
+                      {:else}
+                        <div class="context-item">
+                          <div class="context-meta">
+                            {#if ctx.industry}
+                              <span class="tag industry">{ctx.industry}</span>
+                            {/if}
+                            {#if ctx.domain}
+                              <span class="tag domain">{ctx.domain}</span>
+                            {/if}
+                            {#if !ctx.industry && !ctx.domain}
+                              <span class="tag global">Global</span>
+                            {/if}
+                          </div>
+                          <p class="context-text">{ctx.context}</p>
+                          <div class="item-actions">
+                            <button class="btn-edit" onclick={() => openEditModal(ctx)}>Edit</button>
+                            <button class="btn-delete" onclick={() => confirmDelete(ctx.id)}>×</button>
+                          </div>
                         </div>
-                      </div>
-                    {/if}
-                  {/each}
+                      {/if}
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+
+              <!-- Environment Variables -->
+              <div class="context-section">
+                <h3>Environment Variables</h3>
+                {#if envContexts.length === 0}
+                  <div class="empty-state">
+                    <p>No environment variables configured</p>
+                    <span>Add variables accessible via {"{{env.name}}"}</span>
+                  </div>
+                {:else}
+                  <div class="context-list">
+                    {#each envContexts as ctx (ctx.id)}
+                      {#if deletingId === ctx.id}
+                        <div class="context-item env-item deleting">
+                          <p>Delete this variable?</p>
+                          <div class="delete-actions">
+                            <button class="btn-cancel-sm" onclick={cancelDelete}>Cancel</button>
+                            <button class="btn-delete-confirm" onclick={() => executeDelete(ctx.id)}>Delete</button>
+                          </div>
+                        </div>
+                      {:else}
+                        <div class="context-item env-item">
+                          <code class="env-name">{ctx.name}</code>
+                          <span class="env-value">{ctx.value}</span>
+                          <div class="item-actions">
+                            <button class="btn-edit" onclick={() => openEditModal(ctx)}>Edit</button>
+                            <button class="btn-delete" onclick={() => confirmDelete(ctx.id)}>×</button>
+                          </div>
+                        </div>
+                      {/if}
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/if}
+        {/if}
+
+        <!-- LLM Provider Tab -->
+        {#if settingsTab === 'llm'}
+          <div class="llm-content">
+            <div class="llm-form-row">
+              <div class="llm-form-col">
+                <div class="form-section">
+                  <div class="form-group">
+                    <label for="provider">Provider</label>
+                    <select id="provider" bind:value={provider} onchange={handleProviderChange}>
+                      {#each providers as p}
+                        <option value={p.id}>{p.name}</option>
+                      {/each}
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="base-url">Base URL</label>
+                    <input
+                      id="base-url"
+                      type="text"
+                      bind:value={baseUrl}
+                      placeholder="https://api.openai.com/v1"
+                    />
+                  </div>
+
+                  <div class="form-group">
+                    <label for="api-key">
+                      API Key
+                      <button class="toggle-visibility" onclick={() => showApiKey = !showApiKey}>
+                        {showApiKey ? 'Hide' : 'Show'}
+                      </button>
+                    </label>
+                    <input
+                      id="api-key"
+                      type={showApiKey ? 'text' : 'password'}
+                      bind:value={apiKey}
+                      placeholder="sk-..."
+                    />
+                  </div>
+
+                  <div class="form-group">
+                    <label for="model">Model</label>
+                    <input
+                      id="model"
+                      type="text"
+                      bind:value={model}
+                      placeholder="gpt-4o"
+                    />
+                  </div>
                 </div>
-              {/if}
+
+                <div class="actions">
+                  <button class="btn-secondary" onclick={handleTestConnection} disabled={isTesting}>
+                    {isTesting ? 'Testing...' : 'Test Connection'}
+                  </button>
+                  <button class="btn-primary" onclick={handleSave} disabled={isSaving}>
+                    {isSaving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+
+              <div class="llm-status-col">
+                <div class="status-section">
+                  <div class="status-row">
+                    <span class="status-label">LLM Configured</span>
+                    <span class="status-value" class:yes={apiKey} class:no={!apiKey}>
+                      {apiKey ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                  <div class="status-row">
+                    <span class="status-label">Provider</span>
+                    <span class="status-value">{providers.find(p => p.id === provider)?.name || provider}</span>
+                  </div>
+                  <div class="status-row">
+                    <span class="status-label">Model</span>
+                    <span class="status-value">{model || 'Not set'}</span>
+                  </div>
+                </div>
+
+                {#if testResult}
+                  <div class="test-result" class:success={testResult.success} class:error={!testResult.success}>
+                    {testResult.message}
+                  </div>
+                {/if}
+              </div>
             </div>
           </div>
-        </section>
+        {/if}
       </div>
     {/if}
   </div>
@@ -365,6 +803,14 @@
   editingContext={editingContext}
   onClose={() => showModal = false}
   onSave={handleModalSave}
+/>
+
+<RoleTargetModal
+  isOpen={showRoleTargetModal}
+  mode={roleTargetMode}
+  editing={editingRoleTarget}
+  onClose={() => showRoleTargetModal = false}
+  onSave={handleRoleTargetSave}
 />
 
 <style>
@@ -443,37 +889,28 @@
     color: #888;
   }
 
-  .settings-columns {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-    max-width: 1100px;
-  }
-
-  @media (max-width: 900px) {
-    .settings-columns {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  .settings-card {
+  .settings-panel {
     background: #fff;
     border: 1px solid #e0e0e0;
     border-radius: 10px;
     padding: 24px;
   }
 
-  .settings-card h2 {
-    margin: 0 0 20px;
-    font-size: 1rem;
-    font-weight: 600;
-    color: #1a1a1a;
+  /* LLM Tab Layout */
+  .llm-content {
+    padding-top: 4px;
   }
 
-  /* LLM Card */
-  .llm-card {
-    display: flex;
-    flex-direction: column;
+  .llm-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+
+  @media (max-width: 700px) {
+    .llm-form-row {
+      grid-template-columns: 1fr;
+    }
   }
 
   .form-section {
@@ -481,8 +918,6 @@
     flex-direction: column;
     gap: 16px;
     margin-bottom: 20px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid #eee;
   }
 
   .form-group {
@@ -537,7 +972,6 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    margin-bottom: 20px;
     padding: 14px;
     background: #fafafa;
     border-radius: 6px;
@@ -572,7 +1006,7 @@
     padding: 10px 14px;
     border-radius: 6px;
     font-size: 0.85rem;
-    margin-bottom: 16px;
+    margin-top: 16px;
   }
 
   .test-result.success {
@@ -588,7 +1022,6 @@
   .actions {
     display: flex;
     gap: 12px;
-    margin-top: auto;
   }
 
   .btn-secondary {
@@ -636,21 +1069,11 @@
     cursor: not-allowed;
   }
 
-  /* Context Card */
-  .context-card {
+  /* Context area */
+  .tab-header {
     display: flex;
-    flex-direction: column;
-  }
-
-  .card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 20px;
-  }
-
-  .card-header h2 {
-    margin: 0;
+    justify-content: flex-end;
+    margin-bottom: 16px;
   }
 
   .btn-add {
@@ -674,7 +1097,6 @@
     display: flex;
     flex-direction: column;
     gap: 24px;
-    flex: 1;
   }
 
   .context-section h3 {
@@ -711,7 +1133,6 @@
   }
 
   .context-item {
-    position: relative;
     padding: 12px 14px;
     background: #fafafa;
     border: 1px solid #eee;
@@ -723,10 +1144,19 @@
     border-color: #ddd;
   }
 
+  .context-item.inactive {
+    opacity: 0.5;
+  }
+
+  .context-item.inactive:hover {
+    opacity: 0.7;
+  }
+
   .context-item.deleting {
     background: #fef2f2;
     border-color: #fecaca;
     text-align: center;
+    opacity: 1;
   }
 
   .context-item.deleting p {
@@ -773,6 +1203,69 @@
     display: flex;
     gap: 6px;
     margin-bottom: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .item-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-right: 4px;
+  }
+
+  /* Context item header layout */
+  .context-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .context-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  /* Toggle switch */
+  .toggle-switch {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    border-radius: 10px;
+    border: none;
+    background: #d1d5db;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+  }
+
+  .toggle-switch.on {
+    background: #22c55e;
+  }
+
+  .toggle-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  }
+
+  .toggle-switch.on .toggle-knob {
+    transform: translateX(16px);
+  }
+
+  .toggle-switch:hover {
+    filter: brightness(0.92);
   }
 
   .tag {
@@ -797,6 +1290,16 @@
     color: #6b7280;
   }
 
+  .tag.match {
+    background: #f0f4f8;
+    color: #475569;
+  }
+
+  .tag.system {
+    background: #e5e7eb;
+    color: #6b7280;
+  }
+
   .context-text {
     margin: 0;
     font-size: 0.85rem;
@@ -806,13 +1309,9 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    padding-right: 60px;
   }
 
   .item-actions {
-    position: absolute;
-    top: 10px;
-    right: 10px;
     display: flex;
     gap: 4px;
     opacity: 0;
@@ -900,5 +1399,160 @@
 
   .env-item:hover .item-actions {
     opacity: 1;
+  }
+
+  /* Provider Integrations */
+  .provider-card {
+    padding: 16px;
+    background: #fafafa;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    transition: all 0.15s ease;
+  }
+
+  .provider-header {
+    margin-bottom: 12px;
+  }
+
+  .provider-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .tag.provider-connected {
+    background: #dcfce7;
+    color: #15803d;
+  }
+
+  .tag.provider-missing {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .tag.provider-not-configured {
+    background: #f3f4f6;
+    color: #6b7280;
+  }
+
+  .connector-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .connector-row {
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+  }
+
+  .connector-row.active {
+    border-color: #93c5fd;
+    background: #eff6ff;
+  }
+
+  .connector-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .connector-radio {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #1a1a1a;
+  }
+
+  .connector-radio input[type="radio"] {
+    accent-color: #2563eb;
+    margin: 0;
+  }
+
+  .connector-name {
+    font-weight: 500;
+  }
+
+  .tag.connector-active {
+    background: #dbeafe;
+    color: #1d4ed8;
+    font-size: 0.65rem;
+  }
+
+  .connector-level {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    text-transform: capitalize;
+  }
+
+  .connector-status {
+    margin-top: 4px;
+    font-size: 0.75rem;
+  }
+
+  .req-met {
+    color: #16a34a;
+  }
+
+  .req-missing {
+    color: #92400e;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+    font-size: 0.72rem;
+  }
+
+  .btn-setup-toggle {
+    margin-top: 6px;
+    padding: 3px 10px;
+    background: transparent;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-setup-toggle:hover {
+    background: #f9fafb;
+    color: #374151;
+    border-color: #d1d5db;
+  }
+
+  .setup-instructions {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: #f9fafb;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    color: #4b5563;
+    line-height: 1.5;
+  }
+
+  .setup-instructions p {
+    margin: 0;
+  }
+
+  .env-requirements {
+    margin-top: 8px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .env-var-check {
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+    font-size: 0.72rem;
+    background: #e0f2fe;
+    color: #0369a1;
+    padding: 2px 6px;
+    border-radius: 3px;
   }
 </style>

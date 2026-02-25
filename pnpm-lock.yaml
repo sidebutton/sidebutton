@@ -45,6 +45,9 @@ importers:
       '@sidebutton/core':
         specifier: workspace:*
         version: link:../core
+      navaid:
+        specifier: ^1.2.0
+        version: 1.2.0
       svelte:
         specifier: ^5.15.0
         version: 5.46.1
@@ -77,7 +80,7 @@ importers:
         specifier: ^1.0.0
         version: 1.25.2(hono@4.11.4)(zod@3.25.76)
       '@sidebutton/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../core
       chalk:
         specifier: ^5.3.0
@@ -123,7 +126,7 @@ importers:
   packages/sidebutton:
     dependencies:
       '@sidebutton/server':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../server
 
 packages:
@@ -1213,6 +1216,7 @@ packages:
   glob@11.1.0:
     resolution: {integrity: sha512-vuNwKSaKiqm7g0THUBu2x7ckSs3XJLXE+2ssL7/MfTGPLLcrJQ/4Uq1CjPTtO5cCIiRxqvN6Twy1qOwhL0Xjcw==}
     engines: {node: 20 || >=22}
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
   gopd@1.2.0:
@@ -1372,6 +1376,10 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
+  navaid@1.2.0:
+    resolution: {integrity: sha512-Yh5mix394WrT5go29GFeFD4Gp4W0Xj1Ejs0KHXXCA24KKW74pq3PY3fwP3o18KveYO/pjUI2zzcAAp8kY98aNA==}
+    engines: {node: '>= 6'}
+
   negotiator@1.0.0:
     resolution: {integrity: sha512-8Ofs/AUQh8MaEcrlq5xOX0CQ9ypTF5dl78mjlMNfOK08fzpgTHQRQPBxcPlEtIw0yRpws+Zo/3r+5WRby7u3Gg==}
     engines: {node: '>= 0.6'}
@@ -1512,6 +1520,10 @@ packages:
   real-require@0.2.0:
     resolution: {integrity: sha512-57frrGM/OCTLqLOAh0mhVA9VBMHd+9U7Zb2THMGdBUoZVOtGbJzjxsYGDJ3A9AYYCP4hn6y1TVbaOfzWtm5GFg==}
     engines: {node: '>= 12.13.0'}
+
+  regexparam@1.3.0:
+    resolution: {integrity: sha512-6IQpFBv6e5vz1QAqI+V4k8P2e/3gRrqfCJ9FI+O1FLQTO+Uz6RXZEZOPmTJ6hlGj7gkERzY5BRCv09whKP96/g==}
+    engines: {node: '>=6'}
 
   require-from-string@2.0.2:
     resolution: {integrity: sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==}
@@ -3044,6 +3056,10 @@ snapshots:
 
   nanoid@3.3.11: {}
 
+  navaid@1.2.0:
+    dependencies:
+      regexparam: 1.3.0
+
   negotiator@1.0.0: {}
 
   object-assign@4.1.1: {}
@@ -3162,6 +3178,8 @@ snapshots:
   readdirp@4.1.2: {}
 
   real-require@0.2.0: {}
+
+  regexparam@1.3.0: {}
 
   require-from-string@2.0.2: {}
 

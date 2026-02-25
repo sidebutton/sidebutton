@@ -96,6 +96,7 @@ export type Step =
   | { type: 'shell.run'; cmd: string; cwd?: string; as?: string }
   | { type: 'llm.classify'; input: string; categories: string[]; as: string }
   | { type: 'llm.generate'; prompt: string; as: string }
+  | { type: 'llm.decide'; input: string; actions: Array<{ id: string; description: string }>; as: string }
   | { type: 'control.if'; condition: string; then: Step[]; else_steps?: Step[] }
   | { type: 'control.retry'; max_attempts?: number; delay_ms?: DelayValue; steps: Step[] }
   | { type: 'control.foreach'; items: string; as: string; separator?: string; index_as?: string; steps: Step[]; max_items?: number; delay_ms?: DelayValue; continue_on_error?: boolean }
@@ -106,8 +107,27 @@ export type Step =
   | { type: 'data.first'; input: string; as: string; separator?: string }
   | { type: 'data.get'; input: string; separator?: string; index: string; as: string }
   | { type: 'browser.injectCSS'; css: string; id?: string }
-  | { type: 'browser.injectJS'; js: string; id?: string }
-  | { type: 'variable.set'; name: string; value: string };
+  | { type: 'browser.injectJS'; js: string; id?: string; as?: string }
+  | { type: 'browser.select_option'; selector: string; value?: string; label?: string }
+  | { type: 'browser.scrollIntoView'; selector: string; block?: 'start' | 'center' | 'end' | 'nearest' }
+  | { type: 'browser.fill'; selector: string; value: string }
+  | { type: 'variable.set'; name: string; value: string }
+  // Abstract platform step types — provider auto-detected from envVars
+  | { type: 'issues.create'; project: string; summary: string; description?: string; issue_type?: string; labels?: string[]; provider?: string; site?: string; as?: string }
+  | { type: 'issues.get'; issue_key: string; fields?: string; provider?: string; site?: string; as?: string }
+  | { type: 'issues.search'; query: string; max_results?: number; fields?: string; provider?: string; site?: string; as?: string }
+  | { type: 'issues.attach'; issue_key: string; files: Array<{ filename: string; data: string; content_type?: string }>; provider?: string; site?: string; as?: string }
+  | { type: 'issues.transition'; issue_key: string; status: string; provider?: string; site?: string; as?: string }
+  | { type: 'issues.comment'; issue_key: string; body: string; provider?: string; site?: string; as?: string }
+  | { type: 'chat.listChannels'; types?: string; limit?: number; provider?: string; as?: string }
+  | { type: 'chat.readChannel'; channel: string; limit?: number; max_days?: number; provider?: string; as?: string }
+  | { type: 'chat.readThread'; channel: string; thread_ts: string; max_days?: number; provider?: string; as?: string }
+  // Abstract git step types — provider auto-detected from active connector
+  | { type: 'git.listPRs'; repo?: string; state?: string; limit?: number; provider?: string; as?: string }
+  | { type: 'git.getPR'; repo?: string; number: number; provider?: string; as?: string }
+  | { type: 'git.createPR'; repo?: string; title: string; body?: string; head: string; base?: string; provider?: string; as?: string }
+  | { type: 'git.listIssues'; repo?: string; state?: string; labels?: string; limit?: number; provider?: string; as?: string }
+  | { type: 'git.getIssue'; repo?: string; number: number; provider?: string; as?: string };
 
 // Workflow/Action definition
 export interface Workflow {
@@ -210,6 +230,8 @@ export interface RunLogMetadata {
   target_domain?: string;
   failure_step?: number;
   failure_selector?: string;
+  is_agent?: boolean;
+  agent_role?: string;
 }
 
 // Complete run log
@@ -236,6 +258,82 @@ export interface ExtensionStatus {
   browser_connected: boolean;
   tab_id?: number;
   recording: boolean;
+}
+
+// ============================================================================
+// Context System (persona, roles, targets)
+// ============================================================================
+
+// Role context - matched by @category tags
+export interface RoleContext {
+  filename: string;
+  name: string;
+  match: string[];
+  enabled?: boolean;
+  body: string;
+}
+
+// Target context - matched by domain/glob patterns
+export interface TargetContext {
+  filename: string;
+  name: string;
+  match: string[];
+  enabled?: boolean;
+  provider?: string;
+  body: string;
+}
+
+// Persona context - single global identity
+export interface PersonaContext {
+  body: string;
+}
+
+// Full context configuration
+export interface ContextConfig {
+  persona: PersonaContext;
+  roles: RoleContext[];
+  targets: TargetContext[];
+}
+
+// ============================================================================
+// Provider System (Jira, Slack, GitHub, Bitbucket)
+// ============================================================================
+
+export type ProviderType = 'issues' | 'chat' | 'git';
+
+export type ConnectorType = 'api' | 'cli' | 'browser';
+
+export interface ConnectorDefinition {
+  id: ConnectorType;
+  name: string;
+  featureLevel: 'full' | 'standard' | 'basic';
+  requiredEnvVars: string[];
+  optionalEnvVars: string[];
+  detectCommand?: string;
+  stepTypes: string[];
+  setupInstructions: string;
+  usageFile: string;
+}
+
+export interface ConnectorStatus {
+  id: ConnectorType;
+  available: boolean;
+  active: boolean;
+  error?: string;
+}
+
+export interface ProviderDefinition {
+  id: string;
+  name: string;
+  type: ProviderType | ProviderType[];
+  connectors: ConnectorDefinition[];
+}
+
+export interface ProviderStatus extends ProviderDefinition {
+  connected: boolean;
+  activeConnector?: ConnectorType;
+  connectorStatuses: ConnectorStatus[];
+  error?: string;
 }
 
 // ============================================================================
@@ -306,6 +404,14 @@ export interface ReportingConfig {
   report_url?: string;
 }
 
+// Skill pack registry configuration
+export interface SkillRegistry {
+  name: string;
+  type: 'local' | 'git';
+  url: string;
+  enabled: boolean;
+}
+
 // Application settings
 export interface Settings {
   llm: FullLlmConfig;
@@ -318,6 +424,10 @@ export interface Settings {
   external_mcps?: ExternalMcpConfig[];
   /** Anonymous run reporting configuration */
   reporting?: ReportingConfig;
+  /** Active connector per provider: e.g. { "jira": "api", "github": "cli" } */
+  provider_connectors?: Record<string, ConnectorType>;
+  /** Configured skill pack registries (local dirs or git repos) */
+  skill_registries?: SkillRegistry[];
 }
 
 // ============================================================================
@@ -401,6 +511,110 @@ export interface WorkflowSummary {
   source: 'actions' | 'workflows';
 }
 
+// ============================================================================
+// Skill Pack System
+// ============================================================================
+
+// Manifest from skill-pack.json in each pack
+export interface SkillPackManifest {
+  name: string;
+  version: string;
+  title: string;
+  description: string;
+  domain: string;
+  requires?: { browser?: boolean; llm?: boolean };
+  private?: boolean;
+  roles?: string[];
+}
+
+// Record of an installed skill pack
+export interface InstalledPack {
+  name: string;
+  version: string;
+  domain: string;
+  title: string;
+  installedAt: string;
+  source: string;
+  registry?: string;
+}
+
+// Full detail view of an installed skill pack
+export interface SkillPackDetail {
+  pack: InstalledPack;
+  roles: RoleContext[];
+  targets: TargetContext[];
+  workflowCount: number;
+}
+
+// Aggregated context info for dashboard overview
+export interface ContextSummary {
+  persona: { name: string; preview: string } | null;
+  activeRoles: number;
+  totalRoles: number;
+  matchedTargets: number;
+  totalTargets: number;
+  installedPacks: number;
+}
+
+// Origin of a context item (user-created or from a skill pack)
+export interface ContextSource {
+  type: 'user' | 'skill';
+  domain?: string;
+}
+
+// ============================================================================
+// Skill Module System
+// ============================================================================
+
+// A module within a skill pack (subdirectory with _skill.md)
+export interface SkillModule {
+  name: string;
+  displayName: string;
+  path: string;
+  workflowCount: number;
+  workflows: { id: string; title: string }[];
+  hasSkillDoc: boolean;
+  hasRoles: string[];
+}
+
+// ============================================================================
+// Agent System
+// ============================================================================
+
+export interface AgentMetrics {
+  action_count: number;
+  token_count: number;
+  cost_estimate?: number;
+}
+
+export type AgentStatus = 'running' | 'completed' | 'failed';
+
+export interface AgentJob {
+  run_id: string;
+  workflow_id: string;
+  workflow_title: string;
+  role: string;
+  started_at: string;
+  status: AgentStatus;
+  duration_ms?: number;
+  initial_prompt: string;
+  metrics: AgentMetrics;
+  current_task?: string;
+  result_summary?: string;
+}
+
+// ============================================================================
+// Publisher / Registry System
+// ============================================================================
+
+export interface Publisher {
+  name: string;
+  type: 'local' | 'git';
+  url: string;
+  enabled: boolean;
+  packCount?: number;
+}
+
 // Error types
 export class WorkflowError extends Error {
   constructor(
@@ -419,6 +633,7 @@ export class WorkflowError extends Error {
       | 'CIRCULAR_CALL'
       | 'NESTED_ERROR'
       | 'PARSE_ERROR'
+      | 'PROVIDER_ERROR'
   ) {
     super(message);
     this.name = 'WorkflowError';

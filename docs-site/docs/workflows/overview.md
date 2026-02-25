@@ -42,11 +42,11 @@ steps:                       # Required: what to do
 
 ## Step Types
 
-SideButton supports 20 step types in 5 categories:
+SideButton supports 27 step types in 5 categories:
 
 | Category | Steps | Use For |
 |----------|-------|---------|
-| **Browser** | navigate, click, type, scroll, hover, wait, extract, extractAll, exists, key | Web automation |
+| **Browser** | navigate, click, type, scroll, hover, wait, extract, extractAll, extractMap, exists, key, snapshot, injectCSS, injectJS, select_option, scrollIntoView, fill | Web automation |
 | **Shell** | shell.run, terminal.open, terminal.run | System commands |
 | **LLM** | llm.classify, llm.generate | AI-powered decisions |
 | **Control** | control.if, control.retry, control.stop | Logic and flow |
@@ -78,6 +78,7 @@ steps:
 |-----------|---------|----------|
 | `workflows/` | Public library (shared) | Read-only |
 | `actions/` | Your personal workflows | Yes |
+| `skills/<domain>/` | [Installed skill packs](/skill-packs/overview) | Managed by CLI |
 
 ## Running Workflows
 
@@ -136,6 +137,6 @@ steps:
 ## Next Steps
 
 - **[DSL Reference](/workflows/dsl)** — Complete YAML syntax
-- **[Step Types](/workflows/steps)** — All 20 step types
+- **[Step Types](/workflows/steps)** — All step types
 - **[Variables](/workflows/variables)** — Data flow between steps
 - **[Examples](/workflows/examples)** — Copy-paste workflows

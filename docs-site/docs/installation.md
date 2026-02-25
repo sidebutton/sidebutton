@@ -83,6 +83,7 @@ This is expected! You need to [install the Chrome extension](/extension) and con
 1. **[Install the Chrome Extension](/extension)** — Required for browser automation
 2. **[Run Your First Workflow](/first-workflow)** — See it in action
 3. **[Connect AI Tools](/mcp-setup)** — Use with Claude Code or Cursor
+4. **[Install Skill Packs](/skill-packs/overview)** — Add automation for specific web apps
 
 ## Troubleshooting
 

@@ -120,7 +120,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: 'snapshot',
-    description: 'Capture accessibility snapshot of the current page. Returns YAML with element refs for use with click/type. Use includeContent=true to also include visible text content as markdown.',
+    description: 'Capture accessibility snapshot of the current page. Returns YAML with element refs for use with click/type. Use includeContent=true to also include visible text content as markdown. Note: taking a snapshot may dismiss inline modals or popups — use screenshot instead if you need to verify modal content.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -183,6 +183,28 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: 'press_key',
+    description: 'Press a key on the keyboard. Use this for keyboard shortcuts, Tab navigation, Enter, Escape, arrow keys, etc. Supports key combinations like "Ctrl+A" or "Shift+Tab".',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: {
+          type: 'string',
+          description: 'Key to press. Examples: "Tab", "Enter", "Escape", "ArrowDown", "Backspace", "Shift+Tab", "Ctrl+A". For single characters, use the character directly (e.g., "a").',
+        },
+        selector: {
+          type: 'string',
+          description: 'Optional CSS selector to focus before pressing the key.',
+        },
+        ref: {
+          type: 'number',
+          description: 'Optional element reference from snapshot to focus before pressing the key.',
+        },
+      },
+      required: ['key'],
+    },
+  },
+  {
     name: 'scroll',
     description: 'Scroll the page.',
     inputSchema: {
@@ -217,10 +239,180 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: 'screenshot',
-    description: 'Capture a screenshot of the current page.',
+    description: 'Capture a screenshot of the current page. Prefer cropping to a specific area instead of capturing the full viewport — use ref (from snapshot), selector (CSS), or region (manual rect) to save context tokens. Full viewport is fine for first visit to a new page; after that, crop to the relevant section.',
     inputSchema: {
       type: 'object',
-      properties: {},
+      properties: {
+        ref: {
+          type: 'number',
+          description: 'Element reference from snapshot (the number after ref=). Crops screenshot to that element with padding.',
+        },
+        selector: {
+          type: 'string',
+          description: 'CSS selector for the element. Crops screenshot to that element with padding.',
+        },
+        region: {
+          type: 'object',
+          description: 'Manual crop region in CSS pixels (viewport coordinates).',
+          properties: {
+            x: { type: 'number', description: 'Left edge X coordinate' },
+            y: { type: 'number', description: 'Top edge Y coordinate' },
+            width: { type: 'number', description: 'Width in pixels' },
+            height: { type: 'number', description: 'Height in pixels' },
+          },
+          required: ['x', 'y', 'width', 'height'],
+        },
+      },
+    },
+  },
+  {
+    name: 'select_option',
+    description: 'Select an option from a native <select> dropdown element. Use this instead of click for <select> elements, as native dropdowns cannot be controlled via click events.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: {
+          type: 'string',
+          description: 'CSS selector for the <select> element.',
+        },
+        ref: {
+          type: 'number',
+          description: 'Element reference from snapshot (the number after ref=).',
+        },
+        element: {
+          type: 'string',
+          description: 'Human-readable element description (for logging).',
+        },
+        value: {
+          type: 'string',
+          description: 'The option value to select (matches <option value="...">).',
+        },
+        label: {
+          type: 'string',
+          description: 'The visible text of the option to select (matches <option> text content).',
+        },
+      },
+    },
+  },
+  {
+    name: 'fill',
+    description: 'Fill a form field by setting its value programmatically. Unlike "type" (which simulates keystrokes), "fill" sets the value directly and triggers React/Vue/Angular change events. Use this for framework-controlled inputs where "type" doesn\'t work.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: {
+          type: 'string',
+          description: 'CSS selector for the input element.',
+        },
+        value: {
+          type: 'string',
+          description: 'Value to set on the input.',
+        },
+      },
+      required: ['selector', 'value'],
+    },
+  },
+  {
+    name: 'wait',
+    description: 'Wait for an element to appear on the page. Blocks until the element matching the selector exists in the DOM, or throws after timeout.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: {
+          type: 'string',
+          description: 'CSS selector to wait for.',
+        },
+        timeout: {
+          type: 'number',
+          description: 'Maximum wait time in milliseconds (default: 5000).',
+        },
+      },
+      required: ['selector'],
+    },
+  },
+  {
+    name: 'exists',
+    description: 'Check if an element exists on the page. Returns true/false without throwing. Useful for conditional logic.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: {
+          type: 'string',
+          description: 'CSS selector to check.',
+        },
+        timeout: {
+          type: 'number',
+          description: 'How long to wait before returning false, in milliseconds (default: 2000).',
+        },
+      },
+      required: ['selector'],
+    },
+  },
+  {
+    name: 'extract_all',
+    description: 'Extract text from all elements matching a selector, joined by a separator. Useful for getting lists of items, table columns, or repeated elements.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: {
+          type: 'string',
+          description: 'CSS selector matching multiple elements.',
+        },
+        separator: {
+          type: 'string',
+          description: 'String to join results with (default: "\\n").',
+        },
+        attribute: {
+          type: 'string',
+          description: 'Optional attribute to extract instead of text content (e.g., "href", "src").',
+        },
+      },
+      required: ['selector'],
+    },
+  },
+  {
+    name: 'extract_map',
+    description: 'Extract structured data from repeated elements. For each element matching the outer selector, extracts named fields using sub-selectors. Returns JSON array of objects.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: {
+          type: 'string',
+          description: 'CSS selector for the repeating container elements (e.g., "table tbody tr", ".card").',
+        },
+        fields: {
+          type: 'object',
+          description: 'Map of field names to extraction rules. Each rule has a "selector" (relative CSS selector) and optional "attribute".',
+          additionalProperties: {
+            type: 'object',
+            properties: {
+              selector: { type: 'string', description: 'CSS selector relative to the container element.' },
+              attribute: { type: 'string', description: 'Optional attribute to extract instead of text content.' },
+            },
+            required: ['selector'],
+          },
+        },
+      },
+      required: ['selector', 'fields'],
+    },
+  },
+  {
+    name: 'scroll_into_view',
+    description: 'Scroll a specific element into the viewport. More precise than "scroll" — targets an exact element.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: {
+          type: 'string',
+          description: 'CSS selector for the element to scroll into view.',
+        },
+        block: {
+          type: 'string',
+          enum: ['start', 'center', 'end', 'nearest'],
+          description: 'Vertical alignment in viewport (default: "center").',
+        },
+      },
+      required: ['selector'],
     },
   },
   {
@@ -235,6 +427,20 @@ export const MCP_TOOLS: McpTool[] = [
         },
       },
       required: ['selector'],
+    },
+  },
+  {
+    name: 'evaluate',
+    description: 'Execute JavaScript in the browser page context and return the result. Useful for reading page state, checking values, or performing calculations.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        js: {
+          type: 'string',
+          description: 'JavaScript code to evaluate in the page context.',
+        },
+      },
+      required: ['js'],
     },
   },
 ];

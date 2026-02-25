@@ -15,6 +15,7 @@ export interface StdioModeConfig {
   workflowsDir: string;
   templatesDir: string;
   runLogsDir: string;
+  configDir: string;
 }
 
 /**
@@ -39,7 +40,8 @@ export async function startStdioMode(config: StdioModeConfig): Promise<void> {
     config.workflowsDir,
     config.templatesDir,
     config.runLogsDir,
-    extensionClient
+    extensionClient,
+    config.configDir,
   );
 
   // Start HTTP server silently in background (for browser extension WebSocket)

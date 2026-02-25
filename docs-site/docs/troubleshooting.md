@@ -136,9 +136,10 @@ Error: Workflow not found: my_workflow
 ```
 
 **Check:**
-1. Workflow file exists in `workflows/` or `actions/` directory
+1. Workflow file exists in `workflows/`, `actions/`, or `skills/` directory
 2. File has `.yaml` extension
 3. `id` in YAML matches the requested ID
+4. If from a skill pack, verify it's installed: `sidebutton install --list`
 
 ### "Browser not connected"
 
@@ -256,7 +257,7 @@ Common causes:
 
 ### Workflows don't appear
 
-1. Check `workflows/` and `actions/` directories exist
+1. Check `workflows/`, `actions/`, and `skills/` directories exist
 2. Verify YAML files have correct structure
 3. Check server logs for parsing errors
 

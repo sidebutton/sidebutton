@@ -12,9 +12,12 @@
 
   let { action, existingShortcut = null, onsave, oncancel }: Props = $props();
 
-  // Form state
+  // Form state — intentionally captures initial values (modal is opened with fixed props)
+  // svelte-ignore state_referenced_locally
   let customName = $state(existingShortcut?.custom_name || action?.title || "");
+  // svelte-ignore state_referenced_locally
   let color = $state(existingShortcut?.color || "#2196f3");
+  // svelte-ignore state_referenced_locally
   let params = $state<Record<string, string | boolean>>(
     existingShortcut?.params
       ? { ...existingShortcut.params }
@@ -103,7 +106,8 @@
   aria-labelledby="shortcut-modal-title"
   tabindex="-1"
 >
-  <div class="modal" role="document" onclick={(e) => e.stopPropagation()}>
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
+  <div class="modal" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
     <div class="modal-header">
       <h2 id="shortcut-modal-title">
         {existingShortcut ? "Edit Shortcut" : "Add to Dashboard"}
@@ -133,13 +137,15 @@
         </div>
 
         <div class="form-group">
+          <!-- svelte-ignore a11y_label_has_associated_control -->
           <label>Accent Color</label>
           <ColorPicker selected={color} onchange={(c) => (color = c)} />
         </div>
 
         {#if Object.keys(action.params || {}).length > 0}
           <div class="form-group">
-            <label>Parameters</label>
+            <!-- svelte-ignore a11y_label_has_associated_control -->
+            <label id="params-label">Parameters</label>
             <p class="params-hint">
               These values will be used when running from the Dashboard.
             </p>

@@ -60,6 +60,10 @@ List all available workflows.
 
 **Response:** Markdown list of workflows with IDs, titles, and parameters.
 
+::: tip Skill pack workflows included
+Results include workflows from [installed skill packs](/skill-packs/overview) alongside built-in and user workflows.
+:::
+
 ---
 
 ### get_workflow
@@ -284,9 +288,17 @@ Extract text content from an element.
 
 ### screenshot
 
-Capture a screenshot of the current page.
+Capture a screenshot of the current page. Optionally crop to a specific element or region to save context tokens.
 
-**Parameters:** None
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `ref` | `number` | Element reference from `snapshot` (e.g., 42 from `[ref=42]`). Crops to that element. |
+| `selector` | `string` | CSS selector. Crops to the matched element. |
+| `region` | `object` | Manual crop: `{x, y, width, height}` in CSS pixels. |
+
+All optional, mutually exclusive. No params = full viewport.
 
 **Response:** Base64-encoded PNG image.
 
@@ -321,6 +333,38 @@ Capture all selectors and interactive elements from the current page.
 - Form fields
 
 **Use case:** Discover selectors when building workflows.
+
+---
+
+### select_option
+
+Select an option from a native `<select>` dropdown.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `selector` | string | No* | CSS selector for `<select>` |
+| `ref` | number | No* | Element ref from snapshot |
+| `value` | string | No** | Option value to select |
+| `label` | string | No** | Option visible text to select |
+| `element` | string | No | Description for logging |
+
+*One of `selector` or `ref` required. **One of `value` or `label` required.
+
+---
+
+### evaluate
+
+Execute JavaScript in the browser page context and return the result.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `js` | string | Yes | JavaScript code to evaluate |
+
+**Response:** Text content of the evaluation result (stringified if object).
 
 ---
 

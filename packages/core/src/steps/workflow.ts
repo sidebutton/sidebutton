@@ -21,7 +21,9 @@ export async function executeWorkflowCall(
   step: WorkflowCall,
   ctx: ExecutionContext
 ): Promise<void> {
-  const namespace = step.as ?? step.workflow;
+  // Interpolate the workflow ID so dynamic dispatch works (e.g. workflow: "{{action}}")
+  const workflowId = ctx.interpolate(step.workflow);
+  const namespace = step.as ?? workflowId;
 
   // 1. Check recursion depth
   if (ctx.currentDepth >= MAX_WORKFLOW_DEPTH) {
@@ -33,32 +35,32 @@ export async function executeWorkflowCall(
   }
 
   // 2. Check for circular calls
-  if (ctx.callStack.includes(step.workflow)) {
-    const callPath = `${ctx.callStack.join(' → ')} → ${step.workflow}`;
+  if (ctx.callStack.includes(workflowId)) {
+    const callPath = `${ctx.callStack.join(' → ')} → ${workflowId}`;
     throw new WorkflowError(
       `Circular workflow call detected: ${callPath}`,
       'CIRCULAR_CALL'
     );
   }
 
-  ctx.emitLog('info', `Calling workflow: ${step.workflow} (as: ${namespace})`);
+  ctx.emitLog('info', `Calling workflow: ${workflowId} (as: ${namespace})`);
 
   // 3. Find the child workflow
-  let childWorkflow = ctx.actionsRegistry.find((a) => a.id === step.workflow);
+  let childWorkflow = ctx.actionsRegistry.find((a) => a.id === workflowId);
   if (!childWorkflow) {
-    childWorkflow = ctx.workflowsRegistry.find((w) => w.id === step.workflow);
+    childWorkflow = ctx.workflowsRegistry.find((w) => w.id === workflowId);
   }
 
   if (!childWorkflow) {
     throw new WorkflowError(
-      `Workflow not found: ${step.workflow}`,
+      `Workflow not found: ${workflowId}`,
       'WORKFLOW_NOT_FOUND'
     );
   }
 
   // 4. Create child context with interpolated params
   const childCtx = ctx.createChildContext();
-  childCtx.callStack.push(step.workflow);
+  childCtx.callStack.push(workflowId);
 
   // Interpolate and add params
   if (step.params) {
@@ -76,7 +78,7 @@ export async function executeWorkflowCall(
         setTimeout(() => {
           childCtx.cancel();
           reject(new WorkflowError(
-            `Workflow '${step.workflow}' timed out after ${step.timeout}ms`,
+            `Workflow '${workflowId}' timed out after ${step.timeout}ms`,
             'NESTED_ERROR'
           ));
         }, step.timeout)
@@ -90,7 +92,7 @@ export async function executeWorkflowCall(
       // control.stop is a successful completion
     } else {
       throw new WorkflowError(
-        `Nested workflow '${step.workflow}' failed: ${error}`,
+        `Nested workflow '${workflowId}' failed: ${error}`,
         'NESTED_ERROR'
       );
     }
@@ -106,5 +108,5 @@ export async function executeWorkflowCall(
   // Merge events
   ctx.mergeChildEvents(childCtx);
 
-  ctx.emitLog('info', `Completed workflow: ${step.workflow}`);
+  ctx.emitLog('info', `Completed workflow: ${workflowId}`);
 }

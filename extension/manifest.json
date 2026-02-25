@@ -20,8 +20,6 @@
   ],
   "externally_connectable": {
     "matches": [
-      "https://sidebutton.com/*",
-      "https://*.sidebutton.com/*",
       "http://localhost:*/*"
     ]
   },
@@ -32,7 +30,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js", "panel.js"],
+      "js": ["content.js"],
       "run_at": "document_idle"
     }
   ],

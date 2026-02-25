@@ -10,6 +10,11 @@ import type {
   RecordingStatus,
   Settings,
   WorkflowEvent,
+  InstalledPack,
+  ContextSummary,
+  AgentJob,
+  Publisher,
+  SkillModule,
 } from "./types";
 
 // ============================================================================
@@ -46,6 +51,21 @@ export const runningWorkflows = writable<RunningWorkflow[]>([]);
 
 // Workflow run statistics (keyed by workflow_id)
 export const workflowStats = writable<Record<string, WorkflowStats>>({});
+
+// Installed skill packs
+export const skillPacks = writable<InstalledPack[]>([]);
+
+// Aggregated context summary
+export const contextSummary = writable<ContextSummary | null>(null);
+
+// Agent jobs
+export const agents = writable<AgentJob[]>([]);
+
+// Publishers (registries)
+export const publishers = writable<Publisher[]>([]);
+
+// Skill modules for the active skill pack
+export const skillModules = writable<SkillModule[]>([]);
 
 // ============================================================================
 // Execution State
@@ -110,11 +130,20 @@ export const viewState = writable<ViewState>({
   selectedWorkflowId: null,
   selectedRecordingId: null,
   selectedRunLogId: null,
+  selectedSkillDomain: null,
+  selectedModulePath: null,
+  selectedAgentId: null,
 });
 
 // ============================================================================
 // Derived Stores
 // ============================================================================
+
+// Derived store for active (first installed) skill pack
+export const activeSkillPack = derived(
+  skillPacks,
+  ($skillPacks) => $skillPacks.length > 0 ? $skillPacks[0] : null
+);
 
 // Derived store for selected action
 export const selectedAction = derived(

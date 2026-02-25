@@ -1,6 +1,6 @@
 <script lang="ts">
   import { viewState, mcpStatus } from "../stores";
-  import { navigateToDashboard, navigateToActions, navigateToWorkflows, navigateToRecordings, navigateToRunLogs, navigateToSettings } from "../router";
+  import { navigateToDashboard, navigateToSkills, navigateToLibrary, navigateToAgents, navigateToRecordings, navigateToSettings } from "../router";
   import type { PageType } from "../types";
 
   function isActive(page: PageType): boolean {
@@ -34,24 +34,39 @@
 
     <button
       class="nav-item"
-      class:active={isActive("actions")}
-      onclick={navigateToActions}
+      class:active={isActive("skills")}
+      onclick={navigateToSkills}
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
       </svg>
-      <span>Actions</span>
+      <span>Skills</span>
     </button>
 
     <button
       class="nav-item"
-      class:active={isActive("workflows")}
-      onclick={navigateToWorkflows}
+      class:active={isActive("library")}
+      onclick={navigateToLibrary}
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+        <line x1="12" y1="22.08" x2="12" y2="12"></line>
       </svg>
       <span>Library</span>
+    </button>
+
+    <button
+      class="nav-item"
+      class:active={isActive("agents")}
+      onclick={navigateToAgents}
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27A7 7 0 0 1 14 22h-4a7 7 0 0 1-6.73-3H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"></path>
+        <circle cx="9" cy="14" r="1"></circle>
+        <circle cx="15" cy="14" r="1"></circle>
+      </svg>
+      <span>Agents</span>
     </button>
 
     <button
@@ -64,21 +79,6 @@
         <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
       </svg>
       <span>Recordings</span>
-    </button>
-
-    <button
-      class="nav-item"
-      class:active={isActive("run-logs")}
-      onclick={navigateToRunLogs}
-    >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-        <polyline points="14 2 14 8 20 8"></polyline>
-        <line x1="16" y1="13" x2="8" y2="13"></line>
-        <line x1="16" y1="17" x2="8" y2="17"></line>
-        <polyline points="10 9 9 9 8 9"></polyline>
-      </svg>
-      <span>Run Log</span>
     </button>
   </div>
 

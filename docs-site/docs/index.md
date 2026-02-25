@@ -1,25 +1,6 @@
 ---
 layout: home
 
-features:
-  - icon: 🚀
-    title: One Command Setup
-    details: "npx sidebutton@latest — no sign-up, no config, just run it."
-  - icon: 🔁
-    title: Reusable Workflows
-    details: Define once in YAML, run forever. No re-prompting AI every time.
-  - icon: 🎬
-    title: Recording Mode
-    details: Click through any task once, export as reusable automation.
-  - icon: ⚡
-    title: Embed Buttons
-    details: Inject one-click automation buttons directly into any web page.
-  - icon: 🧠
-    title: AI-Powered Steps
-    details: LLM classification and generation built into workflows.
-  - icon: 🔌
-    title: MCP Server
-    details: Connect Claude Code, Cursor, VS Code to your browser.
 ---
 
 ## What is SideButton?
@@ -27,6 +8,7 @@ features:
 SideButton is an **open-source, local-first automation platform** that connects AI tools to your browser. Unlike simple browser control, SideButton lets you:
 
 - **Define reusable workflows** in YAML that run the same way every time
+- **Install skill packs** — pre-built automation bundles for specific web apps
 - **Record actions** by clicking through a task and exporting as automation
 - **Embed buttons** directly into the pages you use (GitHub, Wikipedia, etc.)
 - **Use AI steps** for text classification and generation
@@ -71,6 +53,10 @@ You click a button  →  SideButton runs your workflow  →  Task done
     <a href="/mcp-setup" style="padding: 1rem; border: 1px solid var(--vp-c-divider); border-radius: 8px; text-decoration: none;">
       <strong>MCP Setup</strong><br/>
       <span style="color: var(--vp-c-text-2);">Connect Claude/Cursor</span>
+    </a>
+    <a href="/skill-packs/overview" style="padding: 1rem; border: 1px solid var(--vp-c-divider); border-radius: 8px; text-decoration: none;">
+      <strong>Skill Packs</strong><br/>
+      <span style="color: var(--vp-c-text-2);">Install automation bundles</span>
     </a>
   </div>
 </div>

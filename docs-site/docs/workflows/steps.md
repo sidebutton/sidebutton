@@ -1,6 +1,6 @@
 # Step Types
 
-Complete reference for all 24 step types available in SideButton.
+Complete reference for all 27 step types available in SideButton.
 
 ## Browser Steps
 
@@ -230,6 +230,56 @@ Inject JavaScript into the page.
 
 ::: tip Idempotent injection
 When `id` is provided and a script element with that ID already exists, its content is replaced instead of creating a duplicate.
+:::
+
+### browser.select_option
+
+Select an option from a `<select>` dropdown. Matches by value or visible label text.
+
+```yaml
+- type: browser.select_option
+  selector: "select#country"
+  label: "United States"
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `selector` | string | Yes | CSS selector for `<select>` element |
+| `value` | string | No | Option value to select |
+| `label` | string | No | Option visible text to select |
+
+### browser.scrollIntoView
+
+Scroll an element into the visible viewport.
+
+```yaml
+- type: browser.scrollIntoView
+  selector: "#footer-section"
+  block: center
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `selector` | string | Yes | CSS selector |
+| `block` | string | No | Scroll alignment: `start`, `center` (default), `end`, `nearest` |
+
+### browser.fill
+
+Set an input value directly. Works with React controlled inputs by using native value setters and dispatching synthetic events.
+
+```yaml
+- type: browser.fill
+  selector: "input[name='date']"
+  value: "2026-03-01"
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `selector` | string | Yes | CSS selector for input |
+| `value` | string | Yes | Value to set |
+
+::: tip When to use fill vs type
+Use `browser.fill` instead of `browser.type` for date inputs, React-controlled inputs, or when you need to set a value without triggering the native input UI (e.g., date pickers).
 :::
 
 ## Shell Steps

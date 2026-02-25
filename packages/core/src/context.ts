@@ -30,9 +30,12 @@ export interface ExtensionClient {
   hover(selector: string): Promise<void>;
   pressKey(key: string, selector?: string): Promise<void>;
   focus(): Promise<void>;
+  selectOption(selector: string | undefined, ref: number | undefined, value: string | undefined, label: string | undefined): Promise<string>;
+  fill(selector: string, value: string): Promise<void>;
+  scrollIntoView(selector: string, block?: string): Promise<void>;
   ariaSnapshot(options?: { includeContent?: boolean }): Promise<string>;
   injectCSS(css: string, id?: string): Promise<void>;
-  injectJS(js: string, id?: string): Promise<void>;
+  injectJS(js: string, id?: string): Promise<{ executed: boolean; result?: unknown; error?: string }>;
 }
 
 /**
@@ -81,6 +84,9 @@ export class ExecutionContext {
 
   // Repo path mappings (org/repo -> local path)
   repos: Record<string, string> = {};
+
+  // Environment variables from settings (for platform providers like Jira, Slack)
+  envVars: Record<string, string> = {};
 
   // Output message from workflow (set by control.stop)
   outputMessage?: string;
@@ -135,6 +141,7 @@ export class ExecutionContext {
     child.cancelled = this.cancelled;
     child.userContexts = [...this.userContexts];
     child.llmConfig = { ...this.llmConfig };
+    child.envVars = { ...this.envVars };
     child.eventCallback = this.eventCallback;
 
     return child;

@@ -1,9 +1,19 @@
 {
+  "llm": {
+    "provider": "openai",
+    "base_url": "https://api.openai.com/v1",
+    "api_key": "${OPENAI_API_KEY}",
+    "model": "gpt-4o"
+  },
+  "last_used_params": {},
+  "dashboard_shortcuts": [],
   "user_contexts": [
     {
       "id": "default",
       "type": "llm",
       "context": "You are a helpful assistant. Be concise, accurate, and focus on delivering clear answers. When summarizing content, preserve key facts and main ideas while removing redundancy."
     }
-  ]
+  ],
+  "external_mcps": [],
+  "skill_registries": []
 }

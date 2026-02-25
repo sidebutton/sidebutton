@@ -26,6 +26,17 @@ export type {
   // Run log types
   RunLogMetadata,
   RunLog,
+  // Context types
+  RoleContext,
+  TargetContext,
+  PersonaContext,
+  ContextConfig,
+  // Provider types
+  ConnectorType,
+  ConnectorDefinition,
+  ConnectorStatus,
+  ProviderDefinition,
+  ProviderStatus,
   // Settings types
   DashboardShortcut,
   UserContext,
@@ -44,6 +55,20 @@ export type {
   // API types
   HealthResponse,
   WorkflowSummary,
+  // Skill pack types
+  SkillPackManifest,
+  InstalledPack,
+  SkillPackDetail,
+  ContextSummary,
+  ContextSource,
+  // Skill module types
+  SkillModule,
+  // Agent types
+  AgentMetrics,
+  AgentStatus,
+  AgentJob,
+  // Publisher types
+  Publisher,
 } from '@sidebutton/core';
 
 // ============================================================================
@@ -163,10 +188,20 @@ export interface LogEntry {
 }
 
 // Application views
-export type ViewType = "dashboard" | "actions" | "workflows" | "recordings" | "run-logs" | "action-detail" | "workflow-detail" | "execution" | "recording-detail" | "run-log-detail" | "settings";
+export type ViewType =
+  | "dashboard"
+  | "skills" | "skill-detail" | "module-detail"
+  | "library"
+  | "agents" | "agent-detail"
+  | "recordings" | "recording-detail"
+  | "run-logs" | "run-log-detail"
+  | "execution"
+  | "settings"
+  // Legacy views (kept for redirect support)
+  | "actions" | "action-detail" | "workflows" | "workflow-detail";
 
 // Active page for drawer navigation
-export type PageType = "dashboard" | "actions" | "workflows" | "recordings" | "run-logs";
+export type PageType = "dashboard" | "skills" | "library" | "agents" | "recordings";
 
 // View state for navigation
 export interface ViewState {
@@ -176,6 +211,9 @@ export interface ViewState {
   selectedWorkflowId: string | null;
   selectedRecordingId: string | null;
   selectedRunLogId: string | null;
+  selectedSkillDomain: string | null;
+  selectedModulePath: string | null;
+  selectedAgentId: string | null;
 }
 
 // Running workflow (dashboard-specific, uses run_id not runId)

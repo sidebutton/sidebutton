@@ -22,6 +22,9 @@ import {
   executeBrowserSnapshot,
   executeBrowserInjectCSS,
   executeBrowserInjectJS,
+  executeBrowserSelectOption,
+  executeBrowserScrollIntoView,
+  executeBrowserFill,
 } from './browser.js';
 
 import {
@@ -33,6 +36,7 @@ import {
 import {
   executeLlmClassify,
   executeLlmGenerate,
+  executeLlmDecide,
 } from './llm.js';
 
 import {
@@ -49,6 +53,23 @@ import {
 } from './workflow.js';
 
 import { executeDataFirst, executeDataGet, executeVariableSet } from './data.js';
+
+import {
+  executeIssuesCreate,
+  executeIssuesGet,
+  executeIssuesSearch,
+  executeIssuesAttach,
+  executeIssuesTransition,
+  executeIssuesComment,
+} from './issues.js';
+
+import {
+  executeGitListPRs,
+  executeGitGetPR,
+  executeGitCreatePR,
+  executeGitListIssues,
+  executeGitGetIssue,
+} from './git.js';
 
 /**
  * Execute a single step
@@ -86,6 +107,12 @@ export async function executeStep(
       return executeBrowserInjectCSS(step, ctx);
     case 'browser.injectJS':
       return executeBrowserInjectJS(step, ctx);
+    case 'browser.select_option':
+      return executeBrowserSelectOption(step, ctx);
+    case 'browser.scrollIntoView':
+      return executeBrowserScrollIntoView(step, ctx);
+    case 'browser.fill':
+      return executeBrowserFill(step, ctx);
     case 'shell.run':
       return executeShellRun(step, ctx);
     case 'terminal.open':
@@ -96,6 +123,8 @@ export async function executeStep(
       return executeLlmClassify(step, ctx);
     case 'llm.generate':
       return executeLlmGenerate(step, ctx);
+    case 'llm.decide':
+      return executeLlmDecide(step, ctx);
     case 'control.if':
       return executeControlIf(step, ctx);
     case 'control.retry':
@@ -112,6 +141,35 @@ export async function executeStep(
       return executeDataGet(step, ctx);
     case 'variable.set':
       return executeVariableSet(step, ctx);
+    case 'issues.create':
+      return executeIssuesCreate(step, ctx);
+    case 'issues.get':
+      return executeIssuesGet(step, ctx);
+    case 'issues.search':
+      return executeIssuesSearch(step, ctx);
+    case 'issues.attach':
+      return executeIssuesAttach(step, ctx);
+    case 'issues.transition':
+      return executeIssuesTransition(step, ctx);
+    case 'issues.comment':
+      return executeIssuesComment(step, ctx);
+    case 'git.listPRs':
+      return executeGitListPRs(step, ctx);
+    case 'git.getPR':
+      return executeGitGetPR(step, ctx);
+    case 'git.createPR':
+      return executeGitCreatePR(step, ctx);
+    case 'git.listIssues':
+      return executeGitListIssues(step, ctx);
+    case 'git.getIssue':
+      return executeGitGetIssue(step, ctx);
+    case 'chat.listChannels':
+    case 'chat.readChannel':
+    case 'chat.readThread':
+      throw new WorkflowError(
+        `${step.type} requires a chat provider (Slack). Coming soon.`,
+        'NOT_IMPLEMENTED',
+      );
     default:
       throw new WorkflowError(
         `Unknown step type: ${(step as { type: string }).type}`,
@@ -149,6 +207,28 @@ export function hasOwnRetryLogic(step: Step): boolean {
     step.type === 'control.if' ||
     step.type === 'workflow.call'
   );
+}
+
+/**
+ * Return every step type the engine supports (for dynamic _system.md).
+ */
+export function getAllStepTypes(): string[] {
+  return [
+    'browser.navigate', 'browser.click', 'browser.type', 'browser.scroll',
+    'browser.extract', 'browser.extractAll', 'browser.extractMap',
+    'browser.wait', 'browser.exists', 'browser.hover', 'browser.key',
+    'browser.snapshot', 'browser.injectCSS', 'browser.injectJS',
+    'browser.select_option', 'browser.scrollIntoView', 'browser.fill',
+    'shell.run', 'terminal.open', 'terminal.run',
+    'llm.classify', 'llm.generate', 'llm.decide',
+    'control.if', 'control.retry', 'control.foreach', 'control.stop',
+    'workflow.call',
+    'data.first', 'data.get', 'variable.set',
+    'issues.create', 'issues.get', 'issues.search', 'issues.attach',
+    'issues.transition', 'issues.comment',
+    'chat.listChannels', 'chat.readChannel', 'chat.readThread',
+    'git.listPRs', 'git.getPR', 'git.createPR', 'git.listIssues', 'git.getIssue',
+  ];
 }
 
 // Export setter functions for circular dependency resolution

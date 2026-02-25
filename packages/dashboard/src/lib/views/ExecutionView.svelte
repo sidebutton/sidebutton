@@ -7,7 +7,7 @@
     isRunning,
     currentRunId,
   } from "../stores";
-  import { navigateBack, navigateToWorkflowDetail, navigateToActionDetail } from "../router";
+  import { navigateBack } from "../router";
   import { initWebSocket } from "../websocket";
   import type { Action } from "../types";
 
@@ -47,13 +47,7 @@
   }
 
   function handleBack() {
-    if ($viewState.selectedWorkflowId) {
-      navigateToWorkflowDetail($viewState.selectedWorkflowId);
-    } else if ($viewState.selectedActionId) {
-      navigateToActionDetail($viewState.selectedActionId);
-    } else {
-      navigateBack();
-    }
+    navigateBack();
   }
 
   function handleDone() {

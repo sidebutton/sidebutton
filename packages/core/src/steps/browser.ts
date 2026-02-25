@@ -24,6 +24,9 @@ type BrowserKey = Extract<Step, { type: 'browser.key' }>;
 type BrowserSnapshot = Extract<Step, { type: 'browser.snapshot' }>;
 type BrowserInjectCSS = Extract<Step, { type: 'browser.injectCSS' }>;
 type BrowserInjectJS = Extract<Step, { type: 'browser.injectJS' }>;
+type BrowserSelectOption = Extract<Step, { type: 'browser.select_option' }>;
+type BrowserScrollIntoView = Extract<Step, { type: 'browser.scrollIntoView' }>;
+type BrowserFill = Extract<Step, { type: 'browser.fill' }>;
 
 function requireExtension(ctx: ExecutionContext) {
   if (!ctx.extensionClient) {
@@ -216,7 +219,19 @@ export async function executeBrowserInjectJS(
   const id = step.id ? ctx.interpolate(step.id) : undefined;
 
   ctx.emitLog('info', `Injecting JavaScript${id ? ` (id: ${id})` : ''}`);
-  await ext.injectJS(js, id);
+  const response = await ext.injectJS(js, id);
+
+  if (response.error) {
+    ctx.emitLog('warn', `JS execution error: ${response.error}`);
+  }
+
+  const raw = response.error ? response.error : (response.result ?? '');
+  const resultValue = typeof raw === 'string' ? raw : JSON.stringify(raw);
+  ctx.lastStepResult = resultValue;
+
+  if (step.as) {
+    ctx.variables[step.as] = resultValue;
+  }
 }
 
 export async function executeBrowserExtractMap(
@@ -232,4 +247,42 @@ export async function executeBrowserExtractMap(
 
   ctx.lastStepResult = text;
   ctx.variables[step.as] = text;
+}
+
+export async function executeBrowserSelectOption(
+  step: BrowserSelectOption,
+  ctx: ExecutionContext
+): Promise<void> {
+  const ext = requireExtension(ctx);
+  const selector = ctx.interpolate(step.selector);
+  const value = step.value ? ctx.interpolate(step.value) : undefined;
+  const label = step.label ? ctx.interpolate(step.label) : undefined;
+
+  ctx.emitLog('info', `Selecting option in: ${selector} (value=${value}, label=${label})`);
+  const selected = await ext.selectOption(selector, undefined, value, label);
+  ctx.lastStepResult = selected;
+}
+
+export async function executeBrowserScrollIntoView(
+  step: BrowserScrollIntoView,
+  ctx: ExecutionContext
+): Promise<void> {
+  const ext = requireExtension(ctx);
+  const selector = ctx.interpolate(step.selector);
+  const block = step.block ?? 'center';
+
+  ctx.emitLog('info', `Scrolling into view: ${selector} (block: ${block})`);
+  await ext.scrollIntoView(selector, block);
+}
+
+export async function executeBrowserFill(
+  step: BrowserFill,
+  ctx: ExecutionContext
+): Promise<void> {
+  const ext = requireExtension(ctx);
+  const selector = ctx.interpolate(step.selector);
+  const value = ctx.interpolate(step.value);
+
+  ctx.emitLog('info', `Filling input: ${selector}`);
+  await ext.fill(selector, value);
 }

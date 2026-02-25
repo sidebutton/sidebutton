@@ -30,9 +30,6 @@
       font-size: 11px;
       opacity: 0.85;
     }
-    .header .subtitle.disconnected {
-      color: rgba(255,255,255,0.7);
-    }
     .content {
       padding: 16px;
     }
@@ -54,9 +51,9 @@
       background: #fee2e2;
       color: #991b1b;
     }
-    .status.hosted {
-      background: #dbeafe;
-      color: #1e40af;
+    .status.connecting {
+      background: #fef9c3;
+      color: #854d0e;
     }
     .status-dot {
       width: 8px;
@@ -70,8 +67,13 @@
     .status.disconnected .status-dot {
       background: #ef4444;
     }
-    .status.hosted .status-dot {
-      background: #3b82f6;
+    .status.connecting .status-dot {
+      background: #eab308;
+      animation: pulse-dot 1s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
     }
     .status-text {
       flex: 1;
@@ -109,66 +111,12 @@
       transform: translateY(-1px);
       box-shadow: 0 4px 12px rgba(21, 195, 154, 0.3);
     }
-    .btn-accent {
-      background: #F97316;
-      color: white;
-    }
-    .btn-accent:hover:not(:disabled) {
-      background: #EA580C;
-    }
     .btn-secondary {
       background: #f3f4f6;
       color: #374151;
     }
     .btn-secondary:hover:not(:disabled) {
       background: #e5e7eb;
-    }
-    .btn-danger {
-      background: #fef2f2;
-      color: #dc2626;
-    }
-    .btn-danger:hover:not(:disabled) {
-      background: #fee2e2;
-    }
-
-    /* Divider */
-    .divider {
-      display: flex;
-      align-items: center;
-      margin: 12px 0;
-      color: #9ca3af;
-      font-size: 11px;
-    }
-    .divider::before, .divider::after {
-      content: "";
-      flex: 1;
-      height: 1px;
-      background: #e5e7eb;
-    }
-    .divider span {
-      padding: 0 12px;
-    }
-
-    /* MCP URL section */
-    .url-section {
-      margin-bottom: 12px;
-    }
-    .url-section label {
-      display: block;
-      font-size: 11px;
-      font-weight: 500;
-      color: #64748b;
-      margin-bottom: 6px;
-    }
-    .url-box {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 6px;
-      padding: 10px 12px;
-      font-family: "SF Mono", Monaco, monospace;
-      font-size: 11px;
-      word-break: break-all;
-      color: #334155;
     }
 
     /* Instructions */
@@ -178,18 +126,17 @@
       padding: 12px;
       margin-bottom: 12px;
     }
-    .instructions-title {
-      font-size: 11px;
-      font-weight: 600;
-      color: #334155;
-      margin-bottom: 8px;
+    .instructions code {
+      background: #e2e8f0;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: "SF Mono", Monaco, monospace;
+      font-size: 12px;
     }
-    .instructions ol {
-      font-size: 11px;
+    .instructions-text {
+      font-size: 12px;
       color: #64748b;
-      padding-left: 16px;
-      line-height: 1.6;
-      margin: 0;
+      line-height: 1.5;
     }
 
     /* Actions row */
@@ -309,13 +256,9 @@
       opacity: 1;
     }
 
-    /* View switching */
-    .view {
-      display: none;
-    }
-    .view.active {
-      display: block;
-    }
+    /* State visibility */
+    .state { display: none; }
+    .state.active { display: block; }
 
     /* Features toggles */
     .features-section {
@@ -401,70 +344,22 @@
 
   <div class="content">
     <!-- ================================================================== -->
-    <!-- View 1: Disconnected - Show connect options -->
+    <!-- State A: Connecting -->
     <!-- ================================================================== -->
-    <div id="view-disconnected" class="view">
-      <div class="status disconnected">
+    <div id="state-connecting" class="state">
+      <div class="status connecting">
         <div class="status-dot"></div>
         <div class="status-text">
-          <div class="status-label">Not Connected</div>
-          <div class="status-detail">Choose a connection method</div>
+          <div class="status-label">Connecting...</div>
+          <div class="status-detail">Reaching local server</div>
         </div>
       </div>
-
-      <!-- Hosted mode option -->
-      <button id="login-btn" class="btn btn-primary">
-        <svg style="width:16px;height:16px;margin-right:6px;vertical-align:middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <path d="M8 12l2 2 4-4"></path>
-        </svg>
-        Login to SideButton
-      </button>
-
-      <div class="divider"><span>or</span></div>
-
-      <!-- Local server option -->
-      <button id="connect-local-btn" class="btn btn-secondary">Connect Local Server</button>
     </div>
 
     <!-- ================================================================== -->
-    <!-- View 2: Hosted Mode Connected - Show MCP URL + Tab Controls -->
+    <!-- State B: Connected -->
     <!-- ================================================================== -->
-    <div id="view-hosted" class="view">
-      <div class="status hosted">
-        <div class="status-dot"></div>
-        <div class="status-text">
-          <div class="status-label">Connected to Cloud</div>
-          <div id="hosted-email" class="status-detail">demo@sidebutton.com</div>
-        </div>
-      </div>
-
-      <!-- Tab connection status -->
-      <div id="hosted-tab-status" class="status disconnected" style="margin-bottom: 12px;">
-        <div class="status-dot"></div>
-        <div class="status-text">
-          <div class="status-label" id="hosted-tab-label">No Tab Connected</div>
-          <div class="status-detail" id="hosted-tab-detail">Click below to connect a tab</div>
-        </div>
-      </div>
-
-      <button id="hosted-connect-tab-btn" class="btn btn-accent">Connect Current Tab</button>
-
-      <div class="divider"><span>MCP URL</span></div>
-
-      <div class="url-section">
-        <div class="url-box" id="mcp-url">https://sidebutton.com/api/mcp</div>
-      </div>
-
-      <button id="copy-url-btn" class="btn btn-secondary">Copy URL</button>
-
-      <button id="signout-btn" class="btn btn-danger" style="margin-top: 12px;">Sign Out</button>
-    </div>
-
-    <!-- ================================================================== -->
-    <!-- View 3: Local Mode Connected - Show dashboard controls -->
-    <!-- ================================================================== -->
-    <div id="view-local" class="view">
+    <div id="state-connected" class="state">
       <div id="status" class="status connected">
         <div class="status-dot"></div>
         <div class="status-text">
@@ -514,7 +409,29 @@
       </div>
     </div>
 
-    <!-- Features toggles (visible in all views) -->
+    <!-- ================================================================== -->
+    <!-- State C: Not Connected -->
+    <!-- ================================================================== -->
+    <div id="state-disconnected" class="state">
+      <div class="status disconnected">
+        <div class="status-dot"></div>
+        <div class="status-text">
+          <div class="status-label">Not Connected</div>
+          <div class="status-detail">Server not reachable</div>
+        </div>
+      </div>
+
+      <div class="instructions">
+        <div class="instructions-text">
+          Start SideButton server: <code>npx sidebutton</code>
+        </div>
+      </div>
+
+      <button id="connect-btn" class="btn btn-primary">Connect</button>
+      <button id="dashboard-btn-disconnected" class="btn btn-secondary">Open Dashboard</button>
+    </div>
+
+    <!-- Features toggles (visible in all states) -->
     <div class="features-section">
       <div class="features-title">Features</div>
       <div class="toggle-row">
@@ -524,16 +441,6 @@
         </div>
         <label class="toggle-switch">
           <input type="checkbox" id="toggle-embed" checked>
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-      <div class="toggle-row">
-        <div class="toggle-info">
-          <span class="toggle-label">Chat Panel</span>
-          <span class="toggle-desc">Show AI chat button</span>
-        </div>
-        <label class="toggle-switch">
-          <input type="checkbox" id="toggle-chat-panel" checked>
           <span class="toggle-slider"></span>
         </label>
       </div>

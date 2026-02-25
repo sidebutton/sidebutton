@@ -14,11 +14,39 @@ import {
   ExecutionContext,
   executeWorkflow,
   loadWorkflowsFromDir,
+  loadWorkflow,
 } from '@sidebutton/core';
 import type { ExtensionClientImpl } from '../extension.js';
 import { MCP_TOOLS } from './tools.js';
 import { reportRunLog } from '../services/report.js';
+import { loadContextAll, loadTargets, loadRoles } from '../context.js';
+import { matchTarget } from '../matching.js';
 import { VERSION } from '../version.js';
+
+/**
+ * Recursively load all YAML workflows from a directory tree (for skill packs).
+ */
+function loadWorkflowsRecursive(dir: string): Workflow[] {
+  const workflows: Workflow[] = [];
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        workflows.push(...loadWorkflowsRecursive(fullPath));
+      } else if (entry.name.endsWith('.yaml') || entry.name.endsWith('.yml')) {
+        try {
+          workflows.push(loadWorkflow(fullPath));
+        } catch {
+          // skip invalid workflows
+        }
+      }
+    }
+  } catch {
+    // skip unreadable dirs
+  }
+  return workflows;
+}
 
 function extractDomain(url: string | undefined): string | undefined {
   if (!url) return undefined;
@@ -64,6 +92,7 @@ export class McpHandler {
   private workflowsDir: string;
   private templatesDir: string;
   private runLogsDir: string;
+  private configDir: string;
   private extensionClient: ExtensionClientImpl;
   private actions: Workflow[] = [];
   private workflows: Workflow[] = [];
@@ -76,12 +105,14 @@ export class McpHandler {
     workflowsDir: string,
     templatesDir: string,
     runLogsDir: string,
-    extensionClient: ExtensionClientImpl
+    extensionClient: ExtensionClientImpl,
+    configDir?: string,
   ) {
     this.actionsDir = actionsDir;
     this.workflowsDir = workflowsDir;
     this.templatesDir = templatesDir;
     this.runLogsDir = runLogsDir;
+    this.configDir = configDir ?? actionsDir;
     this.extensionClient = extensionClient;
     this.reload();
   }
@@ -101,7 +132,7 @@ export class McpHandler {
   }
 
   /**
-   * Reload workflows from disk
+   * Reload workflows from disk (actions, workflows, templates, and skill packs)
    */
   reload(): void {
     this.actions = loadWorkflowsFromDir(this.actionsDir);
@@ -109,13 +140,28 @@ export class McpHandler {
     this.templates = fs.existsSync(this.templatesDir)
       ? loadWorkflowsFromDir(this.templatesDir)
       : [];
+
+    // Load workflows from installed skill packs: skills/<domain>/**/*.yaml
+    const skillsDir = path.join(this.configDir, 'skills');
+    if (fs.existsSync(skillsDir)) {
+      try {
+        for (const domain of fs.readdirSync(skillsDir)) {
+          const domainDir = path.join(skillsDir, domain);
+          if (!fs.statSync(domainDir).isDirectory()) continue;
+          const skillWorkflows = loadWorkflowsRecursive(domainDir);
+          this.workflows.push(...skillWorkflows);
+        }
+      } catch {
+        // skip if skills dir unreadable
+      }
+    }
   }
 
   /**
    * Load settings from actions directory
    */
   private loadSettings(): Settings {
-    const settingsPath = path.join(this.actionsDir, 'settings.json');
+    const settingsPath = path.join(this.configDir, 'settings.json');
     const defaultSettings: Settings = {
       llm: { provider: 'openai', base_url: 'https://api.openai.com/v1', api_key: '', model: 'gpt-4o' },
       last_used_params: {},
@@ -135,6 +181,7 @@ export class McpHandler {
           dashboard_shortcuts: settings.dashboard_shortcuts ?? [],
           user_contexts: settings.user_contexts ?? [],
           reporting: settings.reporting,
+          skill_registries: settings.skill_registries,
         };
       }
     } catch (e) {
@@ -313,6 +360,7 @@ export class McpHandler {
         name: 'sidebutton',
         version: VERSION,
       },
+      instructions: this.buildInstructions(),
     };
   }
 
@@ -343,14 +391,32 @@ export class McpHandler {
         return this.toolClick(args);
       case 'type':
         return this.toolType(args);
+      case 'press_key':
+        return this.toolPressKey(args);
       case 'scroll':
         return this.toolScroll(args);
+      case 'select_option':
+        return this.toolSelectOption(args);
       case 'extract':
         return this.toolExtract(args);
       case 'screenshot':
-        return this.toolScreenshot();
+        return this.toolScreenshot(args);
+      case 'fill':
+        return this.toolFill(args);
+      case 'wait':
+        return this.toolWait(args);
+      case 'exists':
+        return this.toolExists(args);
+      case 'extract_all':
+        return this.toolExtractAll(args);
+      case 'extract_map':
+        return this.toolExtractMap(args);
+      case 'scroll_into_view':
+        return this.toolScrollIntoView(args);
       case 'hover':
         return this.toolHover(args);
+      case 'evaluate':
+        return this.toolEvaluate(args);
       default:
         throw new Error(`Tool not found: ${name}`);
     }
@@ -392,6 +458,13 @@ export class McpHandler {
     ctx.llmConfig = settings.llm;
     ctx.repos = settings.repos ?? {};
 
+    // Inject env-type user contexts as envVars (for platform providers)
+    for (const uc of settings.user_contexts ?? []) {
+      if (uc.type === 'env') {
+        ctx.envVars[uc.name] = uc.value;
+      }
+    }
+
     // Filter user contexts by type and domain match
     const pageUrl = params.page_url;
     const requestDomain = extractDomain(pageUrl);
@@ -403,6 +476,32 @@ export class McpHandler {
         return requestDomain === uc.domain || requestDomain.endsWith('.' + uc.domain);
       })
       .map(uc => uc.context) ?? [];
+
+    // Inject persona, enabled roles, and matching targets
+    const contextConfig = loadContextAll(this.configDir, ctx.envVars, settings.provider_connectors);
+
+    if (contextConfig.persona.body.trim()) {
+      ctx.userContexts.unshift(`[Persona]\n${contextConfig.persona.body}`);
+    }
+
+    for (const role of contextConfig.roles) {
+      if (role.enabled !== false && role.body.trim()) {
+        ctx.userContexts.push(`[Role: ${role.name}]\n${role.body}`);
+      }
+    }
+
+    const categoryDomain = workflow?.category?.domain;
+    for (const target of contextConfig.targets) {
+      if (target.filename === '_system.md') continue;
+      if (target.enabled === false) continue;
+      if (!target.body.trim()) continue;
+
+      if (target.match.length > 0) {
+        if (!matchTarget(target.match, requestDomain, workflowId, categoryDomain)) continue;
+      }
+
+      ctx.userContexts.push(`[Target: ${target.name}]\n${target.body}`);
+    }
 
     // Track as running (shared tracker broadcasts automatically)
     if (this.runningWorkflowsTracker) {
@@ -694,6 +793,29 @@ export class McpHandler {
     }
   }
 
+  private async toolPressKey(args: Record<string, unknown>): Promise<unknown> {
+    if (!(await this.extensionClient.isConnected())) {
+      throw new Error('Browser not connected');
+    }
+
+    const key = args.key as string;
+    if (!key) {
+      throw new Error('key parameter is required');
+    }
+
+    const selector = args.selector as string | undefined;
+    const ref = args.ref as number | undefined;
+
+    // If ref provided, click it first to focus (same pattern as typeRef)
+    if (ref !== undefined) {
+      await this.extensionClient.clickRef(ref);
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    await this.extensionClient.pressKey(key, ref !== undefined ? undefined : selector);
+    return { content: [{ type: 'text', text: `Pressed key: ${key}` }] };
+  }
+
   private async toolScroll(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
       throw new Error('Browser not connected');
@@ -706,6 +828,29 @@ export class McpHandler {
     return { content: [{ type: 'text', text: `Scrolled ${direction} by ${amount}px` }] };
   }
 
+  private async toolSelectOption(args: Record<string, unknown>): Promise<unknown> {
+    if (!(await this.extensionClient.isConnected())) {
+      throw new Error('Browser not connected');
+    }
+
+    const selector = args.selector as string | undefined;
+    const ref = args.ref as number | undefined;
+    const value = args.value as string | undefined;
+    const label = args.label as string | undefined;
+    const element = args.element as string | undefined;
+
+    if (!selector && ref === undefined) {
+      throw new Error('Either selector or ref must be provided');
+    }
+    if (value === undefined && label === undefined) {
+      throw new Error('Either value or label must be provided');
+    }
+
+    const selected = await this.extensionClient.selectOption(selector, ref, value, label);
+    const desc = element ? `"${element}"` : (selector ?? `ref=${ref}`);
+    return { content: [{ type: 'text', text: `Selected "${selected}" in ${desc}` }] };
+  }
+
   private async toolExtract(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
       throw new Error('Browser not connected');
@@ -716,12 +861,16 @@ export class McpHandler {
     return { content: [{ type: 'text', text }] };
   }
 
-  private async toolScreenshot(): Promise<unknown> {
+  private async toolScreenshot(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
       throw new Error('Browser not connected');
     }
 
-    const imageData = await this.extensionClient.screenshot();
+    const ref = args.ref as number | undefined;
+    const selector = args.selector as string | undefined;
+    const region = args.region as { x: number; y: number; width: number; height: number } | undefined;
+
+    const imageData = await this.extensionClient.screenshot({ ref, selector, region });
     return {
       content: [{
         type: 'image',
@@ -729,6 +878,87 @@ export class McpHandler {
         mimeType: 'image/png',
       }],
     };
+  }
+
+  private async toolFill(args: Record<string, unknown>): Promise<unknown> {
+    if (!(await this.extensionClient.isConnected())) {
+      throw new Error('Browser not connected');
+    }
+
+    const selector = args.selector as string;
+    const value = args.value as string;
+    if (!selector) throw new Error('selector parameter is required');
+    if (value === undefined) throw new Error('value parameter is required');
+
+    await this.extensionClient.fill(selector, value);
+    return { content: [{ type: 'text', text: `Filled "${selector}" with "${value}"` }] };
+  }
+
+  private async toolWait(args: Record<string, unknown>): Promise<unknown> {
+    if (!(await this.extensionClient.isConnected())) {
+      throw new Error('Browser not connected');
+    }
+
+    const selector = args.selector as string;
+    const timeout = (args.timeout as number) ?? 5000;
+    if (!selector) throw new Error('selector parameter is required');
+
+    await this.extensionClient.waitForElement(selector, timeout);
+    return { content: [{ type: 'text', text: `Element found: ${selector}` }] };
+  }
+
+  private async toolExists(args: Record<string, unknown>): Promise<unknown> {
+    if (!(await this.extensionClient.isConnected())) {
+      throw new Error('Browser not connected');
+    }
+
+    const selector = args.selector as string;
+    const timeout = (args.timeout as number) ?? 2000;
+    if (!selector) throw new Error('selector parameter is required');
+
+    const found = await this.extensionClient.exists(selector, timeout);
+    return { content: [{ type: 'text', text: JSON.stringify({ exists: found, selector }) }] };
+  }
+
+  private async toolExtractAll(args: Record<string, unknown>): Promise<unknown> {
+    if (!(await this.extensionClient.isConnected())) {
+      throw new Error('Browser not connected');
+    }
+
+    const selector = args.selector as string;
+    const separator = (args.separator as string) ?? '\n';
+    const attribute = args.attribute as string | undefined;
+    if (!selector) throw new Error('selector parameter is required');
+
+    const text = await this.extensionClient.extractAll(selector, separator, attribute);
+    return { content: [{ type: 'text', text }] };
+  }
+
+  private async toolExtractMap(args: Record<string, unknown>): Promise<unknown> {
+    if (!(await this.extensionClient.isConnected())) {
+      throw new Error('Browser not connected');
+    }
+
+    const selector = args.selector as string;
+    const fields = args.fields as Record<string, { selector: string; attribute?: string }>;
+    if (!selector) throw new Error('selector parameter is required');
+    if (!fields) throw new Error('fields parameter is required');
+
+    const text = await this.extensionClient.extractMap(selector, fields);
+    return { content: [{ type: 'text', text }] };
+  }
+
+  private async toolScrollIntoView(args: Record<string, unknown>): Promise<unknown> {
+    if (!(await this.extensionClient.isConnected())) {
+      throw new Error('Browser not connected');
+    }
+
+    const selector = args.selector as string;
+    const block = args.block as string | undefined;
+    if (!selector) throw new Error('selector parameter is required');
+
+    await this.extensionClient.scrollIntoView(selector, block);
+    return { content: [{ type: 'text', text: `Scrolled into view: ${selector}` }] };
   }
 
   private async toolHover(args: Record<string, unknown>): Promise<unknown> {
@@ -741,6 +971,152 @@ export class McpHandler {
     return { content: [{ type: 'text', text: `Hovered over: ${selector}` }] };
   }
 
+  private async toolEvaluate(args: Record<string, unknown>): Promise<unknown> {
+    if (!(await this.extensionClient.isConnected())) {
+      throw new Error('Browser not connected');
+    }
+
+    const js = args.js as string;
+    if (!js) {
+      throw new Error('js parameter is required');
+    }
+
+    const response = await this.extensionClient.injectJS(js);
+
+    if (response.error) {
+      return { content: [{ type: 'text', text: `Error: ${response.error}` }] };
+    }
+
+    const result = response.result;
+    const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+    return { content: [{ type: 'text', text: text ?? 'undefined' }] };
+  }
+
+  /**
+   * Build dynamic instructions for the MCP initialize response.
+   * Scans installed skill packs and enumerates modules/roles.
+   */
+  private buildInstructions(): string {
+    const lines: string[] = [];
+    lines.push('# SideButton — Workflow Automation MCP Server');
+    lines.push('');
+    lines.push('## Skill Packs (Domain Knowledge)');
+    lines.push('');
+    lines.push('SideButton bundles domain knowledge as MCP resources with skill:// URIs.');
+    lines.push('Before working with a domain or module, load the relevant skills.');
+    lines.push('');
+    lines.push('### How to Load Skills');
+    lines.push('');
+    lines.push('1. List available skill resources using MCP resources/list');
+    lines.push('2. Read a skill using MCP resources/read with its skill:// URI');
+    lines.push('');
+    lines.push('Each module has two key resources:');
+    lines.push('- **_skill.md** — Domain knowledge: UI selectors, data model, states, common tasks, gotchas');
+    lines.push('- **<role>.md** — Role instructions (e.g., qa.md = QA test playbook with test sequences and verification criteria)');
+    lines.push('');
+
+    // Dynamically scan installed skill packs
+    const skillsDir = path.join(this.configDir, 'skills');
+    if (fs.existsSync(skillsDir)) {
+      try {
+        const domains = fs.readdirSync(skillsDir).filter(d => {
+          const fullPath = path.join(skillsDir, d);
+          return fs.statSync(fullPath).isDirectory();
+        });
+
+        if (domains.length > 0) {
+          lines.push('### Installed Skill Packs');
+          lines.push('');
+
+          for (const domain of domains) {
+            const domainDir = path.join(skillsDir, domain);
+            const modules: string[] = [];
+            const rootRoles: string[] = [];
+
+            // Find modules (subdirectories containing _skill.md)
+            try {
+              for (const entry of fs.readdirSync(domainDir, { withFileTypes: true })) {
+                if (!entry.isDirectory()) continue;
+                if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue;
+                const skillFile = path.join(domainDir, entry.name, '_skill.md');
+                if (fs.existsSync(skillFile)) {
+                  modules.push(entry.name);
+                }
+              }
+            } catch { /* skip */ }
+
+            // Find root-level roles
+            const rolesDir = path.join(domainDir, '_roles');
+            if (fs.existsSync(rolesDir)) {
+              try {
+                for (const entry of fs.readdirSync(rolesDir)) {
+                  if (entry.endsWith('.md')) {
+                    rootRoles.push(entry.replace('.md', ''));
+                  }
+                }
+              } catch { /* skip */ }
+            }
+
+            const hasRootSkill = fs.existsSync(path.join(domainDir, '_skill.md'));
+
+            lines.push(`**${domain}** (${modules.length} modules):`);
+            if (modules.length > 0) {
+              lines.push(`  ${modules.join(', ')}`);
+            }
+            if (hasRootSkill) {
+              lines.push(`  Root skill: skill://${domain}/_skill.md`);
+            }
+            if (rootRoles.length > 0) {
+              lines.push(`  Global roles: ${rootRoles.map(r => `skill://${domain}/${r}.md`).join(', ')}`);
+            }
+            lines.push('');
+
+            // Example for first domain
+            if (domains.indexOf(domain) === 0 && modules.length > 0) {
+              const exampleModule = modules[0];
+              lines.push('Example — to load skills for a module:');
+              lines.push(`  Read resource: skill://${domain}/${exampleModule}/_skill.md`);
+              lines.push(`  Read resource: skill://${domain}/${exampleModule}/qa.md`);
+              lines.push('');
+            }
+          }
+        }
+      } catch { /* skip */ }
+    }
+
+    lines.push('## Workflows (Already Available as Tool Calls)');
+    lines.push('');
+    lines.push('Workflows are exposed as MCP tools — they are already callable directly:');
+    lines.push('- list_workflows — discover available workflows with IDs and required parameters');
+    lines.push('- run_workflow — execute a workflow by ID with params, returns a run_id');
+    lines.push('- get_run_log — get detailed execution results using the run_id');
+    lines.push('');
+    lines.push('workflow:// resources exist for reference only (YAML source code).');
+    lines.push('To execute a workflow, always use the run_workflow tool — not resources/read.');
+    lines.push('');
+    lines.push('## Browser Tools');
+    lines.push('');
+    lines.push('- Check get_browser_status before using any browser tool');
+    lines.push('- **snapshot is your primary tool** — `snapshot(includeContent=true)` returns the FULL page content as markdown + complete accessibility tree with element refs. One call, no scrolling needed. Use this for all content discovery, element mapping, and ref gathering.');
+    lines.push('- **screenshot is a secondary tool** — only use for: (1) visual verification of CSS states (colors, animations, visibility), (2) evidence collection (before/after for QA), (3) first-visit layout baseline when you need to see visual design. Never use screenshot to "read" page content — snapshot already has it.');
+    lines.push('- **press_key** sends native keyboard events — use for Tab navigation (e.g., between iframe fields), keyboard shortcuts, and form submission');
+    lines.push('- **fill** sets input values programmatically with React/Vue/Angular event dispatch — use when **type** (keystroke simulation) doesn\'t trigger framework change handlers');
+    lines.push('- **wait** and **exists** check for element presence — use `wait` to block until an element appears, `exists` for non-throwing boolean checks');
+    lines.push('- **extract_all** and **extract_map** extract bulk/structured data — use for lists, tables, and repeated elements');
+    lines.push('- **scroll_into_view** scrolls a specific element into the viewport — more precise than generic `scroll`');
+    lines.push('- Always take a fresh snapshot after any action that modifies the page — refs change on re-render');
+    lines.push('');
+    lines.push('### Screenshot Cropping (when you DO use screenshot)');
+    lines.push('');
+    lines.push('ALWAYS pass one of these params to crop instead of capturing the full viewport:');
+    lines.push('- `ref` — element ref from snapshot. **Best option**: no coordinate math needed.');
+    lines.push('- `selector` — CSS selector (e.g., `{"selector": "main"}`). Good for page sections.');
+    lines.push('- `region` — manual rect. Use to skip repeated chrome (sidebars, headers).');
+    lines.push('- No params = full viewport. **Only acceptable for first visit to a new page**.');
+
+    return lines.join('\n');
+  }
+
   private handleResourcesList(): unknown {
     const resources = [];
 
@@ -748,7 +1124,7 @@ export class McpHandler {
       resources.push({
         uri: `workflow://${action.id}`,
         name: action.title,
-        description: `User action: ${action.id}`,
+        description: `Executable workflow '${action.title}' — already callable as a tool via run_workflow(workflow_id='${action.id}'). This resource contains YAML source for reference only.`,
         mimeType: 'application/x-yaml',
       });
     }
@@ -757,8 +1133,35 @@ export class McpHandler {
       resources.push({
         uri: `workflow://${workflow.id}`,
         name: workflow.title,
-        description: `Published workflow: ${workflow.id}`,
+        description: `Executable workflow '${workflow.title}' — already callable as a tool via run_workflow(workflow_id='${workflow.id}'). This resource contains YAML source for reference only.`,
         mimeType: 'application/x-yaml',
+      });
+    }
+
+    // Add skill resources (targets and roles from skill packs)
+    const targets = loadTargets(this.configDir);
+    for (const target of targets) {
+      if (!target.filename.startsWith('skill:')) continue;
+      if (target.enabled === false) continue;
+      const resourcePath = target.filename.slice('skill:'.length);
+      resources.push({
+        uri: `skill://${resourcePath}`,
+        name: target.name,
+        description: `Domain knowledge for ${target.name} — contains UI selectors, data model, states, and gotchas. Read this resource before interacting with the module.`,
+        mimeType: 'text/markdown',
+      });
+    }
+
+    const roles = loadRoles(this.configDir);
+    for (const role of roles) {
+      if (!role.filename.startsWith('skill:')) continue;
+      if (role.enabled === false) continue;
+      const resourcePath = role.filename.slice('skill:'.length);
+      resources.push({
+        uri: `skill://${resourcePath}`,
+        name: role.name,
+        description: `Agent role: ${role.name} — contains role-specific instructions, test sequences, and verification criteria. Read this resource to understand how to perform the role.`,
+        mimeType: 'text/markdown',
       });
     }
 
@@ -767,11 +1170,35 @@ export class McpHandler {
 
   private handleResourcesRead(params?: Record<string, unknown>): unknown {
     const uri = params?.uri as string;
-    const workflowId = uri?.replace('workflow://', '');
-
-    if (!workflowId) {
-      throw new Error(`Invalid URI: ${uri}`);
+    if (!uri) {
+      throw new Error('Missing uri parameter');
     }
+
+    // Handle skill:// resources
+    if (uri.startsWith('skill://')) {
+      const skillFilename = 'skill:' + uri.slice('skill://'.length);
+
+      const targets = loadTargets(this.configDir);
+      const target = targets.find(t => t.filename === skillFilename);
+      if (target) {
+        return {
+          contents: [{ uri, mimeType: 'text/markdown', text: target.body }],
+        };
+      }
+
+      const roles = loadRoles(this.configDir);
+      const role = roles.find(r => r.filename === skillFilename);
+      if (role) {
+        return {
+          contents: [{ uri, mimeType: 'text/markdown', text: role.body }],
+        };
+      }
+
+      throw new Error(`Skill resource not found: ${uri}`);
+    }
+
+    // Handle workflow:// resources
+    const workflowId = uri.replace('workflow://', '');
 
     const workflow = this.findWorkflow(workflowId);
     if (!workflow) {

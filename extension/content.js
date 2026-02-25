@@ -89,11 +89,35 @@ async function handleMessage(msg) {
     case "getCoordinatesByRef":
       return getCoordinatesByRef(msg.ref);
 
+    case "getBoundsByRef":
+      return getBoundsByRef(msg.ref);
+
+    case "getBoundsBySelector":
+      return getBoundsBySelector(msg.selector);
+
+    case "selectOption":
+      return selectOption(msg.selector, msg.ref, msg.value, msg.label);
+
+    case "getDevicePixelRatio":
+      return { dpr: window.devicePixelRatio || 1 };
+
     case "injectCSS":
       return injectCSS(msg.css, msg.id);
 
     case "injectJS":
       return injectJS(msg.js, msg.id);
+
+    case "domClick":
+      return domClick(msg.selector);
+
+    case "scrollIntoView":
+      return scrollIntoViewAction(msg.selector, msg.block);
+
+    case "fill":
+      return fillInput(msg.selector, msg.value);
+
+    case "triggerInputEvents":
+      return triggerInputEvents(msg.selector);
 
     case "recording.start":
       startRecording();
@@ -114,6 +138,19 @@ async function handleMessage(msg) {
 
 function findElement(selector, timeout = 0) {
   let element = null;
+
+  // Handle comma-separated selectors containing :has-text() or :contains()
+  // Plain CSS comma selectors work natively via querySelector, but custom pseudo-selectors don't
+  if (selector.includes(",") && (selector.includes(":has-text(") || selector.includes(":contains("))) {
+    const parts = splitSelectorOnCommas(selector);
+    if (parts.length > 1) {
+      for (const part of parts) {
+        const found = findElement(part.trim());
+        if (found) return found;
+      }
+      return null;
+    }
+  }
 
   // Check for custom pseudo-selectors FIRST (before querySelector which would throw)
   // If a custom pseudo-selector is matched, we handle it and return - don't fall through to querySelector
@@ -150,6 +187,38 @@ function findElement(selector, timeout = 0) {
   return null;
 }
 
+/**
+ * Split a selector string on commas, respecting parentheses depth.
+ * e.g. "tr:has-text('foo'), td:has-text('bar')" → ["tr:has-text('foo')", "td:has-text('bar')"]
+ */
+function splitSelectorOnCommas(selector) {
+  const parts = [];
+  let depth = 0;
+  let current = "";
+
+  for (let i = 0; i < selector.length; i++) {
+    const ch = selector[i];
+    if (ch === "(" || ch === "[") {
+      depth++;
+      current += ch;
+    } else if (ch === ")" || ch === "]") {
+      depth--;
+      current += ch;
+    } else if (ch === "," && depth === 0) {
+      parts.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+
+  if (current.trim()) {
+    parts.push(current);
+  }
+
+  return parts;
+}
+
 function findByText(baseSelector, text) {
   const candidates = baseSelector === "*"
     ? document.body.querySelectorAll("*")
@@ -157,15 +226,22 @@ function findByText(baseSelector, text) {
 
   const lowerText = text.toLowerCase();
 
+  // Pass 1: Check direct text content (not nested)
   for (const el of candidates) {
-    // Check direct text content (not nested)
     const directText = getDirectTextContent(el).toLowerCase();
     if (directText.includes(lowerText)) {
       return el;
     }
   }
 
-  // Fallback: check full textContent
+  // Pass 2: Check innerText (handles <tr>/<td> — produces tab-separated cell text)
+  for (const el of candidates) {
+    if (el.innerText?.toLowerCase().includes(lowerText)) {
+      return el;
+    }
+  }
+
+  // Pass 3: Fallback to full textContent
   for (const el of candidates) {
     if (el.textContent?.toLowerCase().includes(lowerText)) {
       return el;
@@ -206,6 +282,37 @@ async function getCoordinates(selector) {
   const x = rect.left + rect.width / 2;
   const y = rect.top + rect.height / 2;
 
+  // Verify the element is actually clickable at computed coordinates
+  // (not obscured by sticky headers, overlays, etc.)
+  if (!isClickable(element, Math.round(x), Math.round(y))) {
+    // Retry scroll with extra padding to clear sticky headers
+    element.scrollIntoView({ behavior: "instant", block: "center" });
+    await sleep(150);
+    const rect2 = element.getBoundingClientRect();
+    const x2 = rect2.left + rect2.width / 2;
+    const y2 = rect2.top + rect2.height / 2;
+
+    if (!isClickable(element, Math.round(x2), Math.round(y2))) {
+      // Element is obscured — signal fallback to DOM click
+      return {
+        found: true,
+        x: Math.round(x2),
+        y: Math.round(y2),
+        width: rect2.width,
+        height: rect2.height,
+        fallbackClick: true,
+      };
+    }
+
+    return {
+      found: true,
+      x: Math.round(x2),
+      y: Math.round(y2),
+      width: rect2.width,
+      height: rect2.height,
+    };
+  }
+
   return {
     found: true,
     x: Math.round(x),
@@ -213,6 +320,17 @@ async function getCoordinates(selector) {
     width: rect.width,
     height: rect.height,
   };
+}
+
+/**
+ * Check if an element is actually at the given viewport coordinates
+ * (not obscured by sticky headers, overlays, etc.)
+ */
+function isClickable(element, x, y) {
+  const topEl = document.elementFromPoint(x, y);
+  if (!topEl) return false;
+  // The element at point is either the target or a descendant of it
+  return element === topEl || element.contains(topEl) || topEl.contains(element);
 }
 
 async function scrollIntoViewIfNeeded(element) {
@@ -371,6 +489,60 @@ function extractValue(element, attribute) {
   if (attribute === "textContent") return element.textContent?.trim() || '';
   if (attribute === "innerText") return element.innerText?.trim() || '';
   return element.getAttribute(attribute) || '';
+}
+
+/**
+ * Select an option in a native <select> element.
+ * Bypasses the native OS dropdown by setting value directly and dispatching events.
+ */
+function selectOption(selector, ref, value, label) {
+  // Resolve the <select> element
+  let element;
+  if (ref !== undefined) {
+    element = findElementByRef(Number(ref));
+  } else if (selector) {
+    element = findElement(selector);
+  }
+
+  if (!element) {
+    throw new Error(`Select element not found: ${selector || `ref=${ref}`}`);
+  }
+
+  // Walk up to <select> if we landed on an <option>
+  if (element.tagName === "OPTION") {
+    element = element.closest("select");
+  }
+
+  if (!element || element.tagName !== "SELECT") {
+    throw new Error(`Element is not a <select>: ${element?.tagName}`);
+  }
+
+  // Find the matching option
+  const options = Array.from(element.options);
+  let matched = null;
+
+  if (value !== undefined) {
+    matched = options.find(o => o.value === value);
+  }
+  if (!matched && label !== undefined) {
+    const lowerLabel = label.toLowerCase();
+    matched = options.find(o => o.textContent.trim().toLowerCase() === lowerLabel);
+    if (!matched) {
+      matched = options.find(o => o.textContent.trim().toLowerCase().includes(lowerLabel));
+    }
+  }
+
+  if (!matched) {
+    const available = options.map(o => `"${o.textContent.trim()}" (value="${o.value}")`).join(", ");
+    throw new Error(`Option not found. Available: ${available}`);
+  }
+
+  // Set the value and dispatch events (mirrors Playwright's selectOption)
+  element.value = matched.value;
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+  element.dispatchEvent(new Event("change", { bubbles: true }));
+
+  return { selected: matched.textContent.trim(), value: matched.value };
 }
 
 function extract(selector, attribute) {
@@ -1099,6 +1271,86 @@ function injectJS(js, id) {
 }
 
 // ============================================================================
+// DOM Click (fallback when CDP click is obscured)
+// ============================================================================
+
+function domClick(selector) {
+  const element = findElement(selector);
+  if (!element) {
+    throw new Error(`Element not found: ${selector}`);
+  }
+  element.click();
+  return { clicked: selector, method: "dom" };
+}
+
+// ============================================================================
+// Scroll Into View (explicit step action)
+// ============================================================================
+
+async function scrollIntoViewAction(selector, block) {
+  const element = findElement(selector);
+  if (!element) {
+    throw new Error(`Element not found: ${selector}`);
+  }
+  element.scrollIntoView({ behavior: "instant", block: block || "center" });
+  await sleep(100);
+  return { scrolled: selector };
+}
+
+// ============================================================================
+// Fill Input (React-compatible value setting)
+// ============================================================================
+
+function fillInput(selector, value) {
+  const element = findElement(selector);
+  if (!element) {
+    throw new Error(`Element not found: ${selector}`);
+  }
+
+  // Use native input value setter to bypass React's synthetic event system
+  const nativeSetter =
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set ||
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+
+  if (nativeSetter) {
+    nativeSetter.call(element, value);
+  } else {
+    element.value = value;
+  }
+
+  // Dispatch events that React listens to
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+  element.dispatchEvent(new Event("change", { bubbles: true }));
+
+  return { filled: selector, value };
+}
+
+// ============================================================================
+// Trigger Input Events (for React compatibility after CDP input)
+// ============================================================================
+
+function triggerInputEvents(selector) {
+  const element = findElement(selector);
+  if (!element) {
+    throw new Error(`Element not found: ${selector}`);
+  }
+
+  // Use native setter to trigger React's internal change tracking
+  const nativeSetter =
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set ||
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+
+  if (nativeSetter) {
+    nativeSetter.call(element, element.value);
+  }
+
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+  element.dispatchEvent(new Event("change", { bubbles: true }));
+
+  return { triggered: selector };
+}
+
+// ============================================================================
 // Core Stylesheet
 // ============================================================================
 
@@ -1753,17 +2005,8 @@ class EmbedManager {
     this.observer = null;
     this.connected = false;
     this.enabled = true;
-    this.panelButtonVisible = true;
-    this.panelButtonTop = 50;
     this.resultBubble = new ResultBubble();
     this.promptPopover = new PromptPopover();
-
-    // Listen for panel button position/visibility updates
-    document.addEventListener("sidebutton:panelButtonInfo", (e) => {
-      this.panelButtonVisible = e.detail.visible;
-      this.panelButtonTop = e.detail.top;
-      this.updateDockState();
-    });
   }
 
   setConfigs(configs, connected) {
@@ -1872,8 +2115,10 @@ class EmbedManager {
       return;
     }
 
-    // V2: Find ALL target elements (querySelectorAll)
-    const targets = document.querySelectorAll(embed.selector);
+    // V2: Find ALL target elements (querySelectorAll), filter to visible only
+    const allTargets = document.querySelectorAll(embed.selector);
+    if (!allTargets.length) return;
+    const targets = Array.from(allTargets).filter(el => el.offsetWidth > 0 || el.offsetHeight > 0);
     if (!targets.length) return;
 
     let injectedCount = 0;
@@ -2170,14 +2415,14 @@ class EmbedManager {
             continue;
           }
 
-          // Single element extraction
+          // Single element extraction (try target-relative, fall back to document)
           let el;
           if (extractConfig.selector === 'self' || !extractConfig.selector) {
             el = target;
           } else if (useDocument || !target) {
             el = document.querySelector(extractConfig.selector);
           } else {
-            el = target.querySelector(extractConfig.selector);
+            el = target.querySelector(extractConfig.selector) || document.querySelector(extractConfig.selector);
           }
           if (el) {
             let value;
@@ -2185,6 +2430,10 @@ class EmbedManager {
               value = el.textContent?.trim();
             } else if (extractConfig.attribute === "innerText") {
               value = el.innerText?.trim();
+            } else if (extractConfig.attribute === "location.href") {
+              value = window.location.href;
+            } else if (extractConfig.attribute === "location.pathname") {
+              value = window.location.pathname;
             } else {
               value = el.getAttribute(extractConfig.attribute);
             }
@@ -2356,15 +2605,7 @@ class EmbedManager {
 
     container.classList.remove("ta-dock--empty");
 
-    if (this.panelButtonVisible && this.panelButtonTop != null) {
-      // Position dock so its bottom edge sits 8px above the S button's top edge
-      // S button center at panelButtonTop%, height 48px → top edge at (panelButtonTop% - 24px)
-      // Dock bottom from viewport bottom = (100 - panelButtonTop)% + 24px + 8px
-      container.style.bottom = `calc(${100 - this.panelButtonTop}% + 32px)`;
-    } else {
-      // No panel button or unknown position - use default
-      container.style.bottom = "calc(50% + 32px)";
-    }
+    container.style.bottom = "calc(50% + 32px)";
   }
 
   removeAllButtons() {
@@ -2738,6 +2979,50 @@ async function getCoordinatesByRef(ref) {
     y: Math.round(y),
     width: rect.width,
     height: rect.height,
+  };
+}
+
+/**
+ * Get full bounding rect for element by ref (for screenshot cropping)
+ */
+async function getBoundsByRef(ref) {
+  const element = findElementByRef(ref);
+  if (!element) {
+    return { found: false, error: `Element not found for ref=${ref}` };
+  }
+
+  await scrollIntoViewIfNeeded(element);
+  await waitForStable(element);
+
+  const rect = element.getBoundingClientRect();
+  return {
+    found: true,
+    x: Math.round(rect.left),
+    y: Math.round(rect.top),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
+  };
+}
+
+/**
+ * Get full bounding rect for element by CSS selector (for screenshot cropping)
+ */
+async function getBoundsBySelector(selector) {
+  const element = document.querySelector(selector);
+  if (!element) {
+    return { found: false, error: `Element not found for selector: ${selector}` };
+  }
+
+  await scrollIntoViewIfNeeded(element);
+  await waitForStable(element);
+
+  const rect = element.getBoundingClientRect();
+  return {
+    found: true,
+    x: Math.round(rect.left),
+    y: Math.round(rect.top),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
   };
 }
 

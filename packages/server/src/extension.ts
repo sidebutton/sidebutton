@@ -389,10 +389,19 @@ export class ExtensionClientImpl implements ExtensionClient {
   }
 
   /**
-   * Capture screenshot
+   * Capture screenshot (full viewport or cropped to element/region)
    */
-  async screenshot(): Promise<string> {
-    const response = await this.sendCommand('screenshot', {});
+  async screenshot(opts?: {
+    ref?: number;
+    selector?: string;
+    region?: { x: number; y: number; width: number; height: number };
+  }): Promise<string> {
+    const params: Record<string, unknown> = {};
+    if (opts?.ref !== undefined) params.ref = opts.ref;
+    if (opts?.selector) params.selector = opts.selector;
+    if (opts?.region) params.region = opts.region;
+
+    const response = await this.sendCommand('screenshot', params);
     if (!response.ok) {
       throw new Error(response.error ?? 'Screenshot failed');
     }
@@ -437,6 +446,33 @@ export class ExtensionClientImpl implements ExtensionClient {
     }
   }
 
+  async selectOption(selector: string | undefined, ref: number | undefined, value: string | undefined, label: string | undefined): Promise<string> {
+    const params: Record<string, unknown> = {};
+    if (selector) params.selector = selector;
+    if (ref !== undefined) params.ref = String(ref);
+    if (value !== undefined) params.value = value;
+    if (label !== undefined) params.label = label;
+    const response = await this.sendCommand('selectOption', params);
+    if (!response.ok) {
+      throw new Error(response.error ?? 'SelectOption failed');
+    }
+    return (response.result?.selected as string) ?? '';
+  }
+
+  async fill(selector: string, value: string): Promise<void> {
+    const response = await this.sendCommand('fill', { selector, value });
+    if (!response.ok) {
+      throw new Error(response.error ?? 'Fill failed');
+    }
+  }
+
+  async scrollIntoView(selector: string, block?: string): Promise<void> {
+    const response = await this.sendCommand('scrollIntoView', { selector, block });
+    if (!response.ok) {
+      throw new Error(response.error ?? 'ScrollIntoView failed');
+    }
+  }
+
   async injectCSS(css: string, id?: string): Promise<void> {
     const params: Record<string, unknown> = { css };
     if (id) params.id = id;
@@ -446,13 +482,14 @@ export class ExtensionClientImpl implements ExtensionClient {
     }
   }
 
-  async injectJS(js: string, id?: string): Promise<void> {
+  async injectJS(js: string, id?: string): Promise<{ executed: boolean; result?: unknown; error?: string }> {
     const params: Record<string, unknown> = { js };
     if (id) params.id = id;
     const response = await this.sendCommand('injectJS', params);
     if (!response.ok) {
       throw new Error(response.error ?? 'InjectJS failed');
     }
+    return response as any;
   }
 
   /**

@@ -12,16 +12,16 @@ export function interpolate(
   variables: Record<string, string>,
   params: Record<string, string>
 ): string {
-  let result = text;
+  let result = String(text);
 
-  // Replace variables
+  // Replace variables (use function replacement to prevent $ pattern interpretation)
   for (const [key, value] of Object.entries(variables)) {
-    result = result.replaceAll(`{{${key}}}`, value);
+    result = result.replaceAll(`{{${key}}}`, () => String(value));
   }
 
-  // Replace params
+  // Replace params (use function replacement to prevent $ pattern interpretation)
   for (const [key, value] of Object.entries(params)) {
-    result = result.replaceAll(`{{${key}}}`, value);
+    result = result.replaceAll(`{{${key}}}`, () => String(value));
   }
 
   return result;

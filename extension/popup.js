@@ -1,10 +1,8 @@
 // SideButton Browser Extension - Popup Script
-// Supports both local server mode and hosted (Claude Desktop) mode
+// Local server mode with auto-connect
 
 const DASHBOARD_URL = "http://localhost:9876";
 const ACTIONS_URL = `${DASHBOARD_URL}/actions`;
-const LOGIN_URL = "https://sidebutton.com/connect";
-const DEFAULT_MCP_URL = "https://sidebutton.com/api/mcp";
 
 // ============================================================================
 // DOM Elements
@@ -12,26 +10,12 @@ const DEFAULT_MCP_URL = "https://sidebutton.com/api/mcp";
 
 const headerSubtitle = document.getElementById("header-subtitle");
 
-// Views
-const viewDisconnected = document.getElementById("view-disconnected");
-const viewHosted = document.getElementById("view-hosted");
-const viewLocal = document.getElementById("view-local");
+// State containers
+const stateConnecting = document.getElementById("state-connecting");
+const stateConnected = document.getElementById("state-connected");
+const stateDisconnected = document.getElementById("state-disconnected");
 
-// Disconnected view elements
-const loginBtn = document.getElementById("login-btn");
-const connectLocalBtn = document.getElementById("connect-local-btn");
-
-// Hosted view elements
-const hostedEmail = document.getElementById("hosted-email");
-const hostedTabStatus = document.getElementById("hosted-tab-status");
-const hostedTabLabel = document.getElementById("hosted-tab-label");
-const hostedTabDetail = document.getElementById("hosted-tab-detail");
-const hostedConnectTabBtn = document.getElementById("hosted-connect-tab-btn");
-const mcpUrl = document.getElementById("mcp-url");
-const copyUrlBtn = document.getElementById("copy-url-btn");
-const signoutBtn = document.getElementById("signout-btn");
-
-// Local view elements
+// Connected state elements
 const statusEl = document.getElementById("status");
 const statusDetail = document.getElementById("status-detail");
 const dashboardBtn = document.getElementById("dashboard-btn");
@@ -41,46 +25,47 @@ const disconnectBtn = document.getElementById("disconnect-btn");
 const focusBtn = document.getElementById("focus-btn");
 const recordBtn = document.getElementById("record-btn");
 
-// Feature toggle elements
+// Disconnected state elements
+const connectBtn = document.getElementById("connect-btn");
+const dashboardBtnDisconnected = document.getElementById("dashboard-btn-disconnected");
+
+// Feature toggle
 const toggleEmbed = document.getElementById("toggle-embed");
-const toggleChatPanel = document.getElementById("toggle-chat-panel");
 
 // ============================================================================
 // State
 // ============================================================================
 
 let currentStatus = {
-  mode: "disconnected", // "disconnected", "local", "hosted"
   connected: false,
   wsConnected: false,
-  hostedConnected: false,
   tabId: null,
   recording: false,
-  email: null,
-  mcpUrl: null,
 };
+
+let autoConnectAttempted = false;
 
 // ============================================================================
 // View Switching
 // ============================================================================
 
-function showView(viewName) {
-  viewDisconnected.classList.remove("active");
-  viewHosted.classList.remove("active");
-  viewLocal.classList.remove("active");
+function showState(stateName) {
+  stateConnecting.classList.remove("active");
+  stateConnected.classList.remove("active");
+  stateDisconnected.classList.remove("active");
 
-  switch (viewName) {
-    case "disconnected":
-      viewDisconnected.classList.add("active");
-      headerSubtitle.textContent = "Choose connection";
+  switch (stateName) {
+    case "connecting":
+      stateConnecting.classList.add("active");
+      headerSubtitle.textContent = "Connecting...";
       break;
-    case "hosted":
-      viewHosted.classList.add("active");
-      headerSubtitle.textContent = "Claude Desktop Mode";
-      break;
-    case "local":
-      viewLocal.classList.add("active");
+    case "connected":
+      stateConnected.classList.add("active");
       headerSubtitle.textContent = "Browser Automation";
+      break;
+    case "disconnected":
+      stateDisconnected.classList.add("active");
+      headerSubtitle.textContent = "Not Connected";
       break;
   }
 }
@@ -90,34 +75,10 @@ function showView(viewName) {
 // ============================================================================
 
 function updateUI() {
-  const { mode, connected, wsConnected, hostedConnected, tabId, recording, email } = currentStatus;
+  const { connected, wsConnected, tabId, recording } = currentStatus;
 
-  // Determine which view to show
-  if (mode === "hosted" && (email || hostedConnected)) {
-    showView("hosted");
-    hostedEmail.textContent = email || "Connected";
-    mcpUrl.textContent = currentStatus.mcpUrl || DEFAULT_MCP_URL;
-
-    // Update tab connection status in hosted view
-    if (tabId && connected) {
-      hostedTabStatus.classList.remove("disconnected");
-      hostedTabStatus.classList.add("connected");
-      hostedTabLabel.textContent = "Tab Connected";
-      hostedTabDetail.textContent = "Ready for automation";
-      hostedConnectTabBtn.textContent = "Disconnect Tab";
-      hostedConnectTabBtn.classList.remove("btn-accent");
-      hostedConnectTabBtn.classList.add("btn-secondary");
-    } else {
-      hostedTabStatus.classList.remove("connected");
-      hostedTabStatus.classList.add("disconnected");
-      hostedTabLabel.textContent = "No Tab Connected";
-      hostedTabDetail.textContent = "Click below to connect a tab";
-      hostedConnectTabBtn.textContent = "Connect Current Tab";
-      hostedConnectTabBtn.classList.remove("btn-secondary");
-      hostedConnectTabBtn.classList.add("btn-accent");
-    }
-  } else if (mode === "local" && connected) {
-    showView("local");
+  if (connected && tabId) {
+    showState("connected");
 
     if (!wsConnected) {
       statusEl.classList.remove("connected");
@@ -139,107 +100,67 @@ function updateUI() {
       recordBtn.closest(".icon-btn-wrapper").querySelector(".tooltip").textContent = "Record";
     }
   } else {
-    showView("disconnected");
+    showState("disconnected");
   }
 }
 
 function refreshStatus() {
   chrome.runtime.sendMessage({ from: "popup", action: "getStatus" }, (response) => {
     if (response) {
-      currentStatus = {
-        ...currentStatus,
-        ...response,
-      };
+      currentStatus = { ...currentStatus, ...response };
       updateUI();
     }
   });
 }
 
 // ============================================================================
-// Hosted Mode Actions
+// Auto-Connect
 // ============================================================================
 
-// Login button - opens website login page
-loginBtn.addEventListener("click", () => {
-  // Get extension ID to pass to login page
-  const extId = chrome.runtime.id;
-  const url = `${LOGIN_URL}?ext=${extId}`;
-  chrome.tabs.create({ url });
-  window.close();
-});
+function attemptAutoConnect() {
+  if (autoConnectAttempted) return;
+  autoConnectAttempted = true;
 
-// Copy URL button
-copyUrlBtn.addEventListener("click", () => {
-  const url = mcpUrl.textContent;
-  navigator.clipboard.writeText(url).then(() => {
-    copyUrlBtn.textContent = "Copied!";
-    setTimeout(() => {
-      copyUrlBtn.textContent = "Copy URL";
-    }, 2000);
-  });
-});
+  showState("connecting");
 
-// Sign out button
-signoutBtn.addEventListener("click", async () => {
-  await chrome.runtime.sendMessage({ from: "popup", action: "hostedSignout" });
-  await chrome.storage.local.remove(["hostedEmail", "hostedUserCode", "hostedMcpUrl", "mode"]);
-  currentStatus = {
-    ...currentStatus,
-    mode: "disconnected",
-    email: null,
-    mcpUrl: null,
-    hostedConnected: false,
-  };
-  updateUI();
-});
-
-// Hosted mode: Connect/Disconnect tab button
-hostedConnectTabBtn.addEventListener("click", () => {
-  if (currentStatus.tabId && currentStatus.connected) {
-    // Disconnect from tab
-    chrome.runtime.sendMessage({ from: "popup", action: "disconnect" }, () => {
-      refreshStatus();
-    });
-  } else {
-    // Connect to current tab
-    chrome.runtime.sendMessage({ from: "popup", action: "connect" }, (response) => {
-      if (response?.error) {
-        console.error("[SideButton]", response.error);
-        hostedConnectTabBtn.textContent = "Connection failed";
-        setTimeout(() => {
-          hostedConnectTabBtn.textContent = "Connect Current Tab";
-        }, 2000);
-      }
-      refreshStatus();
-    });
-  }
-});
-
-// ============================================================================
-// Local Mode Actions
-// ============================================================================
-
-// Connect to local server
-connectLocalBtn.addEventListener("click", () => {
   chrome.runtime.sendMessage({ from: "popup", action: "connect" }, (response) => {
     if (response?.error) {
-      console.error("[SideButton]", response.error);
-      // Show error state
-      connectLocalBtn.textContent = "Connection failed";
+      // Auto-connect failed, show disconnected state
+      showState("disconnected");
+    }
+    refreshStatus();
+  });
+}
+
+// ============================================================================
+// Actions
+// ============================================================================
+
+// Manual connect button
+connectBtn.addEventListener("click", () => {
+  showState("connecting");
+  chrome.runtime.sendMessage({ from: "popup", action: "connect" }, (response) => {
+    if (response?.error) {
+      connectBtn.textContent = "Connection failed";
+      showState("disconnected");
       setTimeout(() => {
-        connectLocalBtn.textContent = "Connect Local Server";
+        connectBtn.textContent = "Connect";
       }, 2000);
     }
     refreshStatus();
   });
 });
 
-// Dashboard button - opens dashboard in new tab
+// Dashboard buttons
 dashboardBtn.addEventListener("click", () => {
   chrome.tabs.create({ url: DASHBOARD_URL });
 });
 
-// Actions row - opens actions page
+dashboardBtnDisconnected.addEventListener("click", () => {
+  chrome.tabs.create({ url: DASHBOARD_URL });
+});
+
+// Actions row
 actionsRow.addEventListener("click", () => {
   chrome.tabs.create({ url: ACTIONS_URL });
 });
@@ -272,19 +193,13 @@ recordBtn.addEventListener("click", () => {
 });
 
 // ============================================================================
-// Feature Toggles
+// Feature Toggle
 // ============================================================================
 
 toggleEmbed.addEventListener("change", () => {
   const enabled = toggleEmbed.checked;
   chrome.storage.local.set({ embedButtonsEnabled: enabled });
   chrome.runtime.sendMessage({ from: "popup", action: "setEmbedEnabled", enabled });
-});
-
-toggleChatPanel.addEventListener("change", () => {
-  const enabled = toggleChatPanel.checked;
-  chrome.storage.local.set({ chatPanelEnabled: enabled });
-  chrome.runtime.sendMessage({ from: "popup", action: "setChatPanelEnabled", enabled });
 });
 
 // ============================================================================
@@ -307,24 +222,29 @@ async function fetchActionsCount() {
 // Initialize
 // ============================================================================
 
-// Load saved hosted credentials on popup open
 async function initialize() {
-  const data = await chrome.storage.local.get([
-    "hostedEmail", "hostedUserCode", "hostedMcpUrl", "mode",
-    "embedButtonsEnabled", "chatPanelEnabled",
-  ]);
-
-  if (data.mode === "hosted" && data.hostedEmail) {
-    currentStatus.mode = "hosted";
-    currentStatus.email = data.hostedEmail;
-    currentStatus.mcpUrl = data.hostedMcpUrl || DEFAULT_MCP_URL;
-  }
-
-  // Restore feature toggle states (default: true)
+  // Restore feature toggle state
+  const data = await chrome.storage.local.get(["embedButtonsEnabled"]);
   toggleEmbed.checked = data.embedButtonsEnabled !== false;
-  toggleChatPanel.checked = data.chatPanelEnabled !== false;
 
-  refreshStatus();
+  // Check current status first
+  chrome.runtime.sendMessage({ from: "popup", action: "getStatus" }, (response) => {
+    if (response) {
+      currentStatus = { ...currentStatus, ...response };
+
+      if (currentStatus.connected && currentStatus.tabId) {
+        // Already connected - show connected state
+        updateUI();
+      } else {
+        // Not connected - attempt auto-connect
+        attemptAutoConnect();
+      }
+    } else {
+      // No response - try auto-connect
+      attemptAutoConnect();
+    }
+  });
+
   fetchActionsCount();
 }
 
@@ -333,6 +253,5 @@ initialize();
 // Poll for status updates
 setInterval(refreshStatus, 2000);
 
-// Refresh actions count periodically (less frequently)
+// Refresh actions count periodically
 setInterval(fetchActionsCount, 10000);
-

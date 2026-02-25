@@ -99,7 +99,8 @@
 </script>
 
 {#if isOpen}
-  <div class="modal-backdrop" onclick={handleBackdropClick} role="dialog" aria-modal="true">
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div class="modal-backdrop" onclick={handleBackdropClick} role="dialog" aria-modal="true" tabindex="-1">
     <div class="modal">
       <header class="modal-header">
         <h2>{editingContext ? 'Edit' : 'Add'} Context</h2>

@@ -6,12 +6,12 @@
   import { startRouter } from "./lib/router";
   import DrawerNav from "./lib/components/DrawerNav.svelte";
   import DashboardView from "./lib/views/DashboardView.svelte";
-  import ActionsView from "./lib/views/ActionsView.svelte";
-  import WorkflowsView from "./lib/views/WorkflowsView.svelte";
+  import SkillsView from "./lib/views/SkillsView.svelte";
+  import LibraryView from "./lib/views/LibraryView.svelte";
+  import AgentsView from "./lib/views/AgentsView.svelte";
   import RecordingsView from "./lib/views/RecordingsView.svelte";
+  import ModuleDetailView from "./lib/views/ModuleDetailView.svelte";
   import RunLogView from "./lib/views/RunLogView.svelte";
-  import ActionDetailView from "./lib/views/ActionDetailView.svelte";
-  import WorkflowDetailView from "./lib/views/WorkflowDetailView.svelte";
   import ExecutionView from "./lib/views/ExecutionView.svelte";
   import RecordingDetailView from "./lib/views/RecordingDetailView.svelte";
   import RunLogDetailView from "./lib/views/RunLogDetailView.svelte";
@@ -65,18 +65,18 @@
   <main>
     {#if $viewState.current === "dashboard"}
       <DashboardView />
-    {:else if $viewState.current === "actions"}
-      <ActionsView />
-    {:else if $viewState.current === "workflows"}
-      <WorkflowsView />
+    {:else if $viewState.current === "skills" || $viewState.current === "skill-detail"}
+      <SkillsView />
+    {:else if $viewState.current === "module-detail"}
+      <ModuleDetailView />
+    {:else if $viewState.current === "library"}
+      <LibraryView />
+    {:else if $viewState.current === "agents" || $viewState.current === "agent-detail"}
+      <AgentsView />
     {:else if $viewState.current === "recordings"}
       <RecordingsView />
     {:else if $viewState.current === "run-logs"}
       <RunLogView />
-    {:else if $viewState.current === "action-detail"}
-      <ActionDetailView />
-    {:else if $viewState.current === "workflow-detail"}
-      <WorkflowDetailView />
     {:else if $viewState.current === "execution"}
       <ExecutionView />
     {:else if $viewState.current === "recording-detail"}

@@ -1,16 +1,18 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { listWorkflows, listActions, runWorkflow, getSettings, saveSettings } from "../api";
-  import { mcpStatus, addLog, clearLogs, isRunning, settings as settingsStore, showToast } from "../stores";
-  import { navigateToExecution } from "../router";
-  import type { Action as Workflow, DashboardShortcut, Settings } from "../types";
+  import { listWorkflows, listActions, runWorkflow, getSettings, saveSettings, fetchSkillPacks, fetchSkillModules } from "../api";
+  import { mcpStatus, addLog, clearLogs, isRunning, settings as settingsStore, showToast, skillPacks, activeSkillPack, skillModules } from "../stores";
+  import { navigateToExecution, navigateToModuleDetail, navigateToLibrary } from "../router";
+  import type { Action as Workflow, DashboardShortcut, Settings, InstalledPack, SkillModule } from "../types";
   import ShortcutCard from "../components/ShortcutCard.svelte";
   import AddShortcutModal from "../components/AddShortcutModal.svelte";
   import ParamsModal from "../components/ParamsModal.svelte";
+  import ContextSummaryWidget from "../components/ContextSummaryWidget.svelte";
 
   let workflows = $state<Workflow[]>([]);
   let actions = $state<Workflow[]>([]);
   let shortcuts = $state<DashboardShortcut[]>([]);
+  let modules = $state<SkillModule[]>([]);
   let isLoading = $state(true);
 
   // Modal states
@@ -25,15 +27,26 @@
 
   async function loadData() {
     try {
-      const [loadedWorkflows, loadedActions, loadedSettings] = await Promise.all([
+      const [loadedWorkflows, loadedActions, loadedSettings, packs] = await Promise.all([
         listWorkflows(),
         listActions(),
-        getSettings()
+        getSettings(),
+        fetchSkillPacks(),
       ]);
       workflows = loadedWorkflows;
       actions = loadedActions;
       shortcuts = loadedSettings.dashboard_shortcuts || [];
       settingsStore.set(loadedSettings);
+      skillPacks.set(packs);
+
+      // Load modules for active skill pack
+      if (packs.length > 0) {
+        try {
+          const mods = await fetchSkillModules(packs[0].domain);
+          modules = mods;
+          skillModules.set(mods);
+        } catch { modules = []; }
+      }
     } catch (e) {
       console.error("Failed to load data:", e);
     } finally {
@@ -124,37 +137,22 @@
     const hasAllParams = requiredParams.every(key => shortcut.params[key] !== undefined);
 
     if (!hasAllParams && requiredParams.length > 0) {
-      // Show params modal with shortcut's pre-filled values
       paramsModalAction = action;
       paramsModalShortcut = shortcut;
       showParamsModal = true;
       return;
     }
 
-    // Run directly with shortcut params
     await executeWorkflow(action, shortcut.params);
   }
 
-  async function handleRunWorkflow(workflow: Workflow) {
-    const hasBrowserSteps = workflow.steps?.some((s: { type: string }) =>
-      typeof s.type === 'string' && s.type.startsWith("browser.")
-    );
-
-    if (hasBrowserSteps && !$mcpStatus.browser_connected) {
-      addLog("Browser not connected. Please connect first.", "error");
-      return;
+  async function handleRunModuleWorkflow(workflowId: string) {
+    try {
+      const result = await runWorkflow(workflowId, {});
+      navigateToExecution(workflowId, result.run_id);
+    } catch (e) {
+      showToast(`Failed to run: ${e}`, "error");
     }
-
-    // Check if workflow has params
-    const paramKeys = Object.keys(workflow.params || {});
-    if (paramKeys.length > 0) {
-      paramsModalAction = workflow;
-      paramsModalShortcut = null;
-      showParamsModal = true;
-      return;
-    }
-
-    await executeWorkflow(workflow, {});
   }
 
   async function executeWorkflow(workflow: Workflow, params: Record<string, string>) {
@@ -205,6 +203,54 @@
     {#if isLoading}
       <div class="loading">Loading...</div>
     {:else}
+      <ContextSummaryWidget />
+
+      <!-- Active Skill Pack Banner -->
+      {#if $activeSkillPack}
+        <div class="skill-pack-banner">
+          <div class="banner-info">
+            <span class="banner-icon">📦</span>
+            <div>
+              <h2>{$activeSkillPack.title || $activeSkillPack.name}</h2>
+              <span class="banner-meta">{$activeSkillPack.domain} · v{$activeSkillPack.version} · {modules.length} modules</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Module Cards Grid -->
+        {#if modules.length > 0}
+          <section class="section">
+            <div class="section-header">
+              <h2>Modules</h2>
+            </div>
+            <div class="modules-grid">
+              {#each modules as mod (mod.name)}
+                <button class="module-card" onclick={() => navigateToModuleDetail($activeSkillPack!.domain, mod.path)}>
+                  <div class="module-card-header">
+                    <span class="module-card-name">{mod.displayName}</span>
+                  </div>
+                  <span class="module-card-count">{mod.workflowCount} workflow{mod.workflowCount !== 1 ? 's' : ''}</span>
+                  {#if mod.workflows.length > 0}
+                    <div class="module-card-action">
+                      <!-- svelte-ignore a11y_no_static_element_interactions -->
+                      <span class="run-btn" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); handleRunModuleWorkflow(mod.workflows[0].id); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); handleRunModuleWorkflow(mod.workflows[0].id); } }}>
+                        ▶ Run
+                      </span>
+                    </div>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          </section>
+        {/if}
+      {:else}
+        <!-- No skill pack prompt -->
+        <div class="no-pack-banner">
+          <p>Install a skill pack from the Library to see modules here.</p>
+          <button class="btn btn-primary" onclick={() => navigateToLibrary()}>Go to Library</button>
+        </div>
+      {/if}
+
       <!-- Shortcuts Section -->
       {#if sortedShortcuts.length > 0}
         <section class="section">
@@ -230,8 +276,8 @@
         </section>
       {/if}
 
-      <!-- Empty state when no shortcuts -->
-      {#if sortedShortcuts.length === 0}
+      <!-- Empty state when no shortcuts and no skill pack -->
+      {#if sortedShortcuts.length === 0 && !$activeSkillPack}
         <div class="empty-state">
           <div class="empty-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -240,8 +286,7 @@
             </svg>
           </div>
           <h3>No Dashboard Shortcuts</h3>
-          <p>Add shortcuts from Actions or Workflows to quickly run them with pre-configured parameters.</p>
-          <p class="hint">Go to <strong>Actions</strong> or <strong>Workflows</strong>, open an item, and click "Add to Dashboard".</p>
+          <p>Add shortcuts from Skills or install a skill pack to get started.</p>
         </div>
       {/if}
     {/if}
@@ -308,6 +353,32 @@
     color: var(--color-text-secondary);
   }
 
+  /* Skill Pack Banner */
+  .skill-pack-banner {
+    padding: 16px 20px;
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    margin-bottom: 24px;
+  }
+
+  .banner-info { display: flex; align-items: center; gap: 12px; }
+  .banner-icon { font-size: 24px; }
+  .banner-info h2 { margin: 0; font-size: 18px; font-weight: 600; color: var(--color-text); }
+  .banner-meta { font-size: 13px; color: var(--color-text-secondary); }
+
+  /* No skill pack */
+  .no-pack-banner {
+    padding: 32px 24px;
+    background: var(--color-card);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .no-pack-banner p { margin: 0 0 12px; font-size: 14px; color: var(--color-text-secondary); }
+
+  /* Module Cards */
   .section {
     margin-bottom: 32px;
   }
@@ -321,12 +392,43 @@
 
   .section-header h2 {
     margin: 0;
-    font-size: 16px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--color-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
+
+  .modules-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+
+  .module-card {
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-align: left;
+  }
+  .module-card:hover { border-color: var(--color-primary); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+
+  .module-card-header { margin-bottom: 6px; }
+  .module-card-name { font-size: 15px; font-weight: 600; color: var(--color-text); }
+  .module-card-count { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 10px; }
+
+  .module-card-action { margin-top: auto; }
+  .run-btn {
+    padding: 4px 12px; font-size: 12px; font-weight: 500; border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text);
+    cursor: pointer; transition: all var(--transition-fast);
+  }
+  .run-btn:hover { background: var(--color-primary); color: white; border-color: var(--color-primary); }
 
   .shortcuts-grid {
     display: grid;
@@ -355,26 +457,15 @@
     opacity: 0.5;
   }
 
-  .empty-icon svg {
-    width: 100%;
-    height: 100%;
-  }
+  .empty-icon svg { width: 100%; height: 100%; }
 
-  .empty-state h3 {
-    margin: 0 0 12px;
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--color-text);
-  }
+  .empty-state h3 { margin: 0 0 12px; font-size: 18px; font-weight: 600; color: var(--color-text); }
+  .empty-state p { margin: 0 0 8px; font-size: 14px; max-width: 400px; }
 
-  .empty-state p {
-    margin: 0 0 8px;
-    font-size: 14px;
-    max-width: 400px;
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
+    border: none; border-radius: var(--radius-md); cursor: pointer; font-size: 14px; font-weight: 500;
   }
-
-  .empty-state .hint {
-    color: var(--color-text-muted);
-    font-size: 13px;
-  }
+  .btn-primary { background: var(--color-primary); color: white; }
+  .btn-primary:hover { opacity: 0.9; }
 </style>
