@@ -1,6 +1,6 @@
 {
   "name": "@sidebutton/core",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Core workflow engine for SideButton - YAML-based browser and shell automation",
   "keywords": [
     "workflow",
