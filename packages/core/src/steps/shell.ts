@@ -82,25 +82,11 @@ export async function executeTerminalOpen(
       );
     }
   } else {
-    // Linux: open a real GUI terminal window (XFCE/GNOME/xterm)
+    // Linux: defer terminal spawn to terminal.run so only ONE window opens
     ctx.terminalCwd = expandHome(cwd);
     ctx.terminalActive = true;
-
-    // Detect DISPLAY for X11 sessions (RDP typically uses :10)
-    const display = process.env.DISPLAY || ':10';
-    const resolvedCwd = ctx.terminalCwd || homedir();
-
-    try {
-      // Try xfce4-terminal (XFCE), then gnome-terminal, then xterm
-      const termCmd = `DISPLAY=${display} xfce4-terminal --working-directory="${resolvedCwd}"${title ? ` --title="${title.replace(/"/g, '\\"')}"` : ''}`;
-      spawn('sh', ['-c', termCmd], { detached: true, stdio: 'ignore' }).unref();
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    } catch (error) {
-      throw new WorkflowError(
-        `Failed to open terminal: ${error}`,
-        'TERMINAL_ERROR'
-      );
-    }
+    ctx.terminalTitle = title;
+    ctx.emitLog('info', 'Terminal session prepared (opens on first command)');
   }
 }
 
@@ -137,10 +123,14 @@ export async function executeTerminalRun(
 
     try {
       const scriptPath = join(tmpdir(), `sb-terminal-${Date.now()}.sh`);
-      writeFileSync(scriptPath, `#!/bin/bash\ncd ${resolvedCwd}\n${cmd}\nexec bash\n`);
+      writeFileSync(scriptPath, `#!/bin/bash\ncd "${resolvedCwd}"\n${cmd}\nexec bash\n`);
       chmodSync(scriptPath, 0o755);
 
-      const termCmd = `DISPLAY=${display} xfce4-terminal -e "${scriptPath}"`;
+      // Use title from terminal.open if available
+      const titleArg = ctx.terminalTitle
+        ? ` --title="${ctx.terminalTitle.replace(/"/g, '\\"')}"`
+        : '';
+      const termCmd = `DISPLAY=${display} xfce4-terminal${titleArg} -e "${scriptPath}"`;
       spawn('sh', ['-c', termCmd], { detached: true, stdio: 'ignore' }).unref();
       await new Promise((resolve) => setTimeout(resolve, 1000));
     } catch (error) {

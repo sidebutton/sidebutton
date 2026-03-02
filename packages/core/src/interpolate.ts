@@ -5,7 +5,7 @@
 
 /**
  * Interpolate variables in a string
- * Supports {{variable}} syntax for both variables and params
+ * Supports {{variable}} and {{ variable }} syntax (whitespace-tolerant)
  */
 export function interpolate(
   text: string,
@@ -14,15 +14,14 @@ export function interpolate(
 ): string {
   let result = String(text);
 
-  // Replace variables (use function replacement to prevent $ pattern interpretation)
-  for (const [key, value] of Object.entries(variables)) {
-    result = result.replaceAll(`{{${key}}}`, () => String(value));
-  }
+  // Build combined lookup (params override variables)
+  const lookup: Record<string, string> = { ...variables, ...params };
 
-  // Replace params (use function replacement to prevent $ pattern interpretation)
-  for (const [key, value] of Object.entries(params)) {
-    result = result.replaceAll(`{{${key}}}`, () => String(value));
-  }
+  // Single regex pass: match {{ key }} with optional whitespace
+  result = result.replace(/\{\{\s*([a-zA-Z_]\w*)\s*\}\}/g, (match, key: string) => {
+    if (key in lookup) return String(lookup[key]);
+    return match; // leave unmatched placeholders as-is
+  });
 
   return result;
 }

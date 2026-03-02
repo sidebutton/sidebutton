@@ -67,6 +67,9 @@ export class ExecutionContext {
   // Working directory for terminal session (Linux headless mode)
   terminalCwd?: string;
 
+  // Title for terminal window (set by terminal.open, used by terminal.run)
+  terminalTitle?: string;
+
   // Last step result (for display in logs)
   lastStepResult?: string;
 
@@ -142,6 +145,7 @@ export class ExecutionContext {
     child.callStack = [...this.callStack];
     child.terminalActive = this.terminalActive;
     child.terminalCwd = this.terminalCwd;
+    child.terminalTitle = this.terminalTitle;
     child.cancelled = this.cancelled;
     child.userContexts = [...this.userContexts];
     child.llmConfig = { ...this.llmConfig };
@@ -187,8 +191,8 @@ export class ExecutionContext {
     // First pass: replace regular variables and params
     let result = interpolateText(text, this.variables, this.params);
 
-    // Second pass: handle special _repo:org/repo syntax
-    const repoPattern = /\{\{_repo:([^}]+)\}\}/g;
+    // Second pass: handle special _repo:org/repo syntax (whitespace-tolerant)
+    const repoPattern = /\{\{\s*_repo:([^}]+?)\s*\}\}/g;
     result = result.replace(repoPattern, (_match, repoKey: string) => {
       const path = this.repos[repoKey.trim()];
       if (path) {
