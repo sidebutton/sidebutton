@@ -5,7 +5,9 @@
 
 import { exec, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
-import { platform, homedir } from 'node:os';
+import { platform, homedir, tmpdir } from 'node:os';
+import { writeFileSync, chmodSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Step } from '../types.js';
 import type { ExecutionContext } from '../context.js';
 import { WorkflowError } from '../types.js';
@@ -129,15 +131,17 @@ export async function executeTerminalRun(
       );
     }
   } else {
-    // Linux: launch command in a visible GUI terminal window (fire-and-forget)
+    // Linux: write command to temp script, launch in visible GUI terminal
     const display = process.env.DISPLAY || ':10';
     const resolvedCwd = ctx.terminalCwd || homedir();
-    const escapedCmd = cmd.replace(/'/g, "'\\''");
 
     try {
-      const termCmd = `DISPLAY=${display} xfce4-terminal --working-directory="${resolvedCwd}" -e "bash -c '${escapedCmd}; exec bash'"`;
+      const scriptPath = join(tmpdir(), `sb-terminal-${Date.now()}.sh`);
+      writeFileSync(scriptPath, `#!/bin/bash\ncd ${resolvedCwd}\n${cmd}\nexec bash\n`);
+      chmodSync(scriptPath, 0o755);
+
+      const termCmd = `DISPLAY=${display} xfce4-terminal -e "${scriptPath}"`;
       spawn('sh', ['-c', termCmd], { detached: true, stdio: 'ignore' }).unref();
-      // Fire-and-forget — workflow completes, user sees terminal on RDP
       await new Promise((resolve) => setTimeout(resolve, 1000));
     } catch (error) {
       throw new WorkflowError(
