@@ -5,13 +5,20 @@
 
 import { exec, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
-import { platform } from 'node:os';
+import { platform, homedir } from 'node:os';
 import type { Step } from '../types.js';
 import type { ExecutionContext } from '../context.js';
 import { WorkflowError } from '../types.js';
 
 const execAsync = promisify(exec);
 const IS_MAC = platform() === 'darwin';
+
+function expandHome(p: string | undefined): string | undefined {
+  if (!p) return p;
+  if (p.startsWith('~/')) return homedir() + p.slice(1);
+  if (p === '~') return homedir();
+  return p;
+}
 
 type ShellRun = Extract<Step, { type: 'shell.run' }>;
 type TerminalOpen = Extract<Step, { type: 'terminal.open' }>;
@@ -74,7 +81,7 @@ export async function executeTerminalOpen(
     }
   } else {
     // Linux: no GUI terminal needed — store cwd for subsequent terminal.run steps
-    ctx.terminalCwd = cwd;
+    ctx.terminalCwd = expandHome(cwd);
     ctx.terminalActive = true;
   }
 }
