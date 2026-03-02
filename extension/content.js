@@ -1968,11 +1968,22 @@ class PromptPopover {
 
     const anchorRect = anchor.getBoundingClientRect();
     const popoverRect = this.popover.getBoundingClientRect();
+    const padding = 10;
+    const gap = 12;
 
     let left = anchorRect.left + (anchorRect.width / 2) - (popoverRect.width / 2);
-    let top = anchorRect.bottom + window.scrollY + 12;
 
-    const padding = 10;
+    // Check if popover fits below the anchor
+    const spaceBelow = window.innerHeight - anchorRect.bottom - gap;
+    const openAbove = spaceBelow < popoverRect.height + padding;
+
+    let top;
+    if (openAbove) {
+      top = anchorRect.top + window.scrollY - popoverRect.height - gap;
+    } else {
+      top = anchorRect.bottom + window.scrollY + gap;
+    }
+
     if (left < padding) {
       left = padding;
     } else if (left + popoverRect.width > window.innerWidth - padding) {
@@ -1983,6 +1994,18 @@ class PromptPopover {
     if (arrow) {
       const arrowOffset = anchorRect.left + (anchorRect.width / 2) - left;
       arrow.style.left = `${arrowOffset}px`;
+      if (openAbove) {
+        // Flip arrow to bottom
+        arrow.style.top = "auto";
+        arrow.style.bottom = "-8px";
+        arrow.style.borderBottom = "none";
+        arrow.style.borderTop = "8px solid #F8FAFC";
+      }
+    }
+
+    // Flip entrance animation direction when opening above
+    if (openAbove) {
+      this.popover.style.transform = "translateY(6px)";
     }
 
     this.popover.style.left = `${left}px`;

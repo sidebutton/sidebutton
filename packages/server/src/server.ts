@@ -591,6 +591,24 @@ export async function startServer(config: ServerConfig): Promise<void> {
   await fastify.register(fastifyFormbody);
   await fastify.register(fastifyWebsocket);
 
+  // Bearer token auth for remote API requests
+  const agentToken = process.env.SIDEBUTTON_AGENT_TOKEN;
+  if (agentToken) {
+    fastify.addHook('onRequest', async (request, reply) => {
+      // Only protect /api/* routes
+      if (!request.url.startsWith('/api/')) return;
+
+      // Allow localhost without auth
+      const ip = request.ip;
+      if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') return;
+
+      const authHeader = request.headers.authorization;
+      if (!authHeader?.startsWith('Bearer ') || authHeader.slice(7) !== agentToken) {
+        reply.code(401).send({ error: 'Unauthorized' });
+      }
+    });
+  }
+
   // Serve dashboard if available
   const dashboardPath = config.dashboardDir ?? path.join(__dirname, '..', 'dashboard');
   if (fs.existsSync(dashboardPath)) {
@@ -2199,9 +2217,9 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
   fastify.get('/api/embed-workflows', async () => {
     mcpHandler.reload();
-    // Only return actions with embed config (not workflows)
-    const actions = mcpHandler.getAllActions();
-    const embedActions = actions.filter((a) => a.embed);
+    // Return all workflows with embed config (actions + published + skill packs)
+    const allWorkflows = mcpHandler.getAllWorkflows();
+    const embedActions = allWorkflows.filter((a) => a.embed);
     return {
       workflows: embedActions.map((a) => ({
         id: a.id,

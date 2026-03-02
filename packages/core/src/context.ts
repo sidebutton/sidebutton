@@ -64,6 +64,9 @@ export class ExecutionContext {
   // Whether a terminal session is active for this workflow
   terminalActive = false;
 
+  // Working directory for terminal session (Linux headless mode)
+  terminalCwd?: string;
+
   // Last step result (for display in logs)
   lastStepResult?: string;
 
@@ -138,6 +141,7 @@ export class ExecutionContext {
     child.currentDepth = this.currentDepth + 1;
     child.callStack = [...this.callStack];
     child.terminalActive = this.terminalActive;
+    child.terminalCwd = this.terminalCwd;
     child.cancelled = this.cancelled;
     child.userContexts = [...this.userContexts];
     child.llmConfig = { ...this.llmConfig };

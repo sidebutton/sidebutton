@@ -611,13 +611,92 @@ program
 
 program
   .command('publish [source]')
-  .description('Publish skill pack to registry')
-  .requiredOption('--registry <path>', 'Target registry directory')
+  .description('Publish skill pack to registry (local or remote)')
+  .option('--registry <path>', 'Target registry directory (local publish)')
+  .option('--remote [url]', 'Publish to remote website API (default: https://sidebutton.com)')
   .option('--dry-run', 'Validate without writing')
-  .action(async (source: string | undefined, options: { registry: string; dryRun?: boolean }) => {
-    const registryDir = path.resolve(options.registry);
-
+  .action(async (source: string | undefined, options: { registry?: string; remote?: string | boolean; dryRun?: boolean }) => {
     console.log(chalk.cyan('\n  SideButton\n'));
+
+    // Remote publish mode
+    if (options.remote !== undefined) {
+      if (!source) {
+        console.error(chalk.red('  Source directory is required for remote publish.\n'));
+        process.exit(1);
+      }
+      const sourceDir = path.resolve(source);
+      const { errors, warnings } = validateSkillPack(sourceDir);
+      for (const warn of warnings) {
+        console.log(`  ${chalk.yellow('!')} ${warn}`);
+      }
+      if (errors.length > 0) {
+        for (const err of errors) {
+          console.log(`  ${chalk.red('✗')} ${err}`);
+        }
+        console.log(chalk.red('\n  Publish aborted due to validation errors.\n'));
+        process.exit(1);
+      }
+
+      const manifest = readSkillPackManifest(sourceDir);
+      const baseUrl = typeof options.remote === 'string' ? options.remote : 'https://sidebutton.com';
+
+      // Load auth token
+      const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? process.cwd();
+      const authFile = path.join(homeDir, '.sidebutton', 'auth.json');
+      if (!fs.existsSync(authFile)) {
+        console.error(chalk.red('  Not logged in. Run `sidebutton login` first.\n'));
+        process.exit(1);
+      }
+      const authData = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
+      const token = authData.token;
+      if (!token) {
+        console.error(chalk.red('  No token found. Run `sidebutton login` first.\n'));
+        process.exit(1);
+      }
+
+      if (options.dryRun) {
+        console.log(`  [dry-run] Would publish ${manifest.domain}@${manifest.version} to ${baseUrl}\n`);
+        return;
+      }
+
+      try {
+        const res = await fetch(`${baseUrl}/api/skill-packs/publish`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            domain: manifest.domain,
+            name: manifest.title || manifest.domain,
+            version: manifest.version,
+            description: manifest.description || '',
+            tagline: manifest.tagline || '',
+            modules: manifest.modules || [],
+            roles: manifest.roles || [],
+            category: manifest.category || '',
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          console.error(chalk.red(`  Remote publish failed: ${data.error || res.statusText}\n`));
+          process.exit(1);
+        }
+        console.log(`  ${chalk.green('✓')} Published ${chalk.bold(manifest.domain)}@${manifest.version} to ${baseUrl}\n`);
+      } catch (err) {
+        console.error(chalk.red(`  Failed to connect to ${baseUrl}: ${err instanceof Error ? err.message : 'Unknown error'}\n`));
+        process.exit(1);
+      }
+      return;
+    }
+
+    // Local publish mode (requires --registry)
+    if (!options.registry) {
+      console.error(chalk.red('  Either --registry <path> or --remote is required.\n'));
+      process.exit(1);
+    }
+
+    const registryDir = path.resolve(options.registry);
 
     if (!fs.existsSync(registryDir)) {
       console.error(chalk.red(`  Registry directory not found: ${registryDir}\n`));
@@ -870,6 +949,69 @@ program
         console.log(`    ${pack.description}`);
       }
       console.log();
+    }
+  });
+
+// ============================================================================
+// Login command
+// ============================================================================
+
+program
+  .command('login')
+  .description('Authenticate with SideButton website for remote publishing')
+  .option('--url <url>', 'Website URL', 'https://sidebutton.com')
+  .option('--email <email>', 'Email address')
+  .action(async (options: { url: string; email?: string }) => {
+    console.log(chalk.cyan('\n  SideButton Login\n'));
+
+    let email = options.email;
+
+    if (!email) {
+      // Prompt for email
+      const readline = await import('node:readline');
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      email = await new Promise<string>((resolve) => {
+        rl.question('  Email: ', (answer) => {
+          rl.close();
+          resolve(answer.trim());
+        });
+      });
+    }
+
+    if (!email) {
+      console.error(chalk.red('  Email is required.\n'));
+      process.exit(1);
+    }
+
+    try {
+      const res = await fetch(`${options.url}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, cli: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        console.error(chalk.red(`  Login failed: ${data.error || res.statusText}\n`));
+        process.exit(1);
+      }
+
+      // Store token
+      const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? process.cwd();
+      const authDir = path.join(homeDir, '.sidebutton');
+      if (!fs.existsSync(authDir)) {
+        fs.mkdirSync(authDir, { recursive: true });
+      }
+      fs.writeFileSync(path.join(authDir, 'auth.json'), JSON.stringify({
+        url: options.url,
+        email: data.email,
+        token: data.token,
+      }, null, 2));
+
+      console.log(`  ${chalk.green('✓')} Logged in as ${chalk.bold(data.email)}`);
+      console.log(`  Token saved to ~/.sidebutton/auth.json\n`);
+    } catch (err) {
+      console.error(chalk.red(`  Failed to connect to ${options.url}: ${err instanceof Error ? err.message : 'Unknown error'}\n`));
+      process.exit(1);
     }
   });
 

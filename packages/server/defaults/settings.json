@@ -15,5 +15,12 @@
     }
   ],
   "external_mcps": [],
-  "skill_registries": []
+  "skill_registries": [
+    {
+      "name": "sidebutton-skill-packs",
+      "type": "git",
+      "url": "https://github.com/sidebutton/sidebutton-skill-packs",
+      "enabled": true
+    }
+  ]
 }

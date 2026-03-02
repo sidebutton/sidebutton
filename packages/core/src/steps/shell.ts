@@ -3,13 +3,15 @@
  * Implements: shell.run, terminal.open, terminal.run
  */
 
-import { exec } from 'node:child_process';
+import { exec, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
+import { platform } from 'node:os';
 import type { Step } from '../types.js';
 import type { ExecutionContext } from '../context.js';
 import { WorkflowError } from '../types.js';
 
 const execAsync = promisify(exec);
+const IS_MAC = platform() === 'darwin';
 
 type ShellRun = Extract<Step, { type: 'shell.run' }>;
 type TerminalOpen = Extract<Step, { type: 'terminal.open' }>;
@@ -58,21 +60,22 @@ export async function executeTerminalOpen(
     `Opening terminal${title ? ` '${title}'` : ''}${cwd ? ` in ${cwd}` : ''}`
   );
 
-  // Open terminal using AppleScript (macOS)
-  // For cross-platform, this would need platform detection
-  const script = buildTerminalScript(title, cwd);
-
-  try {
-    await execAsync(`osascript -e '${script}'`);
+  if (IS_MAC) {
+    const script = buildTerminalScript(title, cwd);
+    try {
+      await execAsync(`osascript -e '${script}'`);
+      ctx.terminalActive = true;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    } catch (error) {
+      throw new WorkflowError(
+        `Failed to open terminal: ${error}`,
+        'TERMINAL_ERROR'
+      );
+    }
+  } else {
+    // Linux: no GUI terminal needed — store cwd for subsequent terminal.run steps
+    ctx.terminalCwd = cwd;
     ctx.terminalActive = true;
-
-    // Small delay for terminal to open
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  } catch (error) {
-    throw new WorkflowError(
-      `Failed to open terminal: ${error}`,
-      'TERMINAL_ERROR'
-    );
   }
 }
 
@@ -90,21 +93,47 @@ export async function executeTerminalRun(
   const cmd = ctx.interpolate(step.cmd);
   ctx.emitLog('info', `Running in terminal: ${cmd}`);
 
-  // Type command in active terminal using AppleScript
-  // Escape both single and double quotes for shell + AppleScript
-  const escapedCmd = cmd.replace(/'/g, "'\"'\"'").replace(/"/g, '\\"');
-  const script = `tell application "Terminal" to do script "${escapedCmd}" in front window`;
+  if (IS_MAC) {
+    const escapedCmd = cmd.replace(/'/g, "'\"'\"'").replace(/"/g, '\\"');
+    const script = `tell application "Terminal" to do script "${escapedCmd}" in front window`;
+    try {
+      await execAsync(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    } catch (error) {
+      throw new WorkflowError(
+        `Failed to run in terminal: ${error}`,
+        'TERMINAL_ERROR'
+      );
+    }
+  } else {
+    // Linux: run command directly via shell, capture output
+    try {
+      const { stdout, stderr } = await execAsync(cmd, {
+        cwd: ctx.terminalCwd,
+        shell: '/bin/bash',
+        timeout: 10 * 60 * 1000, // 10 min for long-running commands like claude --print
+        maxBuffer: 10 * 1024 * 1024,
+        env: { ...process.env, HOME: process.env.HOME },
+      });
 
-  try {
-    await execAsync(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`);
+      if (step.as) {
+        ctx.variables[step.as] = stdout.trim();
+      }
 
-    // Small delay between commands
-    await new Promise((resolve) => setTimeout(resolve, 300));
-  } catch (error) {
-    throw new WorkflowError(
-      `Failed to run in terminal: ${error}`,
-      'TERMINAL_ERROR'
-    );
+      if (stderr) {
+        ctx.emitLog('warn', `stderr: ${stderr.trim()}`);
+      }
+    } catch (error) {
+      const err = error as { stdout?: string; stderr?: string; message: string };
+      // If command produced output before failing, still capture it
+      if (step.as && err.stdout) {
+        ctx.variables[step.as] = err.stdout.trim();
+      }
+      throw new WorkflowError(
+        `Terminal command failed: ${err.stderr || err.message}`,
+        'TERMINAL_ERROR'
+      );
+    }
   }
 }
 
