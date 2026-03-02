@@ -80,9 +80,25 @@ export async function executeTerminalOpen(
       );
     }
   } else {
-    // Linux: no GUI terminal needed — store cwd for subsequent terminal.run steps
+    // Linux: open a real GUI terminal window (XFCE/GNOME/xterm)
     ctx.terminalCwd = expandHome(cwd);
     ctx.terminalActive = true;
+
+    // Detect DISPLAY for X11 sessions (RDP typically uses :10)
+    const display = process.env.DISPLAY || ':10';
+    const resolvedCwd = ctx.terminalCwd || homedir();
+
+    try {
+      // Try xfce4-terminal (XFCE), then gnome-terminal, then xterm
+      const termCmd = `DISPLAY=${display} xfce4-terminal --working-directory="${resolvedCwd}"${title ? ` --title="${title.replace(/"/g, '\\"')}"` : ''}`;
+      spawn('sh', ['-c', termCmd], { detached: true, stdio: 'ignore' }).unref();
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    } catch (error) {
+      throw new WorkflowError(
+        `Failed to open terminal: ${error}`,
+        'TERMINAL_ERROR'
+      );
+    }
   }
 }
 
@@ -113,31 +129,19 @@ export async function executeTerminalRun(
       );
     }
   } else {
-    // Linux: run command directly via shell, capture output
+    // Linux: launch command in a visible GUI terminal window (fire-and-forget)
+    const display = process.env.DISPLAY || ':10';
+    const resolvedCwd = ctx.terminalCwd || homedir();
+    const escapedCmd = cmd.replace(/'/g, "'\\''");
+
     try {
-      const { stdout, stderr } = await execAsync(cmd, {
-        cwd: ctx.terminalCwd,
-        shell: '/bin/bash',
-        timeout: 10 * 60 * 1000, // 10 min for long-running commands like claude --print
-        maxBuffer: 10 * 1024 * 1024,
-        env: { ...process.env, HOME: process.env.HOME },
-      });
-
-      if (step.as) {
-        ctx.variables[step.as] = stdout.trim();
-      }
-
-      if (stderr) {
-        ctx.emitLog('warn', `stderr: ${stderr.trim()}`);
-      }
+      const termCmd = `DISPLAY=${display} xfce4-terminal --working-directory="${resolvedCwd}" -e "bash -c '${escapedCmd}; exec bash'"`;
+      spawn('sh', ['-c', termCmd], { detached: true, stdio: 'ignore' }).unref();
+      // Fire-and-forget — workflow completes, user sees terminal on RDP
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     } catch (error) {
-      const err = error as { stdout?: string; stderr?: string; message: string };
-      // If command produced output before failing, still capture it
-      if (step.as && err.stdout) {
-        ctx.variables[step.as] = err.stdout.trim();
-      }
       throw new WorkflowError(
-        `Terminal command failed: ${err.stderr || err.message}`,
+        `Failed to run in terminal: ${error}`,
         'TERMINAL_ERROR'
       );
     }
