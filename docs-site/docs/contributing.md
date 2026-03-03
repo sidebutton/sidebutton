@@ -36,7 +36,6 @@ sidebutton/
 │   ├── server/        # HTTP/WebSocket server, MCP handler
 │   ├── dashboard/     # Svelte web UI
 │   └── desktop/       # Electron app
-├── extension/         # Chrome extension
 ├── workflows/         # Public workflow library
 ├── actions/           # User workflows (gitignored)
 ├── docs/              # Documentation source

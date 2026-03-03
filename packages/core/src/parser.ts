@@ -60,18 +60,12 @@ export function loadWorkflowsFromDir(dir: string): Workflow[] {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
 
   for (const entry of entries) {
+    if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue;
     const entryPath = path.join(dir, entry.name);
 
     if (entry.isDirectory()) {
-      // Look for workflow.yaml in subdirectory
-      const workflowPath = path.join(entryPath, 'workflow.yaml');
-      if (fs.existsSync(workflowPath)) {
-        try {
-          workflows.push(loadWorkflow(workflowPath));
-        } catch (e) {
-          console.warn(`Failed to load workflow from ${workflowPath}:`, e);
-        }
-      }
+      // Recursively load workflows from subdirectories
+      workflows.push(...loadWorkflowsFromDir(entryPath));
     } else if (entry.name.endsWith('.yaml') || entry.name.endsWith('.yml')) {
       // Load standalone YAML files
       try {

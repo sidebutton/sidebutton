@@ -4,39 +4,15 @@ The Chrome extension enables browser automation — clicking, typing, scrolling,
 
 ## Installation
 
-::: warning Manual Install Required
-The extension is not yet on the Chrome Web Store. Follow these steps to install manually.
-:::
+**[Install from Chrome Web Store](https://chromewebstore.google.com/detail/sidebutton/TODO)**
 
-### Step 1: Download the Extension
-
-**Option A: From GitHub Release**
-1. Go to [GitHub Releases](https://github.com/sidebutton/sidebutton/releases)
-2. Download `extension.zip` from the latest release
-3. Extract the zip file
-
-**Option B: From Source**
-```bash
-git clone https://github.com/sidebutton/sidebutton.git
-cd sidebutton/extension
-```
-
-### Step 2: Load in Chrome
-
-1. Open Chrome and navigate to `chrome://extensions/`
-2. Enable **Developer mode** (toggle in top-right corner)
-3. Click **Load unpacked**
-4. Select the `extension/` folder
-
-You should see "SideButton" appear in your extensions list.
-
-### Step 3: Pin the Extension
+After installing, pin the extension:
 
 1. Click the puzzle piece icon in Chrome's toolbar
 2. Find "SideButton" and click the pin icon
 3. The extension icon should now be visible in your toolbar
 
-### Step 4: Connect a Tab
+### Connect a Tab
 
 1. Navigate to any website (e.g., [wikipedia.org](https://wikipedia.org))
 2. Click the extension icon in your toolbar
