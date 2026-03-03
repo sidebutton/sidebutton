@@ -1,6 +1,6 @@
 {
   "name": "sidebutton",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Workflow automation for AI agents - browser automation, MCP server, and CLI",
   "keywords": [
     "mcp",

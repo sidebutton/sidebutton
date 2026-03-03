@@ -522,6 +522,9 @@ export interface SkillPackManifest {
   title: string;
   description: string;
   domain: string;
+  tagline?: string;
+  category?: string;
+  modules?: string[];
   requires?: { browser?: boolean; llm?: boolean };
   private?: boolean;
   roles?: string[];
