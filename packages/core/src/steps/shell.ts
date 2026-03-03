@@ -118,22 +118,35 @@ export async function executeTerminalRun(
     }
   } else {
     // Linux: write command to temp script, launch in visible GUI terminal
+    // Wait for the terminal process to exit so the workflow tracks completion
     const display = process.env.DISPLAY || ':10';
     const resolvedCwd = ctx.terminalCwd || homedir();
 
     try {
       const scriptPath = join(tmpdir(), `sb-terminal-${Date.now()}.sh`);
-      writeFileSync(scriptPath, `#!/bin/bash\ncd "${resolvedCwd}"\n${cmd}\nexec bash\n`);
+      writeFileSync(scriptPath, `#!/bin/bash\ncd "${resolvedCwd}"\n${cmd}\n`);
       chmodSync(scriptPath, 0o755);
 
       // Use title from terminal.open if available
       const titleArg = ctx.terminalTitle
         ? ` --title="${ctx.terminalTitle.replace(/"/g, '\\"')}"`
         : '';
-      const termCmd = `DISPLAY=${display} xfce4-terminal${titleArg} -e "${scriptPath}"`;
-      spawn('sh', ['-c', termCmd], { detached: true, stdio: 'ignore' }).unref();
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // --disable-server prevents xfce4-terminal from delegating to an
+      // existing instance and returning immediately
+      const termCmd = `DISPLAY=${display} xfce4-terminal --disable-server${titleArg} -e "${scriptPath}"`;
+
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn('sh', ['-c', termCmd], { stdio: 'ignore' });
+        child.on('exit', (code) => {
+          if (code === 0 || code === null) resolve();
+          else reject(new WorkflowError(`Terminal exited with code ${code}`, 'TERMINAL_ERROR'));
+        });
+        child.on('error', (err) =>
+          reject(new WorkflowError(`Failed to run in terminal: ${err}`, 'TERMINAL_ERROR'))
+        );
+      });
     } catch (error) {
+      if (error instanceof WorkflowError) throw error;
       throw new WorkflowError(
         `Failed to run in terminal: ${error}`,
         'TERMINAL_ERROR'
