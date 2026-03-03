@@ -54,7 +54,7 @@ pnpm cli status     # Check server status
 ## Features
 
 - **Config-first workflows** - Define actions in YAML files
-- **Browser automation** - Navigate, click, type, scroll, extract via Chrome extension
+- **Browser automation** - Navigate, click, type, scroll, extract via [Chrome extension](https://chromewebstore.google.com/detail/sidebutton/TODO)
 - **Shell execution** - Run bash commands with output capture
 - **Terminal workflows** - Execute commands in visible terminal windows (macOS)
 - **LLM integration** - Text classification and generation via OpenAI/Anthropic
@@ -177,20 +177,21 @@ sidebutton/
 │       └── src/
 │           ├── App.svelte
 │           └── lib/
-├── extension/             # Chrome extension
 ├── workflows/             # Public workflow library
 ├── actions/               # User-created workflows
 └── run_logs/              # Execution history
 ```
 
-## Browser Extension Setup
+## Browser Extension
 
-1. Open Chrome and go to `chrome://extensions/`
-2. Enable **Developer mode**
-3. Click **Load unpacked**
-4. Select the `extension/` folder
-5. Navigate to a website and click the extension icon
-6. Click **"Connect This Tab"**
+Install the Chrome extension to enable browser automation:
+
+**[Install from Chrome Web Store](https://chromewebstore.google.com/detail/sidebutton/TODO)**
+
+After installing:
+1. Navigate to any website
+2. Click the SideButton extension icon
+3. Click **"Connect This Tab"**
 
 ## MCP Server (AI Agent Integration)
 
