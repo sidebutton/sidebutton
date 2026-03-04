@@ -46,20 +46,34 @@ pnpm start
 Or run directly with the CLI:
 
 ```bash
-pnpm cli serve      # Start server with dashboard
-pnpm cli list       # List available workflows
-pnpm cli status     # Check server status
+pnpm cli serve          # Start server with dashboard
+pnpm cli serve --stdio  # Start with stdio transport (for Claude Desktop)
+pnpm cli list           # List available workflows
+pnpm cli status         # Check server status
+
+# Skill pack management
+pnpm cli registry add <path|url>   # Install skill packs from a registry
+pnpm cli registry update [name]    # Update installed packs
+pnpm cli registry remove <name>    # Uninstall packs and remove registry
+pnpm cli search [query]            # Search available skill packs
+
+# Creating skill packs
+pnpm cli init [domain]             # Scaffold a new skill pack
+pnpm cli validate [path]           # Validate pack structure
+pnpm cli publish [source]          # Publish to a registry (--registry <path>)
+pnpm cli publish --registry <path> # Reindex all packs in a registry (in-place mode)
 ```
 
 ## Features
 
 - **Config-first workflows** - Define actions in YAML files
-- **Browser automation** - Navigate, click, type, scroll, extract via [Chrome extension](https://chromewebstore.google.com/detail/sidebutton/TODO)
+- **Browser automation** - Navigate, click, type, scroll, extract via Chrome extension
 - **Shell execution** - Run bash commands with output capture
 - **Terminal workflows** - Execute commands in visible terminal windows (macOS)
 - **LLM integration** - Text classification and generation via OpenAI/Anthropic
 - **Control flow** - Conditionals, retries, and nested workflows
 - **Recording mode** - Capture user actions to generate selectors
+- **Skill packs** - Install domain-specific workflows, roles, and targets from registries
 - **MCP Server** - Expose workflows to AI agents
 - **REST API** - JSON endpoints for mobile and external integrations
 
@@ -92,6 +106,13 @@ steps:
 | `browser.exists` | Check if element exists |
 | `browser.hover` | Position cursor on element |
 | `browser.key` | Send keyboard keys |
+| `browser.snapshot` | Capture accessibility snapshot |
+| `browser.extractMap` | Extract structured data from repeated elements |
+| `browser.injectCSS` | Inject CSS styles into page |
+| `browser.injectJS` | Execute JavaScript in page |
+| `browser.select_option` | Select dropdown option |
+| `browser.scrollIntoView` | Scroll element into view |
+| `browser.fill` | Fill input value (React-compatible) |
 | **Shell** | |
 | `shell.run` | Execute a bash command |
 | `terminal.open` | Open a visible terminal window (macOS) |
@@ -124,35 +145,36 @@ steps:
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     @sidebutton/server                          │
-│                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │          Fastify HTTP + WebSocket Server (port 9876)     │  │
-│  │                                                          │  │
-│  │  GET  /            → Dashboard (Svelte)                  │  │
-│  │  GET  /ws          → Chrome Extension WebSocket          │  │
-│  │  POST /mcp         → MCP JSON-RPC (AI Agents)            │  │
-│  │  GET  /api/*       → REST API                            │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                              │                                  │
-│                              ▼                                  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                 @sidebutton/core                           │  │
-│  │                                                           │  │
-│  │  - Workflow types & parser (YAML)                        │  │
-│  │  - Step executors (20 step types)                        │  │
-│  │  - Variable interpolation                                │  │
-│  │  - Execution context & events                            │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-         ▲                       ▲                       ▲
-         │ WebSocket             │ HTTP POST             │ REST
-         ▼                       ▼                       ▼
-┌─────────────────┐   ┌─────────────────┐   ┌───────────────────┐
-│ Chrome Extension│   │   Claude Code   │   │   Mobile App      │
-│ (Browser Auto)  │   │   (MCP Client)  │   │   (REST Client)   │
-└─────────────────┘   └─────────────────┘   └───────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          @sidebutton/server                               │
+│                                                                          │
+│  ┌─────────────────────┐   ┌──────────────────────────────────────────┐  │
+│  │  stdio Transport    │   │    Fastify HTTP + WebSocket (port 9876)  │  │
+│  │  ─────────────────  │   │    ────────────────────────────────────  │  │
+│  │  stdin → JSON-RPC   │   │  GET  /        → Dashboard (Svelte)      │  │
+│  │  stdout ← JSON-RPC  │   │  GET  /ws      → Chrome Extension WS     │  │
+│  │  (Claude Desktop)   │   │  POST /mcp     → MCP JSON-RPC (SSE)      │  │
+│  └──────────┬──────────┘   │  GET  /api/*   → REST API                │  │
+│             │              └──────────────────────┬───────────────────┘  │
+│             │                                     │                      │
+│             └──────────────────┬──────────────────┘                      │
+│                                ▼                                         │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │                       @sidebutton/core                              │  │
+│  │                                                                     │  │
+│  │  - Workflow types & parser (YAML)                                  │  │
+│  │  - Step executors (37 step types)                                  │  │
+│  │  - Variable interpolation                                          │  │
+│  │  - Execution context & events                                      │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────┘
+      ▲                ▲                      ▲                      ▲
+      │ stdio          │ WebSocket            │ HTTP POST            │ REST
+      ▼                ▼                      ▼                      ▼
+┌──────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌───────────────────┐
+│Claude Desktop│ │ Chrome Extension│ │   Claude Code   │ │   Mobile App      │
+│ (MCP stdio)  │ │ (Browser Auto)  │ │   (MCP SSE)     │ │   (REST Client)   │
+└──────────────┘ └─────────────────┘ └─────────────────┘ └───────────────────┘
 ```
 
 ### Project Structure
@@ -170,15 +192,21 @@ sidebutton/
 │   │   ├── bin/               # CLI entry point
 │   │   └── src/
 │   │       ├── server.ts      # Fastify HTTP server
+│   │       ├── stdio-mode.ts  # stdio transport entry point
 │   │       ├── extension.ts   # WebSocket client
-│   │       ├── mcp/           # MCP handler
+│   │       ├── mcp/           # MCP handlers
+│   │       │   ├── handler.ts    # MCP JSON-RPC logic
+│   │       │   ├── stdio.ts      # stdio transport adapter
+│   │       │   └── tools.ts      # Tool definitions
 │   │       └── cli.ts         # Commander CLI
 │   └── dashboard/         # Svelte web UI
 │       └── src/
 │           ├── App.svelte
 │           └── lib/
+├── extension/             # Chrome extension
 ├── workflows/             # Public workflow library
 ├── actions/               # User-created workflows
+├── skills/                # Installed skill packs (per-domain)
 └── run_logs/              # Execution history
 ```
 
@@ -186,7 +214,7 @@ sidebutton/
 
 Install the Chrome extension to enable browser automation:
 
-**[Install from Chrome Web Store](https://chromewebstore.google.com/detail/sidebutton/TODO)**
+**[Install from Chrome Web Store](https://chromewebstore.google.com/detail/sidebutton/odaefhmdmgijnhdbkfagnlnmobphgkij)**
 
 After installing:
 1. Navigate to any website
@@ -194,6 +222,25 @@ After installing:
 3. Click **"Connect This Tab"**
 
 ## MCP Server (AI Agent Integration)
+
+SideButton supports both **stdio** and **SSE** transports for MCP, implementing protocol version 2025-11-25 with full resumability support.
+
+### Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "sidebutton": {
+      "command": "npx",
+      "args": ["sidebutton", "--stdio"]
+    }
+  }
+}
+```
+
+The `--stdio` flag uses stdin/stdout for MCP communication. The HTTP server still runs in the background for browser extension connectivity.
 
 ### Claude Code
 
@@ -236,6 +283,15 @@ Add to `~/.cursor/mcp.json`:
 | `get_browser_status` | Check browser extension connection |
 | `capture_page` | Capture selectors from current page |
 | `navigate` | Navigate browser to URL |
+| `snapshot` | Get page accessibility snapshot |
+| `click` | Click an element |
+| `type` | Type text into an element |
+| `scroll` | Scroll the page |
+| `screenshot` | Capture page screenshot |
+| `hover` | Hover over element |
+| `extract` | Extract text from element |
+| `select_option` | Select dropdown option |
+| `evaluate` | Execute JavaScript in browser |
 
 ## Environment Variables
 
@@ -260,24 +316,25 @@ pnpm start
 pnpm cli list          # List workflows
 pnpm cli status        # Check status
 pnpm cli serve         # Start server
+
 ```
 
 ### Watch Mode
 
 ```bash
-# Full dev mode (all packages with hot reload)
+# Full dev mode (all packages with watch rebuild)
 pnpm dev
 
 # Individual components
 pnpm dev:server        # Server with auto-restart on :9876
-pnpm dev:dashboard     # Dashboard with HMR on :5173
+pnpm dev:dashboard     # Dashboard watch build (outputs to server)
 pnpm dev:core          # Core library watch build
 ```
 
 In dev mode:
-- **Dashboard** runs at `http://localhost:5173` with Vite HMR
 - **Server** auto-restarts on code changes via tsx watch
-- **API proxy** forwards `/api/*` and `/ws/*` from dashboard to server
+- **Dashboard** continuously rebuilds into the server package
+- Access everything at `http://localhost:9876`
 
 ## Platform Automation Disclaimer
 
