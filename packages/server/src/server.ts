@@ -1418,10 +1418,12 @@ export async function startServer(config: ServerConfig): Promise<void> {
   fastify.post<{
     Params: { id: string };
     Querystring: { sync?: string };
-    Body: { params?: Record<string, string> };
+    Body: { params?: Record<string, string>; completion_callback?: string };
   }>('/api/workflows/:id/run', async (request, reply) => {
     const workflowId = request.params.id;
     const params = request.body.params ?? {};
+    const completionCallback = request.body.completion_callback;
+    const callbackAuth = request.headers.authorization; // forward auth to callback
     const syncMode = request.query.sync === 'true';
 
     mcpHandler.reload();
@@ -1555,6 +1557,22 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
       // Remove from running and notify
       runningWorkflows.remove(runId);
+
+      // Notify orchestrator via completion callback (fire-and-forget)
+      if (completionCallback) {
+        const cbHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (callbackAuth) cbHeaders['Authorization'] = callbackAuth;
+        fetch(completionCallback, {
+          method: 'POST',
+          headers: cbHeaders,
+          body: JSON.stringify({
+            sb_run_id: runId,
+            status,
+            output_message: ctx.outputMessage,
+          }),
+          signal: AbortSignal.timeout(10_000),
+        }).catch(() => { /* best effort */ });
+      }
 
       return { status, variables: ctx.variables, output_message: ctx.outputMessage };
     };
