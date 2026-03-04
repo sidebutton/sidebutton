@@ -135,16 +135,11 @@ export async function executeTerminalRun(
       // existing instance and returning immediately
       const termCmd = `DISPLAY=${display} xfce4-terminal --disable-server${titleArg} -e "${scriptPath}"`;
 
-      await new Promise<void>((resolve, reject) => {
-        const child = spawn('sh', ['-c', termCmd], { stdio: 'ignore' });
-        child.on('exit', (code) => {
-          if (code === 0 || code === null) resolve();
-          else reject(new WorkflowError(`Terminal exited with code ${code}`, 'TERMINAL_ERROR'));
-        });
-        child.on('error', (err) =>
-          reject(new WorkflowError(`Failed to run in terminal: ${err}`, 'TERMINAL_ERROR'))
-        );
-      });
+      // Fire-and-forget: launch the terminal and complete the step immediately.
+      // Completion is tracked externally (e.g. Temporal callback), not by process exit.
+      // This matches Mac behavior where osascript returns immediately.
+      const child = spawn('sh', ['-c', termCmd], { stdio: 'ignore', detached: true });
+      child.unref();
     } catch (error) {
       if (error instanceof WorkflowError) throw error;
       throw new WorkflowError(
