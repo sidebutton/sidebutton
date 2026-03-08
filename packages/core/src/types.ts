@@ -500,6 +500,17 @@ export interface HealthResponse {
   version: string;
   desktop_connected: boolean;
   browser_connected: boolean;
+  job?: {
+    job_id: number;
+    step_index: number;
+    workflow_id: string;
+    ticket_key?: string;
+    started_at: string;
+  } | null;
+  idle_since?: string | null;
+  result?: { type: string; at: string } | null;
+  last_tool_use?: string | null;
+  workflows_running?: number;
 }
 
 // Workflow summary for listing

@@ -1381,15 +1381,86 @@ export async function startServer(config: ServerConfig): Promise<void> {
     reply.code(204).send();
   });
 
-  // Health check endpoint
+  // Health check endpoint (extended with job context and file-based signals)
+  const sidebuttonDir = path.join(process.env.HOME || '~', '.sidebutton');
+
   fastify.get('/health', async (): Promise<HealthResponse> => {
     const status = extensionClient.getStatus();
-    return {
+
+    const response: HealthResponse = {
       status: 'ok',
       version: VERSION,
       desktop_connected: status.server_running,
       browser_connected: status.browser_connected,
+      workflows_running: runningWorkflows.getAll().length,
     };
+
+    // Read file-based signals (all optional, fail silently)
+    try {
+      const jobCtx = fs.readFileSync(path.join(sidebuttonDir, 'job-context.json'), 'utf8');
+      response.job = JSON.parse(jobCtx);
+    } catch { /* no job context */ }
+
+    try {
+      const idleMarker = fs.readFileSync(path.join(sidebuttonDir, 'idle-marker'), 'utf8').trim();
+      if (idleMarker) response.idle_since = idleMarker;
+    } catch { /* no idle marker */ }
+
+    try {
+      const resultData = fs.readFileSync(path.join(sidebuttonDir, 'result-marker.json'), 'utf8');
+      response.result = JSON.parse(resultData);
+    } catch { /* no result marker */ }
+
+    try {
+      const lastTool = fs.readFileSync(path.join(sidebuttonDir, 'last-tool-use'), 'utf8').trim();
+      if (lastTool) response.last_tool_use = lastTool;
+    } catch { /* no last tool use marker */ }
+
+    return response;
+  });
+
+  // Job context endpoints (file-based, used by Temporal orchestrator)
+  fastify.post('/api/job-context', async (request, reply) => {
+    const body = request.body as any;
+    if (!body?.job_id) {
+      return reply.code(400).send({ error: 'job_id is required' });
+    }
+    fs.mkdirSync(sidebuttonDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sidebuttonDir, 'job-context.json'),
+      JSON.stringify(body, null, 2),
+    );
+    return { ok: true };
+  });
+
+  fastify.get('/api/job-context', async (_request, reply) => {
+    try {
+      const data = fs.readFileSync(path.join(sidebuttonDir, 'job-context.json'), 'utf8');
+      return JSON.parse(data);
+    } catch {
+      return reply.code(404).send({ error: 'No job context' });
+    }
+  });
+
+  fastify.delete('/api/job-context', async () => {
+    try {
+      fs.unlinkSync(path.join(sidebuttonDir, 'job-context.json'));
+    } catch { /* file doesn't exist */ }
+    return { ok: true };
+  });
+
+  /** GET /api/screenshot — capture browser screenshot, return base64 PNG */
+  fastify.get('/api/screenshot', async (request, reply) => {
+    if (!(await extensionClient.isConnected())) {
+      return reply.code(503).send({ error: 'Browser not connected' });
+    }
+    try {
+      const imageData = await extensionClient.screenshot({});
+      const base64 = imageData.replace(/^data:image\/png;base64,/, '');
+      return { screenshot_b64: base64 };
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message || 'Screenshot failed' });
+    }
   });
 
   // REST API endpoints
