@@ -124,7 +124,11 @@ export async function executeTerminalRun(
 
     try {
       const scriptPath = join(tmpdir(), `sb-terminal-${Date.now()}.sh`);
-      writeFileSync(scriptPath, `#!/bin/bash\ncd "${resolvedCwd}"\n${cmd}\n`);
+      // Inject LLM model override as env var (set before cmd so source ~/.agent-env respects it)
+      const envLines = ctx.llmOverride?.model
+        ? `export ANTHROPIC_MODEL="${ctx.llmOverride.model}"\n`
+        : '';
+      writeFileSync(scriptPath, `#!/bin/bash\ncd "${resolvedCwd}"\n${envLines}${cmd}\n`);
       chmodSync(scriptPath, 0o755);
 
       // Use title from terminal.open if available

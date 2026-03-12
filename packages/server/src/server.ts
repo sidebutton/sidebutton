@@ -1489,11 +1489,12 @@ export async function startServer(config: ServerConfig): Promise<void> {
   fastify.post<{
     Params: { id: string };
     Querystring: { sync?: string };
-    Body: { params?: Record<string, string>; completion_callback?: string };
+    Body: { params?: Record<string, string>; completion_callback?: string; llm?: { model: string; effort: string } };
   }>('/api/workflows/:id/run', async (request, reply) => {
     const workflowId = request.params.id;
     const params = request.body.params ?? {};
     const completionCallback = request.body.completion_callback;
+    const llmOverride = request.body.llm;
     const callbackAuth = request.headers.authorization; // forward auth to callback
     const syncMode = request.query.sync === 'true';
 
@@ -1523,6 +1524,11 @@ export async function startServer(config: ServerConfig): Promise<void> {
     ctx.actionsRegistry = mcpHandler.getAllActions();
     ctx.workflowsRegistry = mcpHandler.getAllWorkflows();
     ctx.llmConfig = settings.llm;
+
+    // Apply LLM override from dispatch (effort-based model selection)
+    if (llmOverride?.model) {
+      ctx.llmOverride = llmOverride;
+    }
 
     // Inject env-type user contexts as envVars (for platform providers)
     for (const uc of settings.user_contexts ?? []) {

@@ -88,6 +88,9 @@ export class ExecutionContext {
   // LLM configuration
   llmConfig: LlmConfig = { provider: 'openai' };
 
+  // LLM override from dispatch (effort-based model selection)
+  llmOverride?: { model: string; effort: string };
+
   // Repo path mappings (org/repo -> local path)
   repos: Record<string, string> = {};
 
@@ -149,6 +152,7 @@ export class ExecutionContext {
     child.cancelled = this.cancelled;
     child.userContexts = [...this.userContexts];
     child.llmConfig = { ...this.llmConfig };
+    child.llmOverride = this.llmOverride ? { ...this.llmOverride } : undefined;
     child.envVars = { ...this.envVars };
     child.eventCallback = this.eventCallback;
 
