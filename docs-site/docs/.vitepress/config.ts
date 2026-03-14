@@ -38,7 +38,7 @@ export default defineConfig({
       { text: 'MCP', link: '/mcp/overview' },
       // { text: 'API', link: '/api/rest' }, // Hidden until Phase 2
       {
-        text: 'v1.0.11',
+        text: 'v1.0.12',
         items: [
           { text: 'Changelog', link: '/changelog' },
           { text: 'Contributing', link: '/contributing' }

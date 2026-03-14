@@ -2,7 +2,7 @@
 
 All notable changes to SideButton.
 
-## [1.0.11] - 2026-03-14
+## [1.0.12] - 2026-03-14
 
 ### Highlights
 

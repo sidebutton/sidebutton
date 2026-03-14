@@ -1,6 +1,6 @@
 {
   "name": "@sidebutton/server",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "SideButton server with MCP integration, REST API, and web dashboard for workflow automation",
   "keywords": [
     "mcp",
