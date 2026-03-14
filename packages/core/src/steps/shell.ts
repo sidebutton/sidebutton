@@ -101,7 +101,14 @@ export async function executeTerminalRun(
     );
   }
 
-  const cmd = ctx.interpolate(step.cmd);
+  let cmd = ctx.interpolate(step.cmd);
+
+  // Inject --effort flag into Claude CLI commands for non-default effort levels
+  if (ctx.effortLevel && ctx.effortLevel !== 'medium' && cmd.includes('claude ')) {
+    cmd = cmd.replace('claude ', `claude --effort ${ctx.effortLevel} `);
+  }
+
+
   ctx.emitLog('info', `Running in terminal: ${cmd}`);
 
   if (IS_MAC) {
@@ -117,33 +124,38 @@ export async function executeTerminalRun(
       );
     }
   } else {
-    // Linux: write command to temp script, launch in visible GUI terminal
-    // Wait for the terminal process to exit so the workflow tracks completion
-    const display = process.env.DISPLAY || ':10';
+    // Linux: write command to temp script, launch in GUI terminal or tmux fallback
     const resolvedCwd = ctx.terminalCwd || homedir();
 
     try {
       const scriptPath = join(tmpdir(), `sb-terminal-${Date.now()}.sh`);
-      // Inject LLM model override as env var (set before cmd so source ~/.agent-env respects it)
-      const envLines = ctx.llmOverride?.model
-        ? `export ANTHROPIC_MODEL="${ctx.llmOverride.model}"\n`
-        : '';
-      writeFileSync(scriptPath, `#!/bin/bash\ncd "${resolvedCwd}"\n${envLines}${cmd}\n`);
+      writeFileSync(scriptPath, `#!/bin/bash\ncd "${resolvedCwd}"\n${cmd}\n`);
       chmodSync(scriptPath, 0o755);
 
-      // Use title from terminal.open if available
-      const titleArg = ctx.terminalTitle
-        ? ` --title="${ctx.terminalTitle.replace(/"/g, '\\"')}"`
-        : '';
-      // --disable-server prevents xfce4-terminal from delegating to an
-      // existing instance and returning immediately
-      const termCmd = `DISPLAY=${display} xfce4-terminal --disable-server${titleArg} -e "${scriptPath}"`;
+      const hasX = await probeX11Display();
 
-      // Fire-and-forget: launch the terminal and complete the step immediately.
-      // Completion is tracked externally (e.g. Temporal callback), not by process exit.
-      // This matches Mac behavior where osascript returns immediately.
-      const child = spawn('sh', ['-c', termCmd], { stdio: 'ignore', detached: true });
-      child.unref();
+      if (hasX) {
+        // GUI path: xfce4-terminal with X display
+        const display = process.env.DISPLAY || ':10';
+        const titleArg = ctx.terminalTitle
+          ? ` --title="${ctx.terminalTitle.replace(/"/g, '\\"')}"`
+          : '';
+        // --disable-server prevents xfce4-terminal from delegating to an
+        // existing instance and returning immediately
+        const termCmd = `DISPLAY=${display} xfce4-terminal --disable-server${titleArg} -e "${scriptPath}"`;
+
+        const child = spawn('sh', ['-c', termCmd], { stdio: 'ignore', detached: true });
+        child.unref();
+      } else {
+        // Headless fallback: tmux session
+        const sessionName = `sb-${Date.now()}`;
+        const child = spawn('tmux', ['new-session', '-d', '-s', sessionName, scriptPath], {
+          stdio: 'ignore',
+          detached: true,
+        });
+        child.unref();
+        ctx.emitLog('info', `Launched in tmux session "${sessionName}" (headless)`);
+      }
     } catch (error) {
       if (error instanceof WorkflowError) throw error;
       throw new WorkflowError(
@@ -151,6 +163,18 @@ export async function executeTerminalRun(
         'TERMINAL_ERROR'
       );
     }
+  }
+}
+
+/** Check if X11 display is available (returns false on headless / no DISPLAY). */
+async function probeX11Display(): Promise<boolean> {
+  const display = process.env.DISPLAY;
+  if (!display) return false;
+  try {
+    await execAsync(`DISPLAY=${display} xdpyinfo >/dev/null 2>&1`, { timeout: 3000 });
+    return true;
+  } catch {
+    return false;
   }
 }
 

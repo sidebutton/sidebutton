@@ -2,6 +2,34 @@
 
 All notable changes to SideButton.
 
+## [1.0.11] - 2026-03-14
+
+### Highlights
+
+- **45 step types** — added issues, git, chat, and data step categories (42 implemented, 3 chat pending)
+- **Skill pack CLI** — `sidebutton init`, `validate`, and `publish` for creating and sharing skill packs
+- **Context system** — persona, roles, and targets injected into every LLM call via both REST and MCP
+- **Community roles** — 15 built-in role templates (SE, QA, PM, SD, HR, Sales, and more)
+- **Abstract providers** — issues and git steps work across Jira, GitHub, and other platforms via auto-detected providers
+- **Delay constants** — named delays (`small`, `mid`, `large`) with jitter for human-like timing
+
+### New Step Types
+
+- `browser.extractMap` — extract structured data with field mapping
+- `browser.fill` — set input values directly (React-compatible)
+- `browser.select_option` — select dropdown options by value or label
+- `browser.scrollIntoView` — scroll elements into viewport
+- `browser.injectCSS` / `browser.injectJS` — inject styles and scripts
+- `browser.snapshot` — capture accessibility tree for LLM analysis
+- `llm.decide` — LLM picks from a list of actions based on context
+- `data.get` — get list item by index
+- `variable.set` — set variables directly
+- `issues.*` — create, get, search, attach, transition, comment (6 types)
+- `git.*` — listPRs, getPR, createPR, listIssues, getIssue (5 types)
+- `chat.*` — listChannels, readChannel, readThread (3 types, pending provider)
+
+---
+
 ## [1.0.0] - 2025-12-27
 
 ### Initial Release

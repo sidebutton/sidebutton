@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'SideButton',
-  description: 'Local workflow automation for browser, terminal, and AI',
+  description: 'Open source skill packs for AI agents — domain knowledge, workflows, and browser automation',
 
   base: '/',
 
@@ -38,7 +38,7 @@ export default defineConfig({
       { text: 'MCP', link: '/mcp/overview' },
       // { text: 'API', link: '/api/rest' }, // Hidden until Phase 2
       {
-        text: 'v1.0.0',
+        text: 'v1.0.11',
         items: [
           { text: 'Changelog', link: '/changelog' },
           { text: 'Contributing', link: '/contributing' }
@@ -57,6 +57,7 @@ export default defineConfig({
             { text: 'Extension Setup', link: '/extension' },
             { text: 'First Workflow', link: '/first-workflow' },
             { text: 'MCP Setup', link: '/mcp-setup' },
+            { text: 'Community Roles', link: '/community-roles' },
             { text: 'Troubleshooting', link: '/troubleshooting' }
           ]
         },

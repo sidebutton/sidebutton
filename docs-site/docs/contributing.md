@@ -2,6 +2,38 @@
 
 Thank you for your interest in contributing to SideButton!
 
+## Contributing Skill Packs
+
+Skill packs are the fastest way to contribute — no code changes needed. A skill pack packages domain knowledge, workflows, and role playbooks for a specific web app.
+
+### Quick Start
+
+```bash
+# Initialize a new skill pack for a domain
+sidebutton init example.com
+
+# Document the app — add selectors, states, navigation to _skill.md files
+# Add workflows as YAML files
+# Add role playbooks in _roles/ directories
+
+# Validate your pack
+sidebutton validate
+
+# Publish to the registry (free for everyone)
+sidebutton publish
+```
+
+### Skill Pack Guidelines
+
+- **One domain per pack** — each pack targets a single web application
+- **Use real selectors** — test with the actual app, not guessed selectors
+- **No credentials** — never include API keys, passwords, or personal data
+- **Test with an agent** — verify your pack works with an AI agent (Claude Code, Cursor)
+- **Include a root `_skill.md`** — every pack needs domain-level documentation
+- **Add role playbooks** — `_roles/qa.md`, `_roles/se.md` etc. teach agents how to use the pack
+
+See [Creating Skill Packs](/skill-packs/creating) for the full guide and [CLI Reference](/skill-packs/cli) for all commands.
+
 ## Getting Started
 
 ### Prerequisites

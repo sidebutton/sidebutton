@@ -102,6 +102,41 @@ export class ExtensionClientImpl implements ExtensionClient {
 
     // Use stderr to avoid polluting stdout in stdio mode
     process.stderr.write('[sidebutton] Chrome extension connected\n');
+
+    // Auto-connect: tell extension to attach debugger to first available tab
+    // This enables headless agent mode (no popup click needed)
+    this.autoConnect(socket);
+  }
+
+  /**
+   * Auto-connect: send connect command to extension after WS connection.
+   * Retries until debugger is attached to a tab.
+   */
+  private autoConnect(socket: WebSocket, attempt = 1, maxAttempts = 10): void {
+    if (attempt > maxAttempts) return;
+
+    setTimeout(() => {
+      // Stop if socket closed or already connected to a tab
+      if (socket.readyState !== 1 || this.tabId) return;
+
+      const requestId = this.requestCounter++;
+      const pending = new Promise<void>((resolve) => {
+        this.pendingRequests.set(requestId, {
+          resolve: (response) => {
+            if (response.ok) {
+              process.stderr.write(`[sidebutton] Auto-connected to browser tab\n`);
+            } else {
+              process.stderr.write(`[sidebutton] Auto-connect attempt ${attempt} failed: ${response.error}\n`);
+              this.autoConnect(socket, attempt + 1, maxAttempts);
+            }
+            resolve();
+          },
+          reject: () => resolve(),
+        });
+      });
+
+      socket.send(JSON.stringify({ cmd: 'connect', requestId }));
+    }, attempt === 1 ? 3000 : 5000); // 3s first attempt, 5s retries
   }
 
   private handleEvent(event: ExtensionEvent): void {

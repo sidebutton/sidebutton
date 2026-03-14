@@ -1,30 +1,11 @@
-<script setup lang="ts">
-import { ref } from 'vue'
-
-const copied = ref(false)
-const command = 'npx sidebutton@latest'
-
-async function copyCommand() {
-  try {
-    await navigator.clipboard.writeText(command)
-    copied.value = true
-    setTimeout(() => {
-      copied.value = false
-    }, 2000)
-  } catch (err) {
-    console.error('Failed to copy:', err)
-  }
-}
-</script>
-
 <template>
   <section class="hero-section">
     <div class="hero-container">
       <h1 class="hero-product-title">SideButton</h1>
 
       <p class="hero-tagline">
-        Give your AI agent a real browser.<br />
-        Open source MCP server for Chrome.
+        Open source skill packs for AI agents.<br />
+        Domain knowledge, automations, and role playbooks — packaged per web app.
       </p>
 
       <div class="hero-actions">
@@ -46,24 +27,6 @@ async function copyCommand() {
         <a href="/installation" class="btn btn-secondary">
           View Documentation
         </a>
-      </div>
-
-      <div class="hero-command">
-        <code class="command-text">$ {{ command }}</code>
-        <button
-          class="command-copy"
-          :class="{ copied }"
-          @click="copyCommand"
-          aria-label="Copy command"
-        >
-          <svg v-if="!copied" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-          </svg>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-        </button>
       </div>
 
       <p class="hero-compat">
@@ -157,47 +120,6 @@ async function copyCommand() {
 .btn-icon {
   width: 18px;
   height: 18px;
-}
-
-.hero-command {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.625rem;
-  padding: 0.5rem 0.75rem;
-  background: var(--vp-c-bg-soft);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
-  margin-bottom: 1.5rem;
-}
-
-.command-text {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 0.875rem;
-  color: var(--vp-c-text-2);
-}
-
-.command-copy {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  background: transparent;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 4px;
-  color: var(--vp-c-text-3);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.command-copy:hover {
-  border-color: var(--vp-c-brand-1);
-  color: var(--vp-c-brand-1);
-}
-
-.command-copy.copied {
-  border-color: var(--vp-c-brand-1);
-  color: var(--vp-c-brand-1);
 }
 
 .hero-compat {

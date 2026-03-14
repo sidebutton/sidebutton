@@ -132,6 +132,18 @@ The `confidence` field in `_skill.md` frontmatter tracks documentation maturity 
 
 See [Creating Packs > Learning Loop](/skill-packs/creating#learning-loop) for the full cycle.
 
+## Free Publishing
+
+Create, validate, and publish skill packs from the CLI. Free for everyone — like npm for domain knowledge.
+
+```bash
+sidebutton init example.com     # Scaffold a new skill pack
+sidebutton validate             # Check structure and required files
+sidebutton publish              # Publish to the registry
+```
+
+See [Contributing Skill Packs](/contributing#contributing-skill-packs) for guidelines and best practices.
+
 ## Next Steps
 
 - **[Creating Skill Packs](/skill-packs/creating)** — Build and publish your own

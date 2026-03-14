@@ -88,9 +88,6 @@ export class ExecutionContext {
   // LLM configuration
   llmConfig: LlmConfig = { provider: 'openai' };
 
-  // LLM override from dispatch (effort-based model selection)
-  llmOverride?: { model: string; effort: string };
-
   // Repo path mappings (org/repo -> local path)
   repos: Record<string, string> = {};
 
@@ -99,6 +96,9 @@ export class ExecutionContext {
 
   // Output message from workflow (set by control.stop)
   outputMessage?: string;
+
+  // Effort level for Claude CLI (injected as --effort flag in terminal.run)
+  effortLevel: string = 'medium';
 
   // Event emitter callback
   private eventCallback?: (event: WorkflowEvent) => void;
@@ -152,8 +152,8 @@ export class ExecutionContext {
     child.cancelled = this.cancelled;
     child.userContexts = [...this.userContexts];
     child.llmConfig = { ...this.llmConfig };
-    child.llmOverride = this.llmOverride ? { ...this.llmOverride } : undefined;
     child.envVars = { ...this.envVars };
+    child.effortLevel = this.effortLevel;
     child.eventCallback = this.eventCallback;
 
     return child;

@@ -1,6 +1,6 @@
 # Step Types
 
-Complete reference for all 27 step types available in SideButton.
+Complete reference for all 45 step types available in SideButton (42 implemented, 3 chat types pending).
 
 ## Browser Steps
 
@@ -100,7 +100,7 @@ Wait for element or delay.
 - type: browser.wait
   ms: 2000
 
-# Named delay constant (resolves to base value ±10% jitter)
+# Named delay constant (resolves to base value +/-10% jitter)
 - type: browser.wait
   ms: "mid"
 ```
@@ -142,6 +142,31 @@ Extract text from multiple elements.
 | `selector` | string | Yes | CSS selector |
 | `as` | string | Yes | Variable name |
 | `separator` | string | No | Join separator (default: ", ") |
+
+### browser.extractMap
+
+Extract structured data from repeated elements, mapping child selectors to named fields.
+
+```yaml
+- type: browser.extractMap
+  selector: ".user-row"
+  fields:
+    name:
+      selector: ".user-name"
+    email:
+      selector: ".user-email"
+    role:
+      selector: ".user-role"
+      attribute: "data-role"
+  as: user_data
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `selector` | string | Yes | CSS selector for container elements |
+| `fields` | object | Yes | Map of field names to `{ selector, attribute? }` |
+| `as` | string | Yes | Variable name to store result |
+| `separator` | string | No | Row separator (default: newline) |
 
 ### browser.exists
 
@@ -370,6 +395,29 @@ Generate text with AI.
 | `prompt` | string | Yes | Prompt for the LLM |
 | `as` | string | Yes | Variable for result |
 
+### llm.decide
+
+Present a situation and a list of possible actions to the LLM, and let it pick the best one based on its role context.
+
+```yaml
+- type: llm.decide
+  input: "{{situation}}"
+  actions:
+    - id: escalate
+      description: "Escalate to a human"
+    - id: respond
+      description: "Send an automated response"
+    - id: ignore
+      description: "No action needed"
+  as: chosen_action
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `input` | string | Yes | Situation description |
+| `actions` | array | Yes | List of `{ id, description }` actions |
+| `as` | string | Yes | Variable for chosen action ID |
+
 ## Control Flow Steps
 
 ### control.if
@@ -471,6 +519,7 @@ Call another workflow.
 | `workflow` | string | Yes | Workflow ID to call |
 | `params` | object | No | Parameters to pass |
 | `as` | string | No | Namespace for variables |
+| `timeout` | number | No | Max execution time in ms |
 
 ## Data Steps
 
@@ -491,6 +540,25 @@ Get first item from a list.
 | `as` | string | Yes | Variable for first item |
 | `separator` | string | No | List separator (default: ", ") |
 
+### data.get
+
+Get an item from a list by index.
+
+```yaml
+- type: data.get
+  input: "{{items}}"
+  index: "2"
+  as: third_item
+  separator: ", "
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `input` | string | Yes | Delimited list |
+| `index` | string | Yes | Zero-based index (supports interpolation) |
+| `as` | string | Yes | Variable for result |
+| `separator` | string | No | List separator (default: ", ") |
+
 ### variable.set
 
 Set a variable value directly.
@@ -506,15 +574,320 @@ Set a variable value directly.
 | `name` | string | Yes | Variable name to set |
 | `value` | string | Yes | Value to assign (supports interpolation) |
 
+## Issues Steps
+
+Abstract issue tracker steps. Provider is auto-detected from environment variables (Jira, GitHub Issues, etc.).
+
+::: warning Requires Provider
+Configure an issues provider (e.g., set `JIRA_HOST`, `JIRA_EMAIL`, `JIRA_API_TOKEN` for Jira).
+:::
+
+### issues.create
+
+Create a new issue.
+
+```yaml
+- type: issues.create
+  project: "PROJ"
+  summary: "Bug: login fails on mobile"
+  description: "Steps to reproduce..."
+  issue_type: "Bug"
+  labels:
+    - mobile
+    - critical
+  as: issue_key
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project` | string | Yes | Project key |
+| `summary` | string | Yes | Issue title |
+| `description` | string | No | Issue body |
+| `issue_type` | string | No | Issue type (e.g., Bug, Story) |
+| `labels` | array | No | Labels to apply |
+| `provider` | string | No | Force specific provider |
+| `site` | string | No | Provider site/host |
+| `as` | string | No | Variable for issue key |
+
+### issues.get
+
+Get issue details.
+
+```yaml
+- type: issues.get
+  issue_key: "PROJ-123"
+  fields: "summary,status,assignee"
+  as: issue
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `issue_key` | string | Yes | Issue identifier |
+| `fields` | string | No | Comma-separated fields to return |
+| `provider` | string | No | Force specific provider |
+| `site` | string | No | Provider site/host |
+| `as` | string | No | Variable for result |
+
+### issues.search
+
+Search for issues.
+
+```yaml
+- type: issues.search
+  query: "project = PROJ AND status = 'To Do'"
+  max_results: 10
+  as: results
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | Yes | Search query (JQL for Jira) |
+| `max_results` | number | No | Max results to return |
+| `fields` | string | No | Comma-separated fields to return |
+| `provider` | string | No | Force specific provider |
+| `site` | string | No | Provider site/host |
+| `as` | string | No | Variable for results |
+
+### issues.attach
+
+Attach files to an issue.
+
+```yaml
+- type: issues.attach
+  issue_key: "PROJ-123"
+  files:
+    - filename: "screenshot.png"
+      data: "{{screenshot_base64}}"
+      content_type: "image/png"
+  as: result
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `issue_key` | string | Yes | Issue identifier |
+| `files` | array | Yes | Files to attach: `{ filename, data, content_type? }` |
+| `provider` | string | No | Force specific provider |
+| `site` | string | No | Provider site/host |
+| `as` | string | No | Variable for result |
+
+### issues.transition
+
+Transition an issue to a new status.
+
+```yaml
+- type: issues.transition
+  issue_key: "PROJ-123"
+  status: "In Progress"
+  as: result
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `issue_key` | string | Yes | Issue identifier |
+| `status` | string | Yes | Target status name |
+| `provider` | string | No | Force specific provider |
+| `site` | string | No | Provider site/host |
+| `as` | string | No | Variable for result |
+
+### issues.comment
+
+Add a comment to an issue.
+
+```yaml
+- type: issues.comment
+  issue_key: "PROJ-123"
+  body: "Automated test passed. Ready for review."
+  as: comment_id
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `issue_key` | string | Yes | Issue identifier |
+| `body` | string | Yes | Comment text |
+| `provider` | string | No | Force specific provider |
+| `site` | string | No | Provider site/host |
+| `as` | string | No | Variable for comment ID |
+
+## Git Steps
+
+Abstract git platform steps. Provider is auto-detected from environment (GitHub, etc.).
+
+::: warning Requires Provider
+Configure a git provider (e.g., set `GITHUB_TOKEN` for GitHub).
+:::
+
+### git.listPRs
+
+List pull requests.
+
+```yaml
+- type: git.listPRs
+  repo: "org/repo"
+  state: "open"
+  limit: 10
+  as: pull_requests
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repo` | string | No | Repository (default: detected from env) |
+| `state` | string | No | Filter by state: `open`, `closed`, `all` |
+| `limit` | number | No | Max results |
+| `provider` | string | No | Force specific provider |
+| `as` | string | No | Variable for results |
+
+### git.getPR
+
+Get pull request details.
+
+```yaml
+- type: git.getPR
+  repo: "org/repo"
+  number: 42
+  as: pr
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repo` | string | No | Repository |
+| `number` | number | Yes | PR number |
+| `provider` | string | No | Force specific provider |
+| `as` | string | No | Variable for result |
+
+### git.createPR
+
+Create a pull request.
+
+```yaml
+- type: git.createPR
+  repo: "org/repo"
+  title: "feat: add login flow"
+  body: "Implements the new login flow"
+  head: "feat/login"
+  base: "main"
+  as: pr_url
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repo` | string | No | Repository |
+| `title` | string | Yes | PR title |
+| `body` | string | No | PR description |
+| `head` | string | Yes | Source branch |
+| `base` | string | No | Target branch (default: main) |
+| `provider` | string | No | Force specific provider |
+| `as` | string | No | Variable for PR URL |
+
+### git.listIssues
+
+List repository issues.
+
+```yaml
+- type: git.listIssues
+  repo: "org/repo"
+  state: "open"
+  labels: "bug,critical"
+  limit: 20
+  as: issues
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repo` | string | No | Repository |
+| `state` | string | No | Filter by state: `open`, `closed`, `all` |
+| `labels` | string | No | Comma-separated label filter |
+| `limit` | number | No | Max results |
+| `provider` | string | No | Force specific provider |
+| `as` | string | No | Variable for results |
+
+### git.getIssue
+
+Get issue details.
+
+```yaml
+- type: git.getIssue
+  repo: "org/repo"
+  number: 15
+  as: issue
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repo` | string | No | Repository |
+| `number` | number | Yes | Issue number |
+| `provider` | string | No | Force specific provider |
+| `as` | string | No | Variable for result |
+
+## Chat Steps
+
+::: warning Not Yet Implemented
+Chat steps are registered but not yet functional. They will be available when a chat provider (e.g., Slack) is integrated.
+:::
+
+### chat.listChannels
+
+List available channels.
+
+```yaml
+- type: chat.listChannels
+  limit: 50
+  as: channels
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `types` | string | No | Channel type filter |
+| `limit` | number | No | Max results |
+| `provider` | string | No | Force specific provider |
+| `as` | string | No | Variable for results |
+
+### chat.readChannel
+
+Read messages from a channel.
+
+```yaml
+- type: chat.readChannel
+  channel: "#general"
+  limit: 20
+  as: messages
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `channel` | string | Yes | Channel name or ID |
+| `limit` | number | No | Max messages |
+| `max_days` | number | No | Limit to recent days |
+| `provider` | string | No | Force specific provider |
+| `as` | string | No | Variable for messages |
+
+### chat.readThread
+
+Read a message thread.
+
+```yaml
+- type: chat.readThread
+  channel: "#general"
+  thread_ts: "1234567890.123456"
+  as: thread
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `channel` | string | Yes | Channel name or ID |
+| `thread_ts` | string | Yes | Thread timestamp ID |
+| `max_days` | number | No | Limit to recent days |
+| `provider` | string | No | Force specific provider |
+| `as` | string | No | Variable for messages |
+
 ## Delay Constants
 
-Any `delay_ms` or `ms` parameter that accepts a number also accepts a named delay constant. Named constants resolve to a base millisecond value with ±10% random jitter on each invocation, making automation timing less predictable and more human-like.
+Any `delay_ms` or `ms` parameter that accepts a number also accepts a named delay constant. Named constants resolve to a base millisecond value with +/-10% random jitter on each invocation, making automation timing less predictable and more human-like.
 
 | Constant | Base | Range |
 |----------|------|-------|
-| `"small"` | 500ms | 450–550ms |
-| `"mid"` | 1000ms | 900–1100ms |
-| `"large"` | 5000ms | 4500–5500ms |
+| `"small"` | 500ms | 450-550ms |
+| `"mid"` | 1000ms | 900-1100ms |
+| `"large"` | 5000ms | 4500-5500ms |
 
 Raw numeric values are used as-is without jitter.
 

@@ -1494,7 +1494,6 @@ export async function startServer(config: ServerConfig): Promise<void> {
     const workflowId = request.params.id;
     const params = request.body.params ?? {};
     const completionCallback = request.body.completion_callback;
-    const llmOverride = request.body.llm;
     const callbackAuth = request.headers.authorization; // forward auth to callback
     const syncMode = request.query.sync === 'true';
 
@@ -1520,15 +1519,27 @@ export async function startServer(config: ServerConfig): Promise<void> {
     // Create execution context with event broadcasting
     const ctx = new ExecutionContext(runId);
     ctx.params = params;
+
+    // Apply workflow param defaults for params not provided
+    if (workflow.params) {
+      for (const [key, def] of Object.entries(workflow.params)) {
+        if (!(key in ctx.params) && typeof def === 'object' && def !== null && 'default' in (def as any)) {
+          ctx.params[key] = String((def as any).default);
+        }
+      }
+    }
+
     ctx.extensionClient = extensionClient;
     ctx.actionsRegistry = mcpHandler.getAllActions();
     ctx.workflowsRegistry = mcpHandler.getAllWorkflows();
     ctx.llmConfig = settings.llm;
 
-    // Apply LLM override from dispatch (effort-based model selection)
+    // Per-execution LLM override from dispatch (effort level → model)
+    const llmOverride = request.body.llm;
     if (llmOverride?.model) {
-      ctx.llmOverride = llmOverride;
+      ctx.llmConfig = { ...ctx.llmConfig, model: llmOverride.model };
     }
+    ctx.effortLevel = llmOverride?.effort || 'medium';
 
     // Inject env-type user contexts as envVars (for platform providers)
     for (const uc of settings.user_contexts ?? []) {
