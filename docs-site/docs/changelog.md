@@ -7,7 +7,7 @@ All notable changes to SideButton.
 ### Highlights
 
 - **45 step types** — added issues, git, chat, and data step categories (42 implemented, 3 chat pending)
-- **Skill pack CLI** — `sidebutton init`, `validate`, and `publish` for creating and sharing skill packs
+- **Knowledge pack CLI** — `sidebutton init`, `validate`, and `publish` for creating and sharing knowledge packs
 - **Context system** — persona, roles, and targets injected into every LLM call via both REST and MCP
 - **Community roles** — 15 built-in role templates (SE, QA, PM, SD, HR, Sales, and more)
 - **Abstract providers** — issues and git steps work across Jira, GitHub, and other platforms via auto-detected providers

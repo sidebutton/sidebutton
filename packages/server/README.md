@@ -38,14 +38,14 @@ sidebutton list               # List available workflows
 sidebutton run <id>           # Run a workflow by ID
 sidebutton status             # Check server status
 
-# Skill pack registries
-sidebutton registry add <path|url>   # Register + install all skill packs
+# Knowledge pack registries
+sidebutton registry add <path|url>   # Register + install all knowledge packs
 sidebutton registry update [name]    # Update installed packs from registry
 sidebutton registry remove <name>    # Uninstall packs and remove registry
 sidebutton registry list             # Show registries and pack counts
 sidebutton search [query]            # Search packs across registries
-sidebutton install <path|url|name>   # One-off skill pack install
-sidebutton uninstall <domain>        # Remove an installed skill pack
+sidebutton install <path|url|name>   # One-off knowledge pack install
+sidebutton uninstall <domain>        # Remove an installed knowledge pack
 ```
 
 ## MCP Integration

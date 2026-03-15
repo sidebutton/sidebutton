@@ -6,7 +6,7 @@ SideButton ships with reusable **role templates** that teach AI agents specific 
 
 A role is a markdown file with YAML frontmatter. When enabled, its content is injected into every LLM call as system context — giving the AI agent a specific perspective, priorities, and domain expertise.
 
-Roles work with any skill pack. A QA role + a CRM skill pack = an agent that knows how to test CRM features. A Sales role + a LinkedIn skill pack = an agent that knows how to do outreach.
+Roles work with any knowledge pack. A QA role + a CRM knowledge pack = an agent that knows how to test CRM features. A Sales role + a LinkedIn knowledge pack = an agent that knows how to do outreach.
 
 ## Available Roles
 
@@ -15,7 +15,7 @@ Roles work with any skill pack. A QA role + a CRM skill pack = an agent that kno
 | **Software Engineer** | `@engineering`, `@dev` | Writing, reviewing, and shipping production code. Picks up tickets, implements features, creates PRs, and runs tests. Enabled by default. |
 | **QA Engineer** | `@qa`, `@testing` | Testing, verifying, and logging issues. Navigates the real app in a browser — clicking buttons, filling forms, and verifying features work as expected. |
 | **Product Manager** | `@product`, `@pm` | Defining what to build, why, and in what order. Manages backlogs, writes specs, and prioritizes work. |
-| **Skill Discovery** | `@sd` | Explores web apps via browser, documents modules and selectors, and generates skill packs that other roles consume. |
+| **Skill Discovery** | `@sd` | Explores web apps via browser, documents modules and selectors, and generates knowledge packs that other roles consume. |
 | **HR & People Ops** | `@hr` | Managing onboarding, benefits, compliance, and people operations. |
 | **Sales** | `@sales`, `@outreach` | Building relationships and closing deals through personalized outreach. |
 
@@ -35,12 +35,12 @@ enabled: true   # Change from false to true
 ---
 ```
 
-## Using Roles with Skill Packs
+## Using Roles with Knowledge Packs
 
-Roles and skill packs are complementary:
+Roles and knowledge packs are complementary:
 
 - **Roles** teach the agent *what job to do* (test, build, sell, discover)
-- **Skill packs** teach the agent *how a specific app works* (selectors, navigation, data model)
+- **Knowledge packs** teach the agent *how a specific app works* (selectors, navigation, data model)
 
 Together, they give AI agents enough context to work autonomously with real web applications.
 
@@ -48,4 +48,4 @@ Together, they give AI agents enough context to work autonomously with real web 
 
 Default role templates are located at [`packages/server/defaults/roles/`](https://github.com/sidebutton/sidebutton/tree/main/packages/server/defaults/roles) in the OSS repository.
 
-Skill packs can also include domain-specific roles in their `_roles/` directories. These are loaded automatically when the skill pack is installed.
+Knowledge packs can also include domain-specific roles in their `_roles/` directories. These are loaded automatically when the knowledge pack is installed.

@@ -60,8 +60,8 @@ List all available workflows.
 
 **Response:** Markdown list of workflows with IDs, titles, and parameters.
 
-::: tip Skill pack workflows included
-Results include workflows from [installed skill packs](/skill-packs/overview) alongside built-in and user workflows.
+::: tip Knowledge pack workflows included
+Results include workflows from [installed knowledge packs](/knowledge-packs/overview) alongside built-in and user workflows.
 :::
 
 ---

@@ -2,14 +2,14 @@
 
 Thank you for your interest in contributing to SideButton!
 
-## Contributing Skill Packs
+## Contributing Knowledge Packs
 
-Skill packs are the fastest way to contribute — no code changes needed. A skill pack packages domain knowledge, workflows, and role playbooks for a specific web app.
+Knowledge packs are the fastest way to contribute — no code changes needed. A knowledge pack packages domain knowledge, workflows, and role playbooks for a specific web app.
 
 ### Quick Start
 
 ```bash
-# Initialize a new skill pack for a domain
+# Initialize a new knowledge pack for a domain
 sidebutton init example.com
 
 # Document the app — add selectors, states, navigation to _skill.md files
@@ -23,7 +23,7 @@ sidebutton validate
 sidebutton publish
 ```
 
-### Skill Pack Guidelines
+### Knowledge Pack Guidelines
 
 - **One domain per pack** — each pack targets a single web application
 - **Use real selectors** — test with the actual app, not guessed selectors
@@ -32,7 +32,7 @@ sidebutton publish
 - **Include a root `_skill.md`** — every pack needs domain-level documentation
 - **Add role playbooks** — `_roles/qa.md`, `_roles/se.md` etc. teach agents how to use the pack
 
-See [Creating Skill Packs](/skill-packs/creating) for the full guide and [CLI Reference](/skill-packs/cli) for all commands.
+See [Creating Knowledge Packs](/knowledge-packs/creating) for the full guide and [CLI Reference](/knowledge-packs/cli) for all commands.
 
 ## Getting Started
 
