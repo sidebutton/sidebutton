@@ -1449,6 +1449,52 @@ export async function startServer(config: ServerConfig): Promise<void> {
     return { ok: true };
   });
 
+  // Config apply endpoint — portal pushes agent_env + entry_paths here
+  fastify.post('/api/config/apply', async (request, reply) => {
+    const body = request.body as any;
+    const results: { path: string; ok: boolean; error?: string }[] = [];
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '/home/agent';
+
+    const resolvePath = (p: string): string | null => {
+      const resolved = p.replace(/^~/, homeDir);
+      if (resolved.includes('..')) return null;
+      return resolved;
+    };
+
+    // Write ~/.agent-env
+    if (body.agent_env !== undefined) {
+      try {
+        const envPath = path.join(homeDir, '.agent-env');
+        fs.writeFileSync(envPath, body.agent_env, 'utf8');
+        results.push({ path: envPath, ok: true });
+      } catch (err: any) {
+        results.push({ path: '~/.agent-env', ok: false, error: err.message });
+      }
+    }
+
+    // Write .mcp.json for each entry_path
+    if (Array.isArray(body.entry_paths)) {
+      for (const ep of body.entry_paths) {
+        if (!ep.path || !ep.mcp_json) continue;
+        const resolved = resolvePath(ep.path);
+        if (!resolved) {
+          results.push({ path: ep.path, ok: false, error: 'Path contains ".." — rejected' });
+          continue;
+        }
+        try {
+          fs.mkdirSync(resolved, { recursive: true });
+          const mcpPath = path.join(resolved, '.mcp.json');
+          fs.writeFileSync(mcpPath, JSON.stringify(ep.mcp_json, null, 2), 'utf8');
+          results.push({ path: mcpPath, ok: true });
+        } catch (err: any) {
+          results.push({ path: ep.path + '/.mcp.json', ok: false, error: err.message });
+        }
+      }
+    }
+
+    return { ok: true, results };
+  });
+
   /** GET /api/screenshot — capture browser screenshot, return base64 PNG */
   fastify.get('/api/screenshot', async (request, reply) => {
     if (!(await extensionClient.isConnected())) {
