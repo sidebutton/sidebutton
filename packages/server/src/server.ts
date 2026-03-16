@@ -214,6 +214,7 @@ function loadSettings(configDir: string): Settings {
         repos: settings.repos,
         provider_connectors: settings.provider_connectors,
         skill_registries: settings.skill_registries,
+        default_effort: settings.default_effort,
       };
     }
   } catch (e) {
@@ -1599,7 +1600,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
     if (llmOverride?.model) {
       ctx.llmConfig = { ...ctx.llmConfig, model: llmOverride.model };
     }
-    ctx.effortLevel = llmOverride?.effort || 'medium';
+    ctx.effortLevel = llmOverride?.effort || settings.default_effort || 'medium';
 
     // Inject env-type user contexts as envVars (for platform providers)
     for (const uc of settings.user_contexts ?? []) {
