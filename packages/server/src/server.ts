@@ -2680,7 +2680,34 @@ export async function startServer(config: ServerConfig): Promise<void> {
   // In-memory agent job tracking
   const agentJobs = new Map<string, AgentJob>();
 
+  /** Check whether a process is still alive by sending signal 0. */
+  function isProcessAlive(pid: number): boolean {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Reconcile running agent jobs against live processes.
+   * If an agent has a recorded PID and that process is gone,
+   * transition the job to 'completed' (halted).
+   */
+  function reconcileAgentJobs(): void {
+    for (const job of agentJobs.values()) {
+      if (job.status !== 'running') continue;
+      if (job.pid && !isProcessAlive(job.pid)) {
+        job.status = 'completed';
+        job.duration_ms = Date.now() - new Date(job.started_at).getTime();
+        job.result_summary = 'Agent process exited';
+      }
+    }
+  }
+
   fastify.get('/api/agents', async () => {
+    reconcileAgentJobs();
     const jobs = Array.from(agentJobs.values());
     const running = jobs.filter(j => j.status === 'running');
     const completed = jobs.filter(j => j.status !== 'running')
@@ -2689,10 +2716,23 @@ export async function startServer(config: ServerConfig): Promise<void> {
     return { running, completed };
   });
 
-  fastify.post<{ Body: { role: string; prompt: string; workflow_id?: string; skill_pack?: string } }>(
+  fastify.post<{ Params: { id: string }; Body: { pid?: number } }>(
+    '/api/agents/:id/pid', async (request) => {
+      const { id } = request.params;
+      const { pid } = request.body as { pid?: number };
+      const job = agentJobs.get(id);
+      if (!job) {
+        throw { statusCode: 404, message: `Agent not found: ${id}` };
+      }
+      if (pid) job.pid = pid;
+      return { updated: true, agent: job };
+    }
+  );
+
+  fastify.post<{ Body: { role: string; prompt: string; workflow_id?: string; skill_pack?: string; pid?: number } }>(
     '/api/agents/start', async (request) => {
-      const { role, prompt, workflow_id, skill_pack } = request.body as {
-        role: string; prompt: string; workflow_id?: string; skill_pack?: string;
+      const { role, prompt, workflow_id, skill_pack, pid } = request.body as {
+        role: string; prompt: string; workflow_id?: string; skill_pack?: string; pid?: number;
       };
 
       if (!role || !prompt) {
@@ -2709,6 +2749,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
         status: 'running',
         initial_prompt: prompt,
         metrics: { action_count: 0, token_count: 0 },
+        ...(pid ? { pid } : {}),
       };
 
       agentJobs.set(runId, job);
