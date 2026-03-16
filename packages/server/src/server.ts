@@ -1495,17 +1495,19 @@ export async function startServer(config: ServerConfig): Promise<void> {
     return { ok: true, results };
   });
 
-  // System reboot endpoint — portal triggers VM restart
-  fastify.post('/api/system/reboot', async (_request, reply) => {
-    const { exec } = await import('node:child_process');
-    // Respond immediately, then schedule reboot after a short delay
-    setTimeout(() => {
-      exec('sudo reboot', (err) => {
-        if (err) fastify.log.error(`Reboot failed: ${err.message}`);
-      });
-    }, 1000);
-    return { ok: true, message: 'Reboot initiated' };
-  });
+  // System reboot endpoint — only available on agent VMs (where SIDEBUTTON_AGENT_TOKEN is set)
+  if (agentToken) {
+    fastify.post('/api/system/reboot', async (_request, reply) => {
+      const { exec } = await import('node:child_process');
+      // Respond immediately, then schedule reboot after a short delay
+      setTimeout(() => {
+        exec('sudo reboot', (err) => {
+          if (err) fastify.log.error(`Reboot failed: ${err.message}`);
+        });
+      }, 1000);
+      return { ok: true, message: 'Reboot initiated' };
+    });
+  }
 
   /** GET /api/screenshot — capture browser screenshot, return base64 PNG */
   fastify.get('/api/screenshot', async (request, reply) => {
