@@ -428,6 +428,8 @@ export interface Settings {
   provider_connectors?: Record<string, ConnectorType>;
   /** Configured skill pack registries (local dirs or git repos) */
   skill_registries?: SkillRegistry[];
+  /** Default effort level for workflow dispatch (max, high, medium) */
+  default_effort?: string;
 }
 
 // ============================================================================
@@ -615,6 +617,7 @@ export interface AgentJob {
   metrics: AgentMetrics;
   current_task?: string;
   result_summary?: string;
+  pid?: number;
 }
 
 // ============================================================================
