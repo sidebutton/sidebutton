@@ -451,8 +451,17 @@ export async function fetchSkillModules(domain: string): Promise<SkillModule[]> 
 // Agents API
 // ============================================================================
 
-export async function fetchAgents(): Promise<{ running: AgentJob[]; completed: AgentJob[] }> {
-  return apiFetch<{ running: AgentJob[]; completed: AgentJob[] }>('/api/agents');
+export async function fetchAgents(params?: {
+  limit?: number;
+  offset?: number;
+  status?: string;
+}): Promise<{ jobs: AgentJob[]; total: number; offset: number; limit: number; hasMore: boolean }> {
+  const qs = new URLSearchParams();
+  if (params?.limit !== undefined) qs.set('limit', String(params.limit));
+  if (params?.offset !== undefined) qs.set('offset', String(params.offset));
+  if (params?.status && params.status !== 'all') qs.set('status', params.status);
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  return apiFetch<{ jobs: AgentJob[]; total: number; offset: number; limit: number; hasMore: boolean }>(`/api/agents${query}`);
 }
 
 export async function startAgent(params: {

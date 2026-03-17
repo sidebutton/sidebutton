@@ -2620,13 +2620,21 @@ export async function startServer(config: ServerConfig): Promise<void> {
   // In-memory agent job tracking
   const agentJobs = new Map<string, AgentJob>();
 
-  fastify.get('/api/agents', async () => {
-    const jobs = Array.from(agentJobs.values());
-    const running = jobs.filter(j => j.status === 'running');
-    const completed = jobs.filter(j => j.status !== 'running')
-      .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
-      .slice(0, 20);
-    return { running, completed };
+  fastify.get<{ Querystring: { limit?: string; offset?: string; status?: string } }>('/api/agents', async (request) => {
+    const limit = Math.min(Math.max(parseInt(request.query.limit ?? '50', 10) || 50, 1), 200);
+    const offset = Math.max(parseInt(request.query.offset ?? '0', 10) || 0, 0);
+    const statusFilter = request.query.status;
+
+    let jobs = Array.from(agentJobs.values())
+      .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+
+    if (statusFilter && statusFilter !== 'all') {
+      jobs = jobs.filter(j => j.status === statusFilter);
+    }
+
+    const total = jobs.length;
+    const page = jobs.slice(offset, offset + limit);
+    return { jobs: page, total, offset, limit, hasMore: offset + limit < total };
   });
 
   fastify.post<{ Body: { role: string; prompt: string; workflow_id?: string; skill_pack?: string } }>(

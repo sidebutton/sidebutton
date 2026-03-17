@@ -3,11 +3,18 @@
   import { fetchAgents, startAgent, stopAgent, getRoles, fetchSkillPacks } from "../api";
   import { agents, showToast, skillPacks } from "../stores";
   import { navigateToRunLogDetail } from "../router";
-  import type { AgentJob, RoleContext, InstalledPack } from "../types";
+  import type { AgentJob, AgentStatus, RoleContext } from "../types";
+
+  const PAGE_SIZE = 50;
+
+  type FilterTab = 'all' | AgentStatus;
 
   let isLoading = $state(true);
-  let running = $state<AgentJob[]>([]);
-  let completed = $state<AgentJob[]>([]);
+  let isLoadingMore = $state(false);
+  let jobs = $state<AgentJob[]>([]);
+  let total = $state(0);
+  let hasMore = $state(false);
+  let activeTab = $state<FilterTab>('all');
   let showStartModal = $state(false);
   let roles = $state<RoleContext[]>([]);
   let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -17,23 +24,64 @@
   let agentPrompt = $state('');
   let isStarting = $state(false);
 
-  async function loadData() {
+  async function loadPage(offset: number, append = false) {
+    if (offset === 0 && !append) isLoading = true;
+    else isLoadingMore = true;
+
     try {
-      const [data, loadedRoles, packs] = await Promise.all([
-        fetchAgents(),
-        getRoles(),
-        fetchSkillPacks(),
-      ]);
-      running = data.running;
-      completed = data.completed;
-      agents.set([...data.running, ...data.completed]);
-      roles = loadedRoles.filter(r => r.enabled !== false);
-      skillPacks.set(packs);
+      const data = await fetchAgents({ limit: PAGE_SIZE, offset, status: activeTab });
+      if (append) {
+        jobs = [...jobs, ...data.jobs];
+      } else {
+        jobs = data.jobs;
+      }
+      total = data.total;
+      hasMore = data.hasMore;
+      if (offset === 0) agents.set(jobs);
     } catch (e) {
       console.error("Failed to load agents:", e);
     } finally {
       isLoading = false;
+      isLoadingMore = false;
     }
+  }
+
+  async function loadInitial() {
+    const [, loadedRoles, packs] = await Promise.all([
+      loadPage(0),
+      getRoles(),
+      fetchSkillPacks(),
+    ]);
+    roles = loadedRoles.filter(r => r.enabled !== false);
+    skillPacks.set(packs);
+  }
+
+  function loadMore() {
+    if (isLoadingMore || !hasMore) return;
+    loadPage(jobs.length, true);
+  }
+
+  function onTabChange(tab: FilterTab) {
+    activeTab = tab;
+    jobs = [];
+    total = 0;
+    hasMore = false;
+    loadPage(0);
+  }
+
+  function setupSentinel(el: HTMLElement) {
+    const obs = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) loadMore();
+    }, { rootMargin: '200px' });
+    obs.observe(el);
+    return { destroy: () => obs.disconnect() };
+  }
+
+  // Poll running agents
+  function pollIfNeeded() {
+    const hasRunning = jobs.some(j => j.status === 'running');
+    if (!hasRunning) return;
+    loadPage(0);
   }
 
   async function handleStart() {
@@ -41,14 +89,13 @@
       showToast("Please enter a prompt for the agent", "warning");
       return;
     }
-
     isStarting = true;
     try {
       await startAgent({ role: selectedRole, prompt: agentPrompt.trim() });
       showToast(`${selectedRole.toUpperCase()} agent started`, "success");
       showStartModal = false;
       agentPrompt = '';
-      await loadData();
+      await loadPage(0);
     } catch (e) {
       showToast(`Failed to start agent: ${e}`, "error");
     } finally {
@@ -61,7 +108,7 @@
     try {
       await stopAgent(agentId);
       showToast("Agent stopped", "success");
-      await loadData();
+      await loadPage(0);
     } catch (e) {
       showToast(`Failed to stop: ${e}`, "error");
     }
@@ -98,16 +145,21 @@
   }
 
   onMount(() => {
-    loadData();
-    // Poll running agents every 5 seconds
-    pollInterval = setInterval(() => {
-      if (running.length > 0) loadData();
-    }, 5000);
+    loadInitial();
+    pollInterval = setInterval(pollIfNeeded, 5000);
   });
 
   onDestroy(() => {
     if (pollInterval) clearInterval(pollInterval);
   });
+
+  const tabs: { id: FilterTab; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'running', label: 'Running' },
+    { id: 'waiting', label: 'Waiting' },
+    { id: 'completed', label: 'Completed' },
+    { id: 'failed', label: 'Failed' },
+  ];
 </script>
 
 <div class="agents-view">
@@ -116,96 +168,91 @@
     <button class="btn btn-primary" onclick={() => showStartModal = true}>+ Start Agent</button>
   </header>
 
+  <nav class="tabs">
+    {#each tabs as tab}
+      <button
+        class="tab"
+        class:active={activeTab === tab.id}
+        onclick={() => onTabChange(tab.id)}
+      >{tab.label}</button>
+    {/each}
+    {#if total > 0}
+      <span class="total-count">{total} total</span>
+    {/if}
+  </nav>
+
   <div class="content">
     {#if isLoading}
       <div class="loading">Loading agents...</div>
+    {:else if jobs.length === 0}
+      <div class="empty-card">
+        <h3>No Agents {activeTab !== 'all' ? `(${activeTab})` : ''}</h3>
+        <p>Agents are autonomous workflows that run in a terminal. Start an SE or QA agent to pick up issues and work on them automatically.</p>
+        <button class="btn btn-primary" onclick={() => showStartModal = true}>+ Start Agent</button>
+      </div>
     {:else}
-      <!-- Running Agents -->
-      {#if running.length > 0}
-        <section class="section">
-          <h2>Running ({running.length})</h2>
-          <div class="agent-list">
-            {#each running as agent (agent.run_id)}
-              <div class="agent-card running">
-                <div class="agent-header">
-                  <div class="agent-status-row">
-                    <span class="status-dot running"></span>
-                    <span class="agent-title">{agent.workflow_title}</span>
-                    <span class="role-badge">{agent.role.toUpperCase()}</span>
-                  </div>
-                  <span class="agent-time">
-                    Started {formatTimeAgo(agent.started_at)} · {formatDuration(agent.started_at)}
-                  </span>
-                </div>
-
-                {#if agent.initial_prompt}
-                  <div class="agent-prompt">
-                    <p>{agent.initial_prompt}</p>
-                  </div>
-                {/if}
-
-                <div class="agent-metrics">
-                  <span>Actions: {agent.metrics.action_count}</span>
-                  <span>Tokens: {formatTokens(agent.metrics.token_count)}</span>
-                  <span>Cost: {formatCost(agent.metrics.cost_estimate)}</span>
-                </div>
-
-                {#if agent.current_task}
-                  <div class="agent-output">
-                    <span class="output-line">{agent.current_task}</span>
-                  </div>
-                {/if}
-
-                <div class="agent-actions">
-                  <button class="btn btn-ghost btn-sm" onclick={() => navigateToRunLogDetail(agent.run_id)}>View Log</button>
-                  <button class="btn btn-danger btn-sm" onclick={() => handleStop(agent.run_id)}>Stop</button>
-                </div>
+      <div class="agent-list">
+        {#each jobs as agent (agent.run_id)}
+          <div class="agent-card" class:running={agent.status === 'running'} class:failed={agent.status === 'failed'}>
+            <div class="agent-header">
+              <div class="agent-status-row">
+                <span class="status-dot" class:running={agent.status === 'running'} class:success={agent.status === 'completed'} class:failed={agent.status === 'failed'} class:waiting={agent.status === 'waiting'}></span>
+                <span class="agent-title">{agent.workflow_title}</span>
+                <span class="role-badge">{agent.role.toUpperCase()}</span>
+                <span class="status-badge status-{agent.status}">{agent.status}</span>
               </div>
-            {/each}
-          </div>
-        </section>
-      {/if}
-
-      <!-- Completed Agents -->
-      {#if completed.length > 0}
-        <section class="section">
-          <h2>Completed Today ({completed.length})</h2>
-          <div class="agent-list">
-            {#each completed as agent (agent.run_id)}
-              <div class="agent-card" class:failed={agent.status === 'failed'}>
-                <div class="agent-header">
-                  <div class="agent-status-row">
-                    <span class="status-dot" class:success={agent.status === 'completed'} class:failed={agent.status === 'failed'}></span>
-                    <span class="agent-title">{agent.workflow_title}</span>
-                    <span class="role-badge">{agent.role.toUpperCase()}</span>
-                  </div>
-                  <span class="agent-time">
-                    {formatDuration(agent.started_at, agent.duration_ms)} · Completed {formatTimeAgo(agent.started_at)}
-                  </span>
-                </div>
-
-                {#if agent.result_summary}
-                  <div class="agent-result">
-                    {agent.status === 'completed' ? 'Result' : 'Error'}: {agent.result_summary}
-                  </div>
+              <span class="agent-time">
+                {#if agent.status === 'running'}
+                  Started {formatTimeAgo(agent.started_at)} · {formatDuration(agent.started_at)}
+                {:else}
+                  {formatDuration(agent.started_at, agent.duration_ms)} · {formatTimeAgo(agent.started_at)}
                 {/if}
+              </span>
+            </div>
 
-                <div class="agent-actions">
-                  <button class="btn btn-ghost btn-sm" onclick={() => navigateToRunLogDetail(agent.run_id)}>View Log</button>
-                </div>
+            {#if agent.initial_prompt}
+              <div class="agent-prompt">
+                <p>{agent.initial_prompt}</p>
               </div>
-            {/each}
-          </div>
-        </section>
-      {/if}
+            {/if}
 
-      <!-- Empty state -->
-      {#if running.length === 0 && completed.length === 0}
-        <div class="empty-card">
-          <h3>No Agents Running</h3>
-          <p>Agents are autonomous workflows that run in a terminal. Start an SE or QA agent to pick up issues and work on them automatically.</p>
-          <button class="btn btn-primary" onclick={() => showStartModal = true}>+ Start Agent</button>
+            <div class="agent-metrics">
+              <span>Actions: {agent.metrics.action_count}</span>
+              <span>Tokens: {formatTokens(agent.metrics.token_count)}</span>
+              <span>Cost: {formatCost(agent.metrics.cost_estimate)}</span>
+            </div>
+
+            {#if agent.status === 'running' && agent.current_task}
+              <div class="agent-output">
+                <span class="output-line">{agent.current_task}</span>
+              </div>
+            {/if}
+
+            {#if agent.result_summary && agent.status !== 'running'}
+              <div class="agent-result">
+                {agent.status === 'completed' ? 'Result' : 'Error'}: {agent.result_summary}
+              </div>
+            {/if}
+
+            <div class="agent-actions">
+              <button class="btn btn-ghost btn-sm" onclick={() => navigateToRunLogDetail(agent.run_id)}>View Log</button>
+              {#if agent.status === 'running'}
+                <button class="btn btn-danger btn-sm" onclick={() => handleStop(agent.run_id)}>Stop</button>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      </div>
+
+      <!-- Scroll sentinel -->
+      {#if hasMore}
+        <div class="sentinel" use:setupSentinel>
+          {#if isLoadingMore}
+            <span class="loading-more">Loading more...</span>
+          {/if}
         </div>
+      {:else if jobs.length > 0}
+        <div class="end-of-list">All {total} agent{total === 1 ? '' : 's'} loaded</div>
       {/if}
     {/if}
   </div>
@@ -274,15 +321,39 @@
 
   header h1 { font-size: 24px; font-weight: 600; color: var(--color-text); margin: 0; }
 
+  .tabs {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 24px;
+    background: var(--color-card);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .tab {
+    padding: 10px 14px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+    margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--color-text); }
+  .tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+
+  .total-count {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
+
   .content { flex: 1; padding: 24px; overflow-y: auto; }
 
   .loading { display: flex; align-items: center; justify-content: center; height: 200px; color: var(--color-text-secondary); }
-
-  .section { margin-bottom: 24px; }
-  .section h2 {
-    margin: 0 0 12px; font-size: 12px; font-weight: 600;
-    color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.5px;
-  }
 
   .agent-list { display: flex; flex-direction: column; gap: 12px; }
 
@@ -297,6 +368,7 @@
   .agent-status-row { display: flex; align-items: center; gap: 8px; }
   .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--color-text-muted); }
   .status-dot.running { background: var(--color-success); animation: pulse 2s infinite; }
+  .status-dot.waiting { background: var(--color-warning, #f59e0b); }
   .status-dot.success { background: var(--color-success); }
   .status-dot.failed { background: var(--color-error); }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
@@ -306,6 +378,14 @@
     font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
     background: var(--color-surface); color: var(--color-text-secondary); border: 1px solid var(--color-border);
   }
+  .status-badge {
+    font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 999px;
+    text-transform: capitalize;
+  }
+  .status-badge.status-running { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
+  .status-badge.status-waiting { background: color-mix(in srgb, #f59e0b 15%, transparent); color: #f59e0b; }
+  .status-badge.status-completed { background: color-mix(in srgb, var(--color-success) 10%, transparent); color: var(--color-text-secondary); }
+  .status-badge.status-failed { background: color-mix(in srgb, var(--color-error) 15%, transparent); color: var(--color-error); }
   .agent-time { font-size: 12px; color: var(--color-text-muted); }
 
   .agent-prompt {
@@ -330,6 +410,15 @@
   }
 
   .agent-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  .sentinel { padding: 16px; display: flex; justify-content: center; }
+  .loading-more { font-size: 13px; color: var(--color-text-muted); }
+
+  .end-of-list {
+    padding: 20px; text-align: center;
+    font-size: 12px; color: var(--color-text-muted);
+    border-top: 1px solid var(--color-border); margin-top: 8px;
+  }
 
   .empty-card {
     padding: 48px 24px; text-align: center; background: var(--color-card);

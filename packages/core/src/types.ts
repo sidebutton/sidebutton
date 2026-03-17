@@ -601,7 +601,7 @@ export interface AgentMetrics {
   cost_estimate?: number;
 }
 
-export type AgentStatus = 'running' | 'completed' | 'failed';
+export type AgentStatus = 'running' | 'waiting' | 'completed' | 'failed';
 
 export interface AgentJob {
   run_id: string;
