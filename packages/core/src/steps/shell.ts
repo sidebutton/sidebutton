@@ -129,7 +129,10 @@ export async function executeTerminalRun(
 
     try {
       const scriptPath = join(tmpdir(), `sb-terminal-${Date.now()}.sh`);
-      writeFileSync(scriptPath, `#!/bin/bash\ncd "${resolvedCwd}" || exit 1\n${cmd}\n`);
+      const envLines = ctx.llmModelOverride
+        ? `export ANTHROPIC_MODEL="${ctx.llmModelOverride}"\n`
+        : '';
+      writeFileSync(scriptPath, `#!/bin/bash\ncd "${resolvedCwd}"\n${envLines}${cmd}\n`);
       chmodSync(scriptPath, 0o755);
 
       const hasX = await probeX11Display();
