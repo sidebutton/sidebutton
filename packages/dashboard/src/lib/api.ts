@@ -469,6 +469,7 @@ export async function startAgent(params: {
   prompt: string;
   workflow_id?: string;
   skill_pack?: string;
+  pid?: number;
 }): Promise<AgentJob> {
   const data = await apiFetch<{ agent: AgentJob }>('/api/agents/start', {
     method: 'POST',

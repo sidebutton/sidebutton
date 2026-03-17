@@ -19,6 +19,7 @@ import {
   copyDirRecursive,
   readSkillPackManifest,
   validateSkillPack,
+  collectPackFiles,
 } from './skill-pack.js';
 import {
   addRegistry,
@@ -170,6 +171,57 @@ function scanSkillDir(dir: string, workflows: Workflow[]): void {
   }
 }
 
+const REMOTE_BASE_URL = 'https://sidebutton.com';
+
+function loadAuthToken(): { token: string; email: string; url: string } | null {
+  const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? process.cwd();
+  const authFile = path.join(homeDir, '.sidebutton', 'auth.json');
+  if (!fs.existsSync(authFile)) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
+    if (!data.token) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+async function installFromRemote(
+  domain: string,
+  configDir: string,
+  opts?: { force?: boolean },
+): Promise<{ domain: string; filesInstalled: number; status: string } | null> {
+  try {
+    const res = await fetch(`${REMOTE_BASE_URL}/api/skill-packs/${encodeURIComponent(domain)}/download`);
+    if (!res.ok) return null;
+    const data = await res.json() as { manifest: Record<string, unknown>; files: Record<string, string> };
+    if (!data.manifest || !data.files) return null;
+
+    // Write to temp dir, then install
+    const os = await import('node:os');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-pack-'));
+    try {
+      // Write manifest
+      fs.writeFileSync(path.join(tmpDir, 'skill-pack.json'), JSON.stringify(data.manifest, null, 2));
+      // Write all files
+      for (const [filePath, content] of Object.entries(data.files)) {
+        const fullPath = path.join(tmpDir, filePath);
+        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+        fs.writeFileSync(fullPath, content);
+      }
+      const result = installSkillPack(tmpDir, configDir, { force: opts?.force });
+      // Copy skill-pack.json into installed dir (needed for publish round-trip)
+      const destManifest = path.join(configDir, 'skills', result.domain, 'skill-pack.json');
+      fs.copyFileSync(path.join(tmpDir, 'skill-pack.json'), destManifest);
+      return result;
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  } catch {
+    return null;
+  }
+}
+
 // Default to 'serve' when no command is given
 const userArgs = process.argv.slice(2);
 const hasCommand = userArgs.length > 0 && !userArgs[0].startsWith('-');
@@ -279,16 +331,24 @@ program
           printInstallResult(result, configDir);
         }
       } else {
-        // Registry lookup
+        // Registry lookup first
         const resolved = resolvePackFromRegistries(source, configDir);
-        if (!resolved) {
-          console.error(chalk.red(`  Pack not found: ${source}. Run 'sidebutton search' to see available packs.\n`));
-          process.exit(1);
+        if (resolved) {
+          console.log(`  Found in registry: ${resolved.registry}\n`);
+          const result = installSkillPack(resolved.packDir, configDir, { force: options.force });
+          printInstallResult(result, configDir);
+        } else {
+          // Try remote download from sidebutton.com
+          console.log(`  Checking ${REMOTE_BASE_URL}...\n`);
+          const result = await installFromRemote(source, configDir, { force: options.force });
+          if (result) {
+            console.log(`  Found on ${REMOTE_BASE_URL}\n`);
+            printInstallResult(result, configDir);
+          } else {
+            console.error(chalk.red(`  Pack not found: ${source}. Run 'sidebutton search' to see available packs.\n`));
+            process.exit(1);
+          }
         }
-
-        console.log(`  Found in registry: ${resolved.registry}\n`);
-        const result = installSkillPack(resolved.packDir, configDir, { force: options.force });
-        printInstallResult(result, configDir);
       }
     } catch (error) {
       console.error(chalk.red(`\n  ${error instanceof Error ? error.message : 'Unknown error'}\n`));
@@ -569,7 +629,7 @@ enabled: true
     console.log(`    1. Edit ${chalk.bold('_skill.md')} with domain knowledge`);
     console.log(`    2. Edit ${chalk.bold('_roles/qa.md')} with test playbook`);
     console.log(`    3. Run ${chalk.bold('sidebutton validate ' + domain)} to check`);
-    console.log(`    4. Run ${chalk.bold('sidebutton publish ' + domain + ' --registry <path>')} to publish`);
+    console.log(`    4. Run ${chalk.bold('sidebutton publish ' + domain)} to publish to sidebutton.com`);
     console.log();
   });
 
@@ -611,195 +671,221 @@ program
 
 program
   .command('publish [source]')
-  .description('Publish skill pack to registry (local or remote)')
+  .description('Publish skill pack (remote to sidebutton.com by default, or local with --registry)')
   .option('--registry <path>', 'Target registry directory (local publish)')
-  .option('--remote [url]', 'Publish to remote website API (default: https://sidebutton.com)')
   .option('--dry-run', 'Validate without writing')
-  .action(async (source: string | undefined, options: { registry?: string; remote?: string | boolean; dryRun?: boolean }) => {
+  .action(async (source: string | undefined, options: { registry?: string; dryRun?: boolean }) => {
     console.log(chalk.cyan('\n  SideButton\n'));
 
-    // Remote publish mode
-    if (options.remote !== undefined) {
-      if (!source) {
-        console.error(chalk.red('  Source directory is required for remote publish.\n'));
-        process.exit(1);
-      }
-      const sourceDir = path.resolve(source);
-      const { errors, warnings } = validateSkillPack(sourceDir);
-      for (const warn of warnings) {
-        console.log(`  ${chalk.yellow('!')} ${warn}`);
-      }
-      if (errors.length > 0) {
-        for (const err of errors) {
-          console.log(`  ${chalk.red('✗')} ${err}`);
-        }
-        console.log(chalk.red('\n  Publish aborted due to validation errors.\n'));
-        process.exit(1);
-      }
+    // Local publish mode (--registry)
+    if (options.registry) {
+      const registryDir = path.resolve(options.registry);
 
-      const manifest = readSkillPackManifest(sourceDir);
-      const baseUrl = typeof options.remote === 'string' ? options.remote : 'https://sidebutton.com';
-
-      // Load auth token
-      const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? process.cwd();
-      const authFile = path.join(homeDir, '.sidebutton', 'auth.json');
-      if (!fs.existsSync(authFile)) {
-        console.error(chalk.red('  Not logged in. Run `sidebutton login` first.\n'));
+      if (!fs.existsSync(registryDir)) {
+        console.error(chalk.red(`  Registry directory not found: ${registryDir}\n`));
         process.exit(1);
-      }
-      const authData = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
-      const token = authData.token;
-      if (!token) {
-        console.error(chalk.red('  No token found. Run `sidebutton login` first.\n'));
-        process.exit(1);
-      }
-
-      if (options.dryRun) {
-        console.log(`  [dry-run] Would publish ${manifest.domain}@${manifest.version} to ${baseUrl}\n`);
-        return;
       }
 
       try {
-        const res = await fetch(`${baseUrl}/api/skill-packs/publish`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            domain: manifest.domain,
-            name: manifest.title || manifest.domain,
-            version: manifest.version,
-            description: manifest.description || '',
-            tagline: manifest.tagline || '',
-            modules: manifest.modules || [],
-            roles: manifest.roles || [],
-            category: manifest.category || '',
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          console.error(chalk.red(`  Remote publish failed: ${data.error || res.statusText}\n`));
-          process.exit(1);
+        if (source) {
+          // COPY MODE: validate source, copy into registry, regenerate index
+          const sourceDir = path.resolve(source);
+
+          const { errors, warnings } = validateSkillPack(sourceDir);
+          for (const warn of warnings) {
+            console.log(`  ${chalk.yellow('!')} ${warn}`);
+          }
+          if (errors.length > 0) {
+            for (const err of errors) {
+              console.log(`  ${chalk.red('✗')} ${err}`);
+            }
+            console.log(chalk.red('\n  Publish aborted due to validation errors.\n'));
+            process.exit(1);
+          }
+
+          const manifest = readSkillPackManifest(sourceDir);
+          const destDir = path.join(registryDir, manifest.domain);
+
+          if (options.dryRun) {
+            console.log(`  [dry-run] Would publish ${manifest.domain}@${manifest.version} to ${path.basename(registryDir)}`);
+            console.log(`  [dry-run] Would copy ${sourceDir} → ${destDir}`);
+            console.log(`  [dry-run] Would regenerate index.json\n`);
+            return;
+          }
+
+          // Copy pack into registry
+          if (fs.existsSync(destDir)) {
+            fs.rmSync(destDir, { recursive: true });
+          }
+          copyDirRecursive(sourceDir, destDir);
+          // Also copy skill-pack.json (it's in SKIP_PATTERNS for install, but needed in registry)
+          fs.copyFileSync(
+            path.join(sourceDir, 'skill-pack.json'),
+            path.join(destDir, 'skill-pack.json'),
+          );
+
+          generateRegistryIndex(registryDir);
+
+          // Auto-commit if git repo
+          if (isGitRepo(registryDir)) {
+            await gitCommitChanges(registryDir, `publish: ${manifest.domain}@${manifest.version}`);
+          }
+
+          console.log(`  ${chalk.green('✓')} Published ${chalk.bold(manifest.domain)}@${manifest.version} to ${path.basename(registryDir)}\n`);
+        } else {
+          // IN-PLACE MODE: validate all packs in registry, regenerate index
+          const entries = fs.readdirSync(registryDir, { withFileTypes: true });
+          let packCount = 0;
+          let hasErrors = false;
+
+          for (const entry of entries) {
+            if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+            const packDir = path.join(registryDir, entry.name);
+            if (!fs.existsSync(path.join(packDir, 'skill-pack.json'))) continue;
+
+            packCount++;
+            const { errors, warnings } = validateSkillPack(packDir);
+
+            for (const warn of warnings) {
+              console.log(`  ${chalk.yellow('!')} ${entry.name}: ${warn}`);
+            }
+            if (errors.length > 0) {
+              hasErrors = true;
+              for (const err of errors) {
+                console.log(`  ${chalk.red('✗')} ${entry.name}: ${err}`);
+              }
+            }
+          }
+
+          if (hasErrors) {
+            console.log(chalk.red('\n  Publish aborted due to validation errors.\n'));
+            process.exit(1);
+          }
+
+          if (packCount === 0) {
+            console.log(chalk.yellow('  No skill packs found in registry directory.\n'));
+            process.exit(1);
+          }
+
+          if (options.dryRun) {
+            console.log(`  [dry-run] Would reindex ${packCount} pack${packCount > 1 ? 's' : ''} in ${path.basename(registryDir)}\n`);
+            return;
+          }
+
+          generateRegistryIndex(registryDir);
+
+          // Auto-commit if git repo
+          if (isGitRepo(registryDir)) {
+            await gitCommitChanges(registryDir, `reindex: ${packCount} packs`);
+          }
+
+          console.log(`  ${chalk.green('✓')} Reindexed ${packCount} pack${packCount > 1 ? 's' : ''} in ${path.basename(registryDir)}\n`);
         }
-        console.log(`  ${chalk.green('✓')} Published ${chalk.bold(manifest.domain)}@${manifest.version} to ${baseUrl}\n`);
-      } catch (err) {
-        console.error(chalk.red(`  Failed to connect to ${baseUrl}: ${err instanceof Error ? err.message : 'Unknown error'}\n`));
+      } catch (error) {
+        console.error(chalk.red(`\n  ${error instanceof Error ? error.message : 'Unknown error'}\n`));
         process.exit(1);
       }
       return;
     }
 
-    // Local publish mode (requires --registry)
-    if (!options.registry) {
-      console.error(chalk.red('  Either --registry <path> or --remote is required.\n'));
+    // Remote publish mode (default — publish to sidebutton.com)
+    // Resolve domain to pack directory
+    let packDir: string | undefined;
+
+    if (source) {
+      const configDir = getConfigDir();
+      // Check if it's a local path first
+      const asPath = path.resolve(source);
+      if (fs.existsSync(asPath) && fs.existsSync(path.join(asPath, 'skill-pack.json'))) {
+        packDir = asPath;
+      } else {
+        // Check installed packs (~/.sidebutton/skills/<domain>/)
+        const installedDir = path.join(configDir, 'skills', source);
+        if (fs.existsSync(installedDir) && fs.existsSync(path.join(installedDir, 'skill-pack.json'))) {
+          packDir = installedDir;
+        } else {
+          // Check registries
+          const resolved = resolvePackFromRegistries(source, configDir);
+          if (resolved) {
+            packDir = resolved.packDir;
+          }
+        }
+      }
+    }
+
+    if (!packDir) {
+      console.error(chalk.red(`  Could not find skill pack: ${source || '(no source specified)'}`));
+      console.log('  Provide a domain name, local path, or installed pack name.\n');
       process.exit(1);
     }
 
-    const registryDir = path.resolve(options.registry);
-
-    if (!fs.existsSync(registryDir)) {
-      console.error(chalk.red(`  Registry directory not found: ${registryDir}\n`));
+    // Validate
+    const { errors, warnings } = validateSkillPack(packDir);
+    for (const warn of warnings) {
+      console.log(`  ${chalk.yellow('!')} ${warn}`);
+    }
+    if (errors.length > 0) {
+      for (const err of errors) {
+        console.log(`  ${chalk.red('✗')} ${err}`);
+      }
+      console.log(chalk.red('\n  Publish aborted due to validation errors.\n'));
       process.exit(1);
     }
+
+    // Collect files
+    const { manifest, files } = collectPackFiles(packDir);
+    const fileCount = Object.keys(files).length;
+
+    if (options.dryRun) {
+      console.log(`  [dry-run] Would publish ${manifest.domain}@${manifest.version} to ${REMOTE_BASE_URL}`);
+      console.log(`  [dry-run] ${fileCount} files to upload\n`);
+      return;
+    }
+
+    // Load auth
+    const auth = loadAuthToken();
+    if (!auth) {
+      console.error(chalk.red('  Not logged in. Run `sidebutton login` first.\n'));
+      process.exit(1);
+    }
+
+    console.log(`  Publishing ${chalk.bold(manifest.domain)}@${manifest.version} (${fileCount} files)...\n`);
 
     try {
-      if (source) {
-        // COPY MODE: validate source, copy into registry, regenerate index
-        const sourceDir = path.resolve(source);
-
-        const { errors, warnings } = validateSkillPack(sourceDir);
-        for (const warn of warnings) {
-          console.log(`  ${chalk.yellow('!')} ${warn}`);
+      const res = await fetch(`${REMOTE_BASE_URL}/api/skill-packs/publish`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${auth.token}`,
+        },
+        body: JSON.stringify({
+          domain: manifest.domain,
+          name: manifest.title || manifest.name || manifest.domain,
+          version: manifest.version,
+          description: manifest.description || '',
+          tagline: manifest.tagline || '',
+          modules: manifest.modules || [],
+          roles: manifest.roles || [],
+          category: manifest.category || '',
+          manifest,
+          files,
+        }),
+      });
+      const data = await res.json() as Record<string, unknown>;
+      if (!res.ok) {
+        if (res.status === 401) {
+          console.error(chalk.red('  Not authenticated. Run `sidebutton login` first.\n'));
+        } else if (res.status === 403) {
+          console.error(chalk.red(`  ${data.error || 'Permission denied — you are not the owner of this domain.'}\n`));
+        } else {
+          console.error(chalk.red(`  Publish failed: ${data.error || res.statusText}\n`));
         }
-        if (errors.length > 0) {
-          for (const err of errors) {
-            console.log(`  ${chalk.red('✗')} ${err}`);
-          }
-          console.log(chalk.red('\n  Publish aborted due to validation errors.\n'));
-          process.exit(1);
-        }
-
-        const manifest = readSkillPackManifest(sourceDir);
-        const destDir = path.join(registryDir, manifest.domain);
-
-        if (options.dryRun) {
-          console.log(`  [dry-run] Would publish ${manifest.domain}@${manifest.version} to ${path.basename(registryDir)}`);
-          console.log(`  [dry-run] Would copy ${sourceDir} → ${destDir}`);
-          console.log(`  [dry-run] Would regenerate index.json\n`);
-          return;
-        }
-
-        // Copy pack into registry
-        if (fs.existsSync(destDir)) {
-          fs.rmSync(destDir, { recursive: true });
-        }
-        copyDirRecursive(sourceDir, destDir);
-        // Also copy skill-pack.json (it's in SKIP_PATTERNS for install, but needed in registry)
-        fs.copyFileSync(
-          path.join(sourceDir, 'skill-pack.json'),
-          path.join(destDir, 'skill-pack.json'),
-        );
-
-        generateRegistryIndex(registryDir);
-
-        // Auto-commit if git repo
-        if (isGitRepo(registryDir)) {
-          await gitCommitChanges(registryDir, `publish: ${manifest.domain}@${manifest.version}`);
-        }
-
-        console.log(`  ${chalk.green('✓')} Published ${chalk.bold(manifest.domain)}@${manifest.version} to ${path.basename(registryDir)}\n`);
-      } else {
-        // IN-PLACE MODE: validate all packs in registry, regenerate index
-        const entries = fs.readdirSync(registryDir, { withFileTypes: true });
-        let packCount = 0;
-        let hasErrors = false;
-
-        for (const entry of entries) {
-          if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
-          const packDir = path.join(registryDir, entry.name);
-          if (!fs.existsSync(path.join(packDir, 'skill-pack.json'))) continue;
-
-          packCount++;
-          const { errors, warnings } = validateSkillPack(packDir);
-
-          for (const warn of warnings) {
-            console.log(`  ${chalk.yellow('!')} ${entry.name}: ${warn}`);
-          }
-          if (errors.length > 0) {
-            hasErrors = true;
-            for (const err of errors) {
-              console.log(`  ${chalk.red('✗')} ${entry.name}: ${err}`);
-            }
-          }
-        }
-
-        if (hasErrors) {
-          console.log(chalk.red('\n  Publish aborted due to validation errors.\n'));
-          process.exit(1);
-        }
-
-        if (packCount === 0) {
-          console.log(chalk.yellow('  No skill packs found in registry directory.\n'));
-          process.exit(1);
-        }
-
-        if (options.dryRun) {
-          console.log(`  [dry-run] Would reindex ${packCount} pack${packCount > 1 ? 's' : ''} in ${path.basename(registryDir)}\n`);
-          return;
-        }
-
-        generateRegistryIndex(registryDir);
-
-        // Auto-commit if git repo
-        if (isGitRepo(registryDir)) {
-          await gitCommitChanges(registryDir, `reindex: ${packCount} packs`);
-        }
-
-        console.log(`  ${chalk.green('✓')} Reindexed ${packCount} pack${packCount > 1 ? 's' : ''} in ${path.basename(registryDir)}\n`);
+        process.exit(1);
       }
-    } catch (error) {
-      console.error(chalk.red(`\n  ${error instanceof Error ? error.message : 'Unknown error'}\n`));
+      const publishedVersion = (data.version as string) || manifest.version;
+      console.log(`  ${chalk.green('✓')} Published ${chalk.bold(manifest.domain)}@${publishedVersion} to ${REMOTE_BASE_URL}\n`);
+    } catch (err) {
+      console.error(chalk.red(`  Failed to connect to ${REMOTE_BASE_URL}: ${err instanceof Error ? err.message : 'Unknown error'}\n`));
       process.exit(1);
     }
   });
@@ -956,46 +1042,121 @@ program
 // Login command
 // ============================================================================
 
+// Auth0 Device Authorization constants
+const AUTH0_DOMAIN = 'sidebutton.eu.auth0.com';
+const AUTH0_CLIENT_ID = 'xxnmz6yal53KM6m1s50XgGYpdoi8Zhh0';
+
 program
   .command('login')
-  .description('Authenticate with SideButton website for remote publishing')
+  .description('Authenticate with SideButton via browser login')
   .option('--url <url>', 'Website URL', 'https://sidebutton.com')
-  .option('--email <email>', 'Email address')
-  .action(async (options: { url: string; email?: string }) => {
+  .action(async (options: { url: string }) => {
     console.log(chalk.cyan('\n  SideButton Login\n'));
-
-    let email = options.email;
-
-    if (!email) {
-      // Prompt for email
-      const readline = await import('node:readline');
-      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-      email = await new Promise<string>((resolve) => {
-        rl.question('  Email: ', (answer) => {
-          rl.close();
-          resolve(answer.trim());
-        });
-      });
-    }
-
-    if (!email) {
-      console.error(chalk.red('  Email is required.\n'));
-      process.exit(1);
-    }
+    console.log('  Requesting device code...\n');
 
     try {
-      const res = await fetch(`${options.url}/api/auth/login`, {
+      // Step 1: Request device code from Auth0
+      const deviceRes = await fetch(`https://${AUTH0_DOMAIN}/oauth/device/code`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, cli: true }),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: AUTH0_CLIENT_ID,
+          scope: 'openid email profile',
+          audience: `https://${AUTH0_DOMAIN}/userinfo`,
+        }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        console.error(chalk.red(`  Login failed: ${data.error || res.statusText}\n`));
+
+      if (!deviceRes.ok) {
+        const err = await deviceRes.text();
+        console.error(chalk.red(`  Failed to request device code: ${err}\n`));
         process.exit(1);
       }
 
-      // Store token
+      const deviceData = await deviceRes.json() as {
+        device_code: string;
+        user_code: string;
+        verification_uri: string;
+        verification_uri_complete: string;
+        expires_in: number;
+        interval: number;
+      };
+
+      // Step 2: Show user code and open browser
+      console.log(`  Your code: ${chalk.bold.yellow(deviceData.user_code)}\n`);
+      console.log(`  Opening browser to verify...\n`);
+      console.log(`  If the browser doesn't open, go to:`);
+      console.log(`  ${chalk.underline(deviceData.verification_uri_complete)}\n`);
+
+      // Open browser (best effort)
+      const { exec } = await import('node:child_process');
+      const openCmd = process.platform === 'darwin' ? 'open' :
+                      process.platform === 'win32' ? 'start' : 'xdg-open';
+      exec(`${openCmd} "${deviceData.verification_uri_complete}"`);
+
+      // Step 3: Poll for token
+      console.log('  Waiting for authorization...\n');
+      const interval = (deviceData.interval || 5) * 1000;
+      const deadline = Date.now() + deviceData.expires_in * 1000;
+
+      let accessToken: string | null = null;
+
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, interval));
+
+        const tokenRes = await fetch(`https://${AUTH0_DOMAIN}/oauth/token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+            device_code: deviceData.device_code,
+            client_id: AUTH0_CLIENT_ID,
+          }),
+        });
+
+        if (tokenRes.ok) {
+          const tokenData = await tokenRes.json() as { access_token: string };
+          accessToken = tokenData.access_token;
+          break;
+        }
+
+        const errorData = await tokenRes.json().catch(() => ({ error: 'unknown' })) as { error: string };
+
+        if (errorData.error === 'authorization_pending') {
+          continue; // Still waiting
+        } else if (errorData.error === 'slow_down') {
+          await new Promise(r => setTimeout(r, 5000)); // Back off
+          continue;
+        } else if (errorData.error === 'expired_token') {
+          console.error(chalk.red('  Authorization expired. Please try again.\n'));
+          process.exit(1);
+        } else if (errorData.error === 'access_denied') {
+          console.error(chalk.red('  Authorization denied.\n'));
+          process.exit(1);
+        } else {
+          console.error(chalk.red(`  Auth error: ${errorData.error}\n`));
+          process.exit(1);
+        }
+      }
+
+      if (!accessToken) {
+        console.error(chalk.red('  Authorization timed out. Please try again.\n'));
+        process.exit(1);
+      }
+
+      // Step 4: Exchange Auth0 access token for SideButton API token
+      const cliTokenRes = await fetch(`${options.url}/api/auth/cli-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ access_token: accessToken }),
+      });
+
+      const cliTokenData = await cliTokenRes.json() as { token?: string; email?: string; error?: string };
+      if (!cliTokenRes.ok) {
+        console.error(chalk.red(`  Login failed: ${cliTokenData.error || cliTokenRes.statusText}\n`));
+        process.exit(1);
+      }
+
+      // Step 5: Store token
       const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? process.cwd();
       const authDir = path.join(homeDir, '.sidebutton');
       if (!fs.existsSync(authDir)) {
@@ -1003,14 +1164,14 @@ program
       }
       fs.writeFileSync(path.join(authDir, 'auth.json'), JSON.stringify({
         url: options.url,
-        email: data.email,
-        token: data.token,
+        email: cliTokenData.email,
+        token: cliTokenData.token,
       }, null, 2));
 
-      console.log(`  ${chalk.green('✓')} Logged in as ${chalk.bold(data.email)}`);
+      console.log(`  ${chalk.green('✓')} Logged in as ${chalk.bold(cliTokenData.email)}`);
       console.log(`  Token saved to ~/.sidebutton/auth.json\n`);
     } catch (err) {
-      console.error(chalk.red(`  Failed to connect to ${options.url}: ${err instanceof Error ? err.message : 'Unknown error'}\n`));
+      console.error(chalk.red(`  Login failed: ${err instanceof Error ? err.message : 'Unknown error'}\n`));
       process.exit(1);
     }
   });

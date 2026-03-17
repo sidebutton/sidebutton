@@ -78,7 +78,7 @@ steps:
 |-----------|---------|----------|
 | `workflows/` | Public library (shared) | Read-only |
 | `actions/` | Your personal workflows | Yes |
-| `skills/<domain>/` | [Installed skill packs](/skill-packs/overview) | Managed by CLI |
+| `skills/<domain>/` | [Installed knowledge packs](/knowledge-packs/overview) | Managed by CLI |
 
 ## Running Workflows
 

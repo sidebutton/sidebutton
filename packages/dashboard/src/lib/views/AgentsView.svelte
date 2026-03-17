@@ -23,6 +23,19 @@
   let selectedRole = $state('se');
   let agentPrompt = $state('');
   let isStarting = $state(false);
+  let isRefreshing = $state(false);
+
+  async function handleRefresh() {
+    isRefreshing = true;
+    try {
+      await loadData();
+      showToast('Agents refreshed', 'success');
+    } catch (e) {
+      showToast(`Refresh failed: ${e}`, 'error');
+    } finally {
+      isRefreshing = false;
+    }
+  }
 
   async function loadPage(offset: number, append = false) {
     if (offset === 0 && !append) isLoading = true;
@@ -165,7 +178,15 @@
 <div class="agents-view">
   <header>
     <h1>Agents</h1>
-    <button class="btn btn-primary" onclick={() => showStartModal = true}>+ Start Agent</button>
+    <div class="header-actions">
+      <button class="reload-btn" onclick={handleRefresh} title="Refresh agents" disabled={isRefreshing}>
+        <svg class:spinning={isRefreshing} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 4v6h6M23 20v-6h-6" />
+          <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
+        </svg>
+      </button>
+      <button class="btn btn-primary" onclick={() => showStartModal = true}>+ Start Agent</button>
+    </div>
   </header>
 
   <nav class="tabs">
@@ -350,6 +371,21 @@
     font-size: 12px;
     color: var(--color-text-muted);
   }
+
+  .header-actions { display: flex; align-items: center; gap: 8px; }
+
+  .reload-btn {
+    width: 36px; height: 36px; padding: 8px;
+    background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px;
+    color: var(--color-text-secondary); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all var(--transition-fast);
+  }
+  .reload-btn:hover:not(:disabled) { background: var(--color-border); color: var(--color-text); }
+  .reload-btn:disabled { opacity: 0.5; cursor: default; }
+  .reload-btn svg { width: 18px; height: 18px; }
+  .reload-btn svg.spinning { animation: spin 0.8s linear infinite; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
   .content { flex: 1; padding: 24px; overflow-y: auto; }
 

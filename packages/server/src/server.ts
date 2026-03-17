@@ -1449,6 +1449,66 @@ export async function startServer(config: ServerConfig): Promise<void> {
     return { ok: true };
   });
 
+  // Config apply endpoint — portal pushes agent_env + entry_paths here
+  fastify.post('/api/config/apply', async (request, reply) => {
+    const body = request.body as any;
+    const results: { path: string; ok: boolean; error?: string }[] = [];
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '/home/agent';
+
+    const resolvePath = (p: string): string | null => {
+      const resolved = p.replace(/^~/, homeDir);
+      if (resolved.includes('..')) return null;
+      return resolved;
+    };
+
+    // Write ~/.agent-env
+    if (body.agent_env !== undefined) {
+      try {
+        const envPath = path.join(homeDir, '.agent-env');
+        fs.writeFileSync(envPath, body.agent_env, 'utf8');
+        results.push({ path: envPath, ok: true });
+      } catch (err: any) {
+        results.push({ path: '~/.agent-env', ok: false, error: err.message });
+      }
+    }
+
+    // Write .mcp.json for each entry_path
+    if (Array.isArray(body.entry_paths)) {
+      for (const ep of body.entry_paths) {
+        if (!ep.path || !ep.mcp_json) continue;
+        const resolved = resolvePath(ep.path);
+        if (!resolved) {
+          results.push({ path: ep.path, ok: false, error: 'Path contains ".." — rejected' });
+          continue;
+        }
+        try {
+          fs.mkdirSync(resolved, { recursive: true });
+          const mcpPath = path.join(resolved, '.mcp.json');
+          fs.writeFileSync(mcpPath, JSON.stringify(ep.mcp_json, null, 2), 'utf8');
+          results.push({ path: mcpPath, ok: true });
+        } catch (err: any) {
+          results.push({ path: ep.path + '/.mcp.json', ok: false, error: err.message });
+        }
+      }
+    }
+
+    return { ok: true, results };
+  });
+
+  // System reboot endpoint — only available on agent VMs (where SIDEBUTTON_AGENT_TOKEN is set)
+  if (agentToken) {
+    fastify.post('/api/system/reboot', async (_request, reply) => {
+      const { exec } = await import('node:child_process');
+      // Respond immediately, then schedule reboot after a short delay
+      setTimeout(() => {
+        exec('sudo reboot', (err) => {
+          if (err) fastify.log.error(`Reboot failed: ${err.message}`);
+        });
+      }, 1000);
+      return { ok: true, message: 'Reboot initiated' };
+    });
+  }
+
   /** GET /api/screenshot — capture browser screenshot, return base64 PNG */
   fastify.get('/api/screenshot', async (request, reply) => {
     if (!(await extensionClient.isConnected())) {
@@ -2620,7 +2680,34 @@ export async function startServer(config: ServerConfig): Promise<void> {
   // In-memory agent job tracking
   const agentJobs = new Map<string, AgentJob>();
 
+  /** Check whether a process is still alive by sending signal 0. */
+  function isProcessAlive(pid: number): boolean {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Reconcile running agent jobs against live processes.
+   * If an agent has a recorded PID and that process is gone,
+   * transition the job to 'completed' (halted).
+   */
+  function reconcileAgentJobs(): void {
+    for (const job of agentJobs.values()) {
+      if (job.status !== 'running') continue;
+      if (job.pid && !isProcessAlive(job.pid)) {
+        job.status = 'completed';
+        job.duration_ms = Date.now() - new Date(job.started_at).getTime();
+        job.result_summary = 'Agent process exited';
+      }
+    }
+  }
+
   fastify.get<{ Querystring: { limit?: string; offset?: string; status?: string } }>('/api/agents', async (request) => {
+    reconcileAgentJobs();
     const limit = Math.min(Math.max(parseInt(request.query.limit ?? '50', 10) || 50, 1), 200);
     const offset = Math.max(parseInt(request.query.offset ?? '0', 10) || 0, 0);
     const statusFilter = request.query.status;
@@ -2637,10 +2724,23 @@ export async function startServer(config: ServerConfig): Promise<void> {
     return { jobs: page, total, offset, limit, hasMore: offset + limit < total };
   });
 
-  fastify.post<{ Body: { role: string; prompt: string; workflow_id?: string; skill_pack?: string } }>(
+  fastify.post<{ Params: { id: string }; Body: { pid?: number } }>(
+    '/api/agents/:id/pid', async (request) => {
+      const { id } = request.params;
+      const { pid } = request.body as { pid?: number };
+      const job = agentJobs.get(id);
+      if (!job) {
+        throw { statusCode: 404, message: `Agent not found: ${id}` };
+      }
+      if (pid) job.pid = pid;
+      return { updated: true, agent: job };
+    }
+  );
+
+  fastify.post<{ Body: { role: string; prompt: string; workflow_id?: string; skill_pack?: string; pid?: number } }>(
     '/api/agents/start', async (request) => {
-      const { role, prompt, workflow_id, skill_pack } = request.body as {
-        role: string; prompt: string; workflow_id?: string; skill_pack?: string;
+      const { role, prompt, workflow_id, skill_pack, pid } = request.body as {
+        role: string; prompt: string; workflow_id?: string; skill_pack?: string; pid?: number;
       };
 
       if (!role || !prompt) {
@@ -2657,6 +2757,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
         status: 'running',
         initial_prompt: prompt,
         metrics: { action_count: 0, token_count: 0 },
+        ...(pid ? { pid } : {}),
       };
 
       agentJobs.set(runId, job);

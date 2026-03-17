@@ -31,6 +31,7 @@ const MANIFEST_FILE = 'skill-pack.json';
 const INSTALLED_DIR = '.installed';
 const INSTALLED_FILE = 'skill-packs.json';
 const SKIP_PATTERNS = [MANIFEST_FILE, 'README.md', '.git'];
+const COLLECT_SKIP = new Set(['.git', '.DS_Store', 'node_modules', MANIFEST_FILE, 'README.md']);
 
 export function readSkillPackManifest(packDir: string): SkillPackManifest {
   const manifestPath = path.join(packDir, MANIFEST_FILE);
@@ -212,4 +213,31 @@ export function copyDirRecursive(
   }
 
   return count;
+}
+
+/**
+ * Collect all files from a skill pack directory into a flat map.
+ * Keys are relative paths, values are file content (utf-8).
+ * Skips .git, .DS_Store, node_modules, skill-pack.json, README.md.
+ */
+export function collectPackFiles(packDir: string): { manifest: SkillPackManifest; files: Record<string, string> } {
+  const manifest = readSkillPackManifest(packDir);
+  const files: Record<string, string> = {};
+
+  function scan(dir: string): void {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (COLLECT_SKIP.has(entry.name)) continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        scan(fullPath);
+      } else {
+        const relPath = path.relative(packDir, fullPath);
+        files[relPath] = fs.readFileSync(fullPath, 'utf-8');
+      }
+    }
+  }
+
+  scan(packDir);
+  return { manifest, files };
 }

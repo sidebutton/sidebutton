@@ -2,7 +2,7 @@
 
 **Local workflow automation for your browser, terminal, and AI.**
 
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20%2B%20FSL--1.1-blue.svg)](LICENSING.md)
 [![Website](https://img.shields.io/badge/website-sidebutton.com-purple)](https://sidebutton.com)
 [![Docs](https://img.shields.io/badge/docs-docs.sidebutton.com-green)](https://docs.sidebutton.com)
 
@@ -353,4 +353,7 @@ SideButton is a general-purpose browser automation framework. When automating th
 
 ## License
 
-Apache-2.0
+This project uses mixed licensing. See [LICENSING.md](LICENSING.md) for details.
+
+- **Engine, server, CLI, dashboard** — [Apache-2.0](LICENSE)
+- **Browser extension** — [FSL-1.1-Apache-2.0](https://fsl.software) (converts to Apache-2.0 on 2029-03-15)

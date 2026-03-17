@@ -139,7 +139,7 @@ Error: Workflow not found: my_workflow
 1. Workflow file exists in `workflows/`, `actions/`, or `skills/` directory
 2. File has `.yaml` extension
 3. `id` in YAML matches the requested ID
-4. If from a skill pack, verify it's installed: `sidebutton install --list`
+4. If from a knowledge pack, verify it's installed: `sidebutton install --list`
 
 ### "Browser not connected"
 

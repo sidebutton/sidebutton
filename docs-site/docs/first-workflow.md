@@ -156,4 +156,4 @@ Save this as `actions/my_first_workflow.yaml` and it will appear in your Actions
 - **[Workflow DSL](/workflows/dsl)** — Learn the YAML syntax
 - **[Step Types](/workflows/steps)** — All 20 available step types
 - **[MCP Setup](/mcp-setup)** — Connect AI tools
-- **[Skill Packs](/skill-packs/overview)** — Install pre-built workflows for specific apps
+- **[Knowledge Packs](/knowledge-packs/overview)** — Install pre-built workflows for specific apps

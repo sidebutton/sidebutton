@@ -129,7 +129,7 @@ export async function executeTerminalRun(
 
     try {
       const scriptPath = join(tmpdir(), `sb-terminal-${Date.now()}.sh`);
-      writeFileSync(scriptPath, `#!/bin/bash\ncd "${resolvedCwd}"\n${cmd}\n`);
+      writeFileSync(scriptPath, `#!/bin/bash\ncd "${resolvedCwd}" || exit 1\n${cmd}\n`);
       chmodSync(scriptPath, 0o755);
 
       const hasX = await probeX11Display();

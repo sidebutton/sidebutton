@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'SideButton',
-  description: 'Open source skill packs for AI agents — domain knowledge, workflows, and browser automation',
+  description: 'Open source knowledge packs for AI agents — domain knowledge, workflows, and browser automation',
 
   base: '/',
 
@@ -34,7 +34,7 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/installation' },
       { text: 'Workflows', link: '/workflows/overview' },
-      { text: 'Skill Packs', link: '/skill-packs/overview' },
+      { text: 'Knowledge Packs', link: '/knowledge-packs/overview' },
       { text: 'MCP', link: '/mcp/overview' },
       // { text: 'API', link: '/api/rest' }, // Hidden until Phase 2
       {
@@ -72,12 +72,12 @@ export default defineConfig({
           ]
         },
         {
-          text: 'Skill Packs',
+          text: 'Knowledge Packs',
           items: [
-            { text: 'Overview', link: '/skill-packs/overview' },
-            { text: 'Creating Packs', link: '/skill-packs/creating' },
-            { text: 'CLI Reference', link: '/skill-packs/cli' },
-            { text: 'Publishing', link: '/skill-packs/cli#creator-commands' }
+            { text: 'Overview', link: '/knowledge-packs/overview' },
+            { text: 'Creating Packs', link: '/knowledge-packs/creating' },
+            { text: 'CLI Reference', link: '/knowledge-packs/cli' },
+            { text: 'Publishing', link: '/knowledge-packs/cli#creator-commands' }
           ]
         },
         {

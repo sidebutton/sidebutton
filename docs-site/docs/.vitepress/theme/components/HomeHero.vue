@@ -4,7 +4,7 @@
       <h1 class="hero-product-title">SideButton</h1>
 
       <p class="hero-tagline">
-        Open source skill packs for AI agents.<br />
+        Open source knowledge packs for AI agents.<br />
         Domain knowledge, automations, and role playbooks — packaged per web app.
       </p>
 
