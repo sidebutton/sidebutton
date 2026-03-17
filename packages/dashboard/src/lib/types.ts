@@ -67,6 +67,7 @@ export type {
   AgentMetrics,
   AgentStatus,
   AgentJob,
+  AgentPreset,
   // Publisher types
   Publisher,
 } from '@sidebutton/core';

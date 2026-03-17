@@ -74,6 +74,7 @@ export type {
   AgentMetrics,
   AgentStatus,
   AgentJob,
+  AgentPreset,
   // Publisher system
   Publisher,
 } from './types.js';
