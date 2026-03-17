@@ -615,6 +615,7 @@ export interface AgentJob {
   metrics: AgentMetrics;
   current_task?: string;
   result_summary?: string;
+  avatar_url?: string | null;
 }
 
 // ============================================================================

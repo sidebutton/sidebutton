@@ -236,6 +236,28 @@ function getEnvVarsFromSettings(settings: Settings): Record<string, string> {
 }
 
 // ============================================================================
+// Agent Avatar Persistence
+// ============================================================================
+
+function loadAgentAvatars(configDir: string): Record<string, string> {
+  const file = path.join(configDir, 'agent-avatars.json');
+  if (!fs.existsSync(file)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf-8')) as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function saveAgentAvatars(configDir: string, avatars: Record<string, string>): void {
+  const file = path.join(configDir, 'agent-avatars.json');
+  fs.writeFileSync(file, JSON.stringify(avatars, null, 2));
+}
+
+const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
+
+// ============================================================================
 // Recording Service
 // ============================================================================
 
@@ -553,6 +575,13 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
   });
 
+  // Accept raw image uploads for avatar endpoint
+  fastify.addContentTypeParser(
+    [...ALLOWED_IMAGE_TYPES] as string[],
+    { parseAs: 'buffer' },
+    (_req, body, done) => { done(null, body); }
+  );
+
   // Dashboard WebSocket broadcaster
   const broadcaster = new DashboardBroadcaster();
 
@@ -611,12 +640,34 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
   // Serve dashboard if available
   const dashboardPath = config.dashboardDir ?? path.join(__dirname, '..', 'dashboard');
+  let staticDecorated = false;
   if (fs.existsSync(dashboardPath)) {
     await fastify.register(fastifyStatic, {
       root: dashboardPath,
       prefix: '/',
     });
+    staticDecorated = true;
   }
+
+  // Serve preset avatars (bundled with package)
+  const avatarPresetsDir = path.join(__dirname, '..', 'defaults', 'avatars');
+  if (fs.existsSync(avatarPresetsDir)) {
+    await fastify.register(fastifyStatic, {
+      root: avatarPresetsDir,
+      prefix: '/avatars/presets/',
+      ...(staticDecorated ? { decorateReply: false } : {}),
+    });
+    staticDecorated = true;
+  }
+
+  // Serve uploaded avatars from configDir
+  const avatarUploadsDir = path.join(config.configDir, 'uploads', 'avatars');
+  fs.mkdirSync(avatarUploadsDir, { recursive: true });
+  await fastify.register(fastifyStatic, {
+    root: avatarUploadsDir,
+    prefix: '/avatars/uploads/',
+    ...(staticDecorated ? { decorateReply: false } : {}),
+  });
 
   // WebSocket endpoint for Chrome extension
   fastify.get('/ws', { websocket: true }, (socket) => {
@@ -2649,6 +2700,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
         status: 'running',
         initial_prompt: prompt,
         metrics: { action_count: 0, token_count: 0 },
+        avatar_url: null,
       };
 
       agentJobs.set(runId, job);
@@ -2673,6 +2725,89 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
 
     return { stopped: true, agent: job };
+  });
+
+  // GET /api/agents/presets — list bundled preset avatar images
+  fastify.get('/api/agents/presets', async () => {
+    const presets: { id: string; url: string; name: string }[] = [];
+    if (fs.existsSync(avatarPresetsDir)) {
+      const files = fs.readdirSync(avatarPresetsDir)
+        .filter(f => /\.(svg|png|jpg|jpeg|webp)$/i.test(f))
+        .sort();
+      for (const f of files) {
+        const id = path.basename(f, path.extname(f));
+        presets.push({ id, url: `/avatars/presets/${f}`, name: id.replace(/-/g, ' ') });
+      }
+    }
+    return { presets };
+  });
+
+  // PUT /api/agents/:id/avatar — assign a preset or uploaded avatar URL
+  fastify.put<{ Params: { id: string }; Body: { preset_id?: string; avatar_url?: string } }>(
+    '/api/agents/:id/avatar', async (request) => {
+      const { id } = request.params;
+      const { preset_id, avatar_url } = (request.body ?? {}) as { preset_id?: string; avatar_url?: string };
+
+      const job = agentJobs.get(id);
+      if (!job) {
+        throw { statusCode: 404, message: `Agent not found: ${id}` };
+      }
+
+      let url: string | null = null;
+      if (preset_id) {
+        url = `/avatars/presets/${preset_id}.svg`;
+      } else if (avatar_url) {
+        url = avatar_url;
+      }
+
+      job.avatar_url = url;
+
+      // Persist avatar assignment so it survives server restart awareness
+      const avatars = loadAgentAvatars(config.configDir);
+      if (url === null) {
+        delete avatars[id];
+      } else {
+        avatars[id] = url;
+      }
+      saveAgentAvatars(config.configDir, avatars);
+
+      return { agent: job };
+    }
+  );
+
+  // POST /api/agents/avatars/upload — upload an image file, returns its URL
+  fastify.post('/api/agents/avatars/upload', async (request) => {
+    const contentType = (request.headers['content-type'] ?? '').split(';')[0].trim();
+
+    if (!(ALLOWED_IMAGE_TYPES as readonly string[]).includes(contentType)) {
+      throw {
+        statusCode: 400,
+        message: `Invalid file type "${contentType}". Accepted: ${ALLOWED_IMAGE_TYPES.join(', ')}`,
+      };
+    }
+
+    const body = request.body as Buffer;
+    if (!body || body.length === 0) {
+      throw { statusCode: 400, message: 'Request body is empty' };
+    }
+    if (body.length > AVATAR_MAX_BYTES) {
+      throw {
+        statusCode: 413,
+        message: `File too large (${(body.length / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is 2 MB.`,
+      };
+    }
+
+    const extMap: Record<string, string> = {
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+      'image/webp': 'webp',
+    };
+    const ext = extMap[contentType] ?? 'bin';
+    const filename = `${crypto.randomUUID()}.${ext}`;
+    const filePath = path.join(avatarUploadsDir, filename);
+    fs.writeFileSync(filePath, body);
+
+    return { url: `/avatars/uploads/${filename}` };
   });
 
   // ============================================================================

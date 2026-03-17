@@ -475,6 +475,41 @@ export async function stopAgent(agentId: string): Promise<void> {
   });
 }
 
+export interface AgentAvatarPreset {
+  id: string;
+  url: string;
+  name: string;
+}
+
+export async function fetchAgentPresets(): Promise<AgentAvatarPreset[]> {
+  const data = await apiFetch<{ presets: AgentAvatarPreset[] }>('/api/agents/presets');
+  return data.presets;
+}
+
+export async function updateAgentAvatar(
+  agentId: string,
+  options: { preset_id?: string; avatar_url?: string }
+): Promise<AgentJob> {
+  const data = await apiFetch<{ agent: AgentJob }>(
+    `/api/agents/${encodeURIComponent(agentId)}/avatar`,
+    { method: 'PUT', body: JSON.stringify(options) }
+  );
+  return data.agent;
+}
+
+export async function uploadAgentAvatar(file: File): Promise<{ url: string }> {
+  const response = await fetch(`${API_BASE}/api/agents/avatars/upload`, {
+    method: 'POST',
+    headers: { 'Content-Type': file.type },
+    body: file,
+  });
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(error || `HTTP ${response.status}`);
+  }
+  return response.json() as Promise<{ url: string }>;
+}
+
 // ============================================================================
 // Registries (Publishers) API
 // ============================================================================

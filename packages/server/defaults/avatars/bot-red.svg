@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="12" fill="#7f1d1d"/>
+  <rect x="14" y="16" width="36" height="28" rx="6" fill="#fecaca"/>
+  <rect x="20" y="22" width="10" height="10" rx="3" fill="#7f1d1d"/>
+  <rect x="34" y="22" width="10" height="10" rx="3" fill="#7f1d1d"/>
+  <circle cx="25" cy="27" r="3" fill="#ef4444"/>
+  <circle cx="39" cy="27" r="3" fill="#ef4444"/>
+  <path d="M22 38 L30 38 L32 35 L34 38 L42 38" stroke="#fca5a5" stroke-width="2" fill="none" stroke-linejoin="round"/>
+  <rect x="28" y="44" width="8" height="9" rx="2" fill="#fecaca"/>
+  <rect x="10" y="44" width="8" height="12" rx="3" fill="#fca5a5"/>
+  <rect x="46" y="44" width="8" height="12" rx="3" fill="#fca5a5"/>
+  <rect x="21" y="53" width="9" height="8" rx="2" fill="#fca5a5"/>
+  <rect x="34" y="53" width="9" height="8" rx="2" fill="#fca5a5"/>
+  <circle cx="32" cy="10" r="5" fill="#fca5a5"/>
+  <line x1="28" y1="8" x2="25" y2="4" stroke="#fca5a5" stroke-width="2" stroke-linecap="round"/>
+  <line x1="36" y1="8" x2="39" y2="4" stroke="#fca5a5" stroke-width="2" stroke-linecap="round"/>
+</svg>
