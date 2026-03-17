@@ -2709,8 +2709,8 @@ export async function startServer(config: ServerConfig): Promise<void> {
   fastify.get('/api/agents', async () => {
     reconcileAgentJobs();
     const jobs = Array.from(agentJobs.values());
-    const running = jobs.filter(j => j.status === 'running');
-    const completed = jobs.filter(j => j.status !== 'running')
+    const running = jobs.filter(j => j.status === 'running' || j.status === 'waiting');
+    const completed = jobs.filter(j => j.status === 'completed' || j.status === 'failed')
       .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
       .slice(0, 20);
     return { running, completed };
@@ -2774,6 +2774,29 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
 
     return { stopped: true, agent: job };
+  });
+
+  fastify.post<{ Params: { id: string } }>('/api/agents/:id/resend', async (request) => {
+    const { id } = request.params;
+    const original = agentJobs.get(id);
+    if (!original) {
+      throw { statusCode: 404, message: `Agent not found: ${id}` };
+    }
+
+    const runId = `agent_${crypto.randomUUID()}`;
+    const job: AgentJob = {
+      run_id: runId,
+      workflow_id: original.workflow_id,
+      workflow_title: original.workflow_title,
+      role: original.role,
+      started_at: new Date().toISOString(),
+      status: 'waiting',
+      initial_prompt: original.initial_prompt,
+      metrics: { action_count: 0, token_count: 0 },
+    };
+
+    agentJobs.set(runId, job);
+    return { agent: job };
   });
 
   // ============================================================================
