@@ -232,6 +232,10 @@ function getEnvVarsFromSettings(settings: Settings): Record<string, string> {
   for (const uc of settings.user_contexts ?? []) {
     if (uc.type === 'env') envVars[uc.name] = uc.value;
   }
+  // settings.jira takes priority over env-var user_contexts (backwards compatible)
+  if (settings.jira?.url) envVars['JIRA_URL'] = settings.jira.url;
+  if (settings.jira?.email) envVars['JIRA_USER_EMAIL'] = settings.jira.email;
+  if (settings.jira?.api_token) envVars['JIRA_API_TOKEN'] = settings.jira.api_token;
   return envVars;
 }
 
@@ -1751,9 +1755,34 @@ export async function startServer(config: ServerConfig): Promise<void> {
       external_mcps: request.body.external_mcps ?? current.external_mcps,
       reporting: request.body.reporting ?? current.reporting,
       skill_registries: request.body.skill_registries ?? current.skill_registries,
+      jira: request.body.jira !== undefined ? request.body.jira : current.jira,
     };
     saveSettings(config.configDir, updated);
     return { settings: updated };
+  });
+
+  // POST /api/settings/jira/test — validate Jira credentials
+  fastify.post<{ Body: { url?: string; email?: string; api_token?: string } }>('/api/settings/jira/test', async (request, reply) => {
+    const { url, email, api_token } = request.body ?? {};
+    if (!url || !email || !api_token) {
+      reply.status(400);
+      return { success: false, message: 'url, email, and api_token are required' };
+    }
+    try {
+      const baseUrl = url.startsWith('https://') ? url : `https://${url}`;
+      const authHeader = `Basic ${Buffer.from(`${email}:${api_token}`).toString('base64')}`;
+      const res = await fetch(`${baseUrl}/rest/api/3/myself`, {
+        headers: { Authorization: authHeader, Accept: 'application/json' },
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        return { success: false, message: `Jira returned ${res.status}: ${text.slice(0, 200)}` };
+      }
+      const data = await res.json() as { displayName?: string; emailAddress?: string };
+      return { success: true, message: `Connected as ${data.displayName ?? data.emailAddress ?? 'unknown'}` };
+    } catch (err) {
+      return { success: false, message: err instanceof Error ? err.message : 'Connection failed' };
+    }
   });
 
   // Get specific external MCP configuration

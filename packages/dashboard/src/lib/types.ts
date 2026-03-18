@@ -44,6 +44,7 @@ export type {
   LlmConfig,
   FullLlmConfig,
   Settings,
+  JiraConfig,
   // Recording types
   RecordingMetadata,
   RecordingStatus,

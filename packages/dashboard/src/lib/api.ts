@@ -304,6 +304,13 @@ export async function saveSettings(settings: Partial<Settings>): Promise<Setting
   return data.settings;
 }
 
+export async function testJiraConnection(url: string, email: string, api_token: string): Promise<{ success: boolean; message: string }> {
+  return apiFetch<{ success: boolean; message: string }>('/api/settings/jira/test', {
+    method: 'POST',
+    body: JSON.stringify({ url, email, api_token }),
+  });
+}
+
 // ============================================================================
 // Utility API
 // ============================================================================

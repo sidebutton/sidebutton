@@ -45,6 +45,7 @@ export type {
   FullLlmConfig,
   Settings,
   SkillRegistry,
+  JiraConfig,
   // Skill pack system
   SkillPackManifest,
   InstalledPack,

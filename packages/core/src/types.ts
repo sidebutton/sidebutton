@@ -412,6 +412,13 @@ export interface SkillRegistry {
   enabled: boolean;
 }
 
+// Jira integration configuration
+export interface JiraConfig {
+  url: string;
+  email: string;
+  api_token: string;
+}
+
 // Application settings
 export interface Settings {
   llm: FullLlmConfig;
@@ -428,6 +435,8 @@ export interface Settings {
   provider_connectors?: Record<string, ConnectorType>;
   /** Configured skill pack registries (local dirs or git repos) */
   skill_registries?: SkillRegistry[];
+  /** Jira integration credentials */
+  jira?: JiraConfig;
 }
 
 // ============================================================================
