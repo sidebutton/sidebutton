@@ -1,0 +1,142 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2026-03-18"
+id: agent_pm_sprint_status
+title: "PM Agent: Sprint Status Report"
+description: "Compute and output a comprehensive sprint status report: ticket metrics, story points, burndown, recently completed, in-review, and blocked items"
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: pm
+
+params:
+  project_key:
+    type: string
+    description: "Jira project key (e.g. SCRUM)"
+  sprint_name:
+    type: string
+    default: ""
+    description: "Sprint name to report on. Leave empty to use the active sprint."
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: PM Sprint Status"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: >-
+      source ~/.agent-env && claude --dangerously-skip-permissions
+      "you are a PM agent. your job is to produce a comprehensive sprint status report for project {{project_key}}.
+
+      STEP 1 — DETERMINE SPRINT:
+      if sprint_name is provided ('{{sprint_name}}'), use JQL sprint filter: sprint = '{{sprint_name}}'.
+      otherwise use: sprint in openSprints().
+      use mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql (cloudId: 'venmate.atlassian.net') to fetch all sprint issues:
+      jql: 'project = {{project_key}} AND sprint in openSprints() ORDER BY status ASC'
+      (substitute the sprint clause if sprint_name was provided)
+      request fields: summary, status, priority, assignee, story_points (customfield_10016), resolutiondate, labels, issuelinks, customfield_10020.
+      also fetch sprint metadata (start date, end date, name) from the first issue's customfield_10020 sprint array.
+      if the JQL call fails, stop and report the error.
+
+      STEP 2 — COMPUTE TICKET METRICS:
+      from the fetched issues, count and compute percentages for each status bucket:
+      - To Do
+      - In Progress
+      - In Review
+      - Done
+      - any other statuses present
+      total = sum of all buckets.
+      format: 'Done: N (XX%)  In Progress: N (XX%)  In Review: N (XX%)  To Do: N (XX%)'
+
+      STEP 3 — COMPUTE STORY POINT METRICS:
+      for each issue, read customfield_10016 (story points). treat null/missing as 0.
+      - committed: total story points across all sprint issues
+      - completed: story points for issues with status 'Done'
+      - remaining: committed minus completed
+      - completion rate: completed / committed * 100 (show as XX%; if committed is 0, show 'N/A')
+
+      STEP 4 — LIST RECENTLY COMPLETED (LAST 24H):
+      filter issues where status = 'Done' AND resolutiondate is within the last 24 hours (compare against current UTC time).
+      for each: show key, summary, assignee, story points, and any PR links found in issue comments or description (search for github.com/pull/ URLs).
+
+      STEP 5 — LIST TICKETS IN REVIEW:
+      filter issues where status = 'In Review'.
+      for each: show key, summary, assignee, story points, and PR links if available.
+
+      STEP 6 — IDENTIFY BLOCKED / AT-RISK ITEMS:
+      flag an issue as blocked if: it has a 'blocked' label, or has an issue link of type 'is blocked by', or has been in 'In Progress' for more than 3 days (check updated date heuristic).
+      flag as at-risk if: no assignee and not Done, or priority is Highest/High and status is To Do with less than 30% of sprint time remaining.
+      for each flagged item: show key, summary, reason for flag.
+
+      STEP 7 — COMPUTE SPRINT BURNDOWN:
+      from sprint metadata (customfield_10020): get startDate and endDate.
+      current date: use today's date.
+      - sprint duration days = endDate minus startDate
+      - elapsed days = today minus startDate (floor to 0 if negative)
+      - pct time elapsed = elapsed / duration * 100 (cap at 100%)
+      - pct work completed = completed story points / committed story points * 100 (or ticket count ratio if all story points are 0)
+      - burndown delta = pct work completed minus pct time elapsed (positive = ahead, negative = behind)
+      classify: AHEAD (delta >= +5%), ON TRACK (delta between -5% and +5%), BEHIND (delta between -5% and -15%), AT RISK (delta < -15%)
+
+      STEP 8 — OUTPUT STRUCTURED STATUS REPORT:
+      print the full report to stdout in this format:
+
+      # Sprint Status Report — {{project_key}}
+      **Sprint:** <sprint name>  |  **Date:** <today>  |  **Status:** <AHEAD / ON TRACK / BEHIND / AT RISK>
+
+      ## Ticket Metrics
+      | Status | Count | % |
+      |--------|-------|---|
+      | Done | N | XX% |
+      | In Review | N | XX% |
+      | In Progress | N | XX% |
+      | To Do | N | XX% |
+      | **Total** | **N** | |
+
+      ## Story Points
+      | Metric | Value |
+      |--------|-------|
+      | Committed | N |
+      | Completed | N |
+      | Remaining | N |
+      | Completion Rate | XX% |
+
+      ## Burndown
+      | Metric | Value |
+      |--------|-------|
+      | Sprint Start | YYYY-MM-DD |
+      | Sprint End | YYYY-MM-DD |
+      | % Time Elapsed | XX% |
+      | % Work Completed | XX% |
+      | Delta | +/-XX% |
+      | Assessment | AHEAD / ON TRACK / BEHIND / AT RISK |
+
+      ## Recently Completed (Last 24h)
+      <table or 'None' if empty>
+      | Key | Summary | Assignee | Points | PR |
+      |-----|---------|----------|--------|----|
+
+      ## In Review
+      <table or 'None' if empty>
+      | Key | Summary | Assignee | Points | PR |
+      |-----|---------|----------|--------|----|
+
+      ## Blocked / At-Risk
+      <table or 'None' if empty>
+      | Key | Summary | Reason |
+      |-----|---------|--------|
+
+      ## Highlights
+      - <1-3 bullet observations: biggest risk, most progress, upcoming deadline pressure, etc.>
+
+      {{hint}}"
