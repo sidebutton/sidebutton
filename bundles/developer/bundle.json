@@ -4,7 +4,8 @@
   "title": "Developer Tools",
   "description": "Workflows for developer productivity with Claude Code and terminal automation",
   "workflows": [
-    "claude_code_work.yaml"
+    "claude_code_work.yaml",
+    "agent_pm_daily_triage.yaml"
   ],
   "requires": {
     "llm": false,

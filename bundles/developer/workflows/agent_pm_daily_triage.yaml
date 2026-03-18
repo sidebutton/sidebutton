@@ -1,0 +1,97 @@
+schema_version: 1
+version: "1.0.0"
+id: agent_pm_daily_triage
+title: "PM Agent: Daily Sprint Triage"
+description: "Scan active sprint for blocked/stale items, check PR CI status, cross-reference agent fleet, post actionable triage report"
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: pm
+
+params:
+  project_key:
+    type: string
+    description: "Jira project key (e.g. SCRUM)"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra concerns to check"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: shell.run
+    cmd: >-
+      cd {{entry_path}} && source ~/.agent-env && claude --dangerously-skip-permissions
+      "you are a PM agent running a daily sprint triage. your job is to scan the active sprint, identify problems, and post a short actionable report.
+
+      STEP 1 — READ ACTIVE SPRINT:
+      use mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql (cloudId: 'venmate.atlassian.net') with JQL:
+      'project = {{project_key}} AND sprint in openSprints() ORDER BY status ASC'
+      fetch all tickets with fields: key, summary, status, assignee, updated, comment (last 1), issuelinks.
+      group tickets by status: To Do | In Progress | In Review | Done.
+
+      STEP 2 — FLAG STALE IN-PROGRESS TICKETS:
+      for each In Progress ticket:
+      - check the 'updated' timestamp
+      - if last update > 24 hours ago: flag as STALLED
+      - record: key, summary, assignee, last update age (in hours)
+      use Bash to get current UTC time: date -u +\"%Y-%m-%dT%H:%M:%SZ\"
+
+      STEP 3 — CHECK IN-REVIEW PR STATUS:
+      for each In Review ticket:
+      - look at ticket comments and description for a PR link (github.com URL)
+      - if PR link found: run via Bash: gh pr view <PR_NUMBER> --repo <OWNER/REPO> --json state,statusCheckRollup,reviews,updatedAt
+      - flag FAILING CI if any status check is not passing
+      - flag STALE REVIEW if PR has no review activity in >24h and no approvals
+      - record: key, PR link, CI status, review status
+
+      STEP 4 — CHECK AGENT FLEET STATUS:
+      check running agent processes via Bash: ps aux | grep claude | grep -v grep
+      identify which agents are currently active (have a running claude process) vs idle.
+
+      STEP 5 — CROSS-REFERENCE: STALLED TICKETS vs IDLE AGENTS:
+      for each STALLED In Progress ticket that has an assignee matching an agent name:
+      - if that agent appears idle: mark as SILENT FAILURE (ticket claimed but agent not working)
+      - suggest re-dispatch action
+
+      {{hint}}
+
+      STEP 6 — POST TRIAGE REPORT:
+      find the sprint or project summary ticket by searching Jira for a ticket with 'triage' or 'sprint summary' in the title in project {{project_key}}, or use the first In Progress ticket.
+      write one comment using mcp__claude_ai_Atlassian__addCommentToJiraIssue (cloudId: 'venmate.atlassian.net').
+      format the report as:
+
+      ## Daily Sprint Triage — <DATE>
+
+      ### Sprint Summary
+      - Total tickets: N (To Do: X | In Progress: Y | In Review: Z | Done: W)
+
+      ### Stalled (In Progress > 24h)
+      | Ticket | Summary | Assignee | Last Update |
+      |--------|---------|----------|-------------|
+      | KEY-N  | ...     | ...      | Xh ago      |
+
+      ### PR Issues (In Review)
+      | Ticket | PR | Issue |
+      |--------|-----|-------|
+      | KEY-N  | #N | Failing CI / Stale review |
+
+      ### Agent Mismatches (Silent Failures)
+      | Ticket | Assigned Agent | Agent Status | Action |
+      |--------|---------------|--------------|--------|
+      | KEY-N  | agent-name    | Idle         | Re-dispatch |
+
+      ### Suggested Actions
+      - [List of 3-5 concrete next actions, prioritized]
+
+      Keep the report short and scannable. If no issues found in a section, write 'None'."
+    as: result
+
+  - type: control.stop
+    message: "{{result}}"
