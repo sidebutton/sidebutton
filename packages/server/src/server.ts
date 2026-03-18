@@ -10,6 +10,7 @@ import fastifyFormbody from '@fastify/formbody';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ExtensionClientImpl } from './extension.js';
 import { McpHandler } from './mcp/handler.js';
@@ -1393,6 +1394,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
       desktop_connected: status.server_running,
       browser_connected: status.browser_connected,
       workflows_running: runningWorkflows.getAll().length,
+      claude_code_running: detectClaudeCodeRunning(),
     };
 
     // Read file-based signals (all optional, fail silently)
@@ -2690,15 +2692,30 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
   }
 
+  /** Check whether any Claude Code process is currently running on this agent. */
+  function detectClaudeCodeRunning(): boolean {
+    try {
+      const result = spawnSync('pgrep', ['-f', 'claude'], { encoding: 'utf8' });
+      return result.status === 0;
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Reconcile running agent jobs against live processes.
-   * If an agent has a recorded PID and that process is gone,
-   * transition the job to 'completed' (halted).
+   * - If a job has a recorded PID and that process is gone → completed.
+   * - If a job has no recorded PID and no Claude Code process is running → completed.
    */
   function reconcileAgentJobs(): void {
+    const claudeRunning = detectClaudeCodeRunning();
     for (const job of agentJobs.values()) {
       if (job.status !== 'running') continue;
       if (job.pid && !isProcessAlive(job.pid)) {
+        job.status = 'completed';
+        job.duration_ms = Date.now() - new Date(job.started_at).getTime();
+        job.result_summary = 'Agent process exited';
+      } else if (!job.pid && !claudeRunning) {
         job.status = 'completed';
         job.duration_ms = Date.now() - new Date(job.started_at).getTime();
         job.result_summary = 'Agent process exited';
