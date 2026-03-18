@@ -1,0 +1,165 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2026-03-18"
+id: agent_pm_sprint_close
+title: "PM Agent: Sprint Close"
+description: "Verify all sprint tickets are resolved, compute final metrics, list merged PRs, generate sprint summary, and close the sprint via Jira API"
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: pm
+
+params:
+  project_key:
+    type: string
+    description: "Jira project key (e.g. SCRUM)"
+  sprint_name:
+    type: string
+    default: ""
+    description: "Sprint name to close. Leave empty to use the active sprint."
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: PM Sprint Close"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: >-
+      source ~/.agent-env && claude --dangerously-skip-permissions
+      "you are a PM agent. your job is to close the sprint for project {{project_key}} by verifying completion, computing final metrics, and transitioning the sprint to closed.
+
+      STEP 1 — DETERMINE SPRINT:
+      if sprint_name is provided ('{{sprint_name}}'), use JQL sprint filter: sprint = '{{sprint_name}}'.
+      otherwise use: sprint in openSprints().
+      use mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql (cloudId: 'venmate.atlassian.net') to fetch all sprint issues:
+      jql: 'project = {{project_key}} AND sprint in openSprints() ORDER BY status ASC'
+      (substitute the sprint clause if sprint_name was provided)
+      request fields: summary, status, priority, assignee, customfield_10016 (story points), resolutiondate, labels, issuelinks, customfield_10020, comment.
+      also extract sprint metadata from the first issue's customfield_10020 array: sprint id, name, state, startDate, endDate.
+      if the JQL call fails, stop and report the error.
+      if no issues found, stop and report: 'No active sprint found for project {{project_key}}'.
+
+      STEP 2 — CHECK TICKET COMPLETION:
+      partition all issues by status:
+      - DONE: status = 'Done'
+      - INCOMPLETE: status is In Progress, In Review, To Do, or any non-Done status
+      count each bucket. if INCOMPLETE bucket is empty, proceed directly to STEP 4.
+      if INCOMPLETE tickets exist:
+        for each incomplete ticket, display: key, summary, status, assignee.
+        then output this decision prompt:
+        '--- ACTION REQUIRED ---
+        The following tickets are not Done. Choose an action for each:
+        [A] Move to next sprint  [B] Close as incomplete (won't count toward completion)
+        For this run, the agent will: move all In Progress and In Review tickets to the next sprint, and close To Do tickets as incomplete.'
+        identify the next sprint: use mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql with JQL:
+        'project = {{project_key}} AND sprint in futureSprints() ORDER BY sprint ASC'
+        extract the next sprint's id from customfield_10020 of the first result.
+        if a next sprint exists:
+          for each In Progress or In Review ticket: move it to the next sprint using bash:
+          source ~/.agent-env
+          JIRA_HOST=$(echo $JIRA_URL | sed 's|https://||')
+          AUTH=$(echo -n \"$JIRA_EMAIL:$JIRA_API_TOKEN\" | base64 -w 0)
+          curl -s -X POST \"$JIRA_URL/rest/agile/1.0/sprint/${next_sprint_id}/issue\" \
+            -H \"Authorization: Basic $AUTH\" \
+            -H \"Content-Type: application/json\" \
+            -d \"{\\\"issues\\\": [\\\"${issue_key}\\\"]}\""
+          record each moved ticket.
+        if no next sprint exists: leave In Progress and In Review tickets as carry-over (do not close them), record as carry-over.
+        for each To Do ticket: record as 'closed incomplete' — no Jira state change needed (the sprint close will remove them from active sprint).
+
+      STEP 3 — RECOMPUTE TICKET PARTITION AFTER MOVES:
+      after handling incomplete tickets, restate the final partition:
+      - completed (Done): list of keys
+      - moved to next sprint: list of keys + target sprint name
+      - closed incomplete (To Do at sprint close): list of keys
+      - carry-over (no next sprint available): list of keys
+
+      STEP 4 — COMPUTE FINAL SPRINT METRICS:
+      use the original full issue list (before any moves) for committed counts.
+      - total committed: count of all sprint issues
+      - total committed points: sum of customfield_10016 (treat null as 0)
+      - total completed: count of issues with status 'Done'
+      - total completed points: sum of customfield_10016 for Done issues
+      - completion rate (tickets): completed / committed * 100 (show XX%; if 0, show 'N/A')
+      - completion rate (points): completed points / committed points * 100 (show XX%; if committed points = 0, show 'N/A')
+      - carry-over count: count of tickets NOT Done that were not moved (remain in sprint at close)
+
+      STEP 5 — LIST MERGED PRs:
+      for each Done ticket (and any recently-moved tickets):
+        scan ticket comments and description for github.com/pull/ or github.com/.*/pull/ URLs.
+        for each PR URL found: run via bash: gh pr view <PR_NUMBER> --repo <OWNER/REPO> --json number,title,author,mergedAt,state 2>/dev/null
+        collect: PR number, title, author login, mergedAt date, ticket key.
+      deduplicate by PR number. if no PRs found, note 'No merged PRs found in ticket comments.'
+      use bash to get current UTC date: date -u +\"%Y-%m-%d\"
+
+      STEP 6 — GENERATE SPRINT SUMMARY:
+      compose a structured sprint summary based on all data gathered:
+      - achievements: list of Done tickets grouped by theme (use labels or key prefix if available), highlight high-priority completions
+      - carry-overs: list tickets moved to next sprint with brief reason (status at close)
+      - notable items: flag any ticket that was: blocked, high-priority and incomplete, or had failing CI at close
+
+      STEP 7 — CLOSE THE SPRINT:
+      only close the sprint if ALL tickets are now in a resolved state (Done, moved to next sprint, or closed incomplete) — i.e., no tickets remain In Progress or In Review in the current sprint after STEP 2.
+      extract sprint_id from customfield_10020 of the sprint data collected in STEP 1.
+      close the sprint via bash:
+        source ~/.agent-env
+        AUTH=$(echo -n \"$JIRA_EMAIL:$JIRA_API_TOKEN\" | base64 -w 0)
+        RESPONSE=$(curl -s -o /tmp/sprint_close_response.json -w \"%{http_code}\" -X PUT \
+          \"$JIRA_URL/rest/agile/1.0/sprint/${sprint_id}\" \
+          -H \"Authorization: Basic $AUTH\" \
+          -H \"Content-Type: application/json\" \
+          -d \"{\\\"state\\\": \\\"closed\\\"}\")
+        echo \"HTTP $RESPONSE: $(cat /tmp/sprint_close_response.json)\"
+      if HTTP status is 200 or 204: sprint closed successfully.
+      if HTTP status is 400 and response contains 'already closed': note sprint was already closed.
+      if HTTP status is 403: note 'Insufficient permissions to close sprint — manual close required'.
+      if any other error: note the error and continue to output the report.
+      if not all tickets resolved: skip sprint close, note 'Sprint NOT closed — X tickets still active in sprint'.
+
+      STEP 8 — OUTPUT SPRINT CLOSE REPORT:
+      print the full report to stdout in this format:
+
+      # Sprint Close Report — {{project_key}}
+      **Sprint:** <sprint name>  |  **Closed:** <today YYYY-MM-DD>  |  **Sprint Close Status:** <CLOSED / NOT CLOSED — reason>
+
+      ## Final Ticket Metrics
+      | Metric | Count | Points |
+      |--------|-------|--------|
+      | Committed | N | N |
+      | Completed (Done) | N | N |
+      | Moved to Next Sprint | N | N |
+      | Closed Incomplete | N | N |
+      | Completion Rate | XX% | XX% |
+
+      ## Carry-Overs (Moved to Next Sprint)
+      <table or 'None'>
+      | Key | Summary | Status at Close | Assignee |
+      |-----|---------|----------------|----------|
+
+      ## Merged PRs
+      <table or 'None'>
+      | PR | Title | Author | Merged | Ticket |
+      |----|-------|--------|--------|--------|
+
+      ## Sprint Summary
+
+      ### Achievements
+      - <bullet per notable Done item or theme>
+
+      ### Carry-Overs
+      - <bullet per moved/incomplete ticket with reason>
+
+      ### Notable Issues
+      - <bullet per blocked/at-risk/notable item, or 'None'>
+
+      {{hint}}"

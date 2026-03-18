@@ -1,0 +1,15 @@
+{
+  "name": "sidebutton/jira",
+  "version": "1.0.0",
+  "title": "Jira",
+  "description": "Workflows for Jira project management: sprint status reports, issue management, and PM agent automation",
+  "workflows": [
+    "agent_pm_sprint_close.yaml"
+  ],
+  "requires": {
+    "llm": false,
+    "browser": false
+  },
+  "tos_warning": false,
+  "tags": ["jira", "pm", "sprint", "agent"]
+}
