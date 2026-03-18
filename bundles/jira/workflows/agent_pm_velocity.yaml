@@ -1,0 +1,118 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2026-03-18"
+id: agent_pm_velocity
+title: "PM Agent: Velocity & Capacity Forecast"
+description: "Compute velocity history across completed sprints, detect trend (accelerating/stable/decelerating), and forecast next sprint capacity"
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: pm
+
+params:
+  project_key:
+    type: string
+    description: "Jira project key (e.g. SCRUM)"
+  num_sprints:
+    type: number
+    default: 5
+    description: "Number of past completed sprints to analyze (default 5)"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: PM Velocity & Capacity Forecast"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: >-
+      source ~/.agent-env && claude --dangerously-skip-permissions
+      "you are a PM agent. your job is to compute velocity history and forecast capacity for project {{project_key}} across the last {{num_sprints}} completed sprints.
+
+      STEP 1 — FETCH COMPLETED SPRINT ISSUES:
+      use mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql (cloudId: 'venmate.atlassian.net') to fetch issues from closed sprints.
+      jql: 'project = {{project_key}} AND sprint in closedSprints() ORDER BY updated DESC'
+      request fields: summary, status, customfield_10016 (story points), customfield_10020 (sprint info), resolutiondate.
+      fetch up to 500 issues (maxResults: 500).
+      if the JQL call fails, stop and report the error.
+
+      STEP 2 — GROUP ISSUES BY SPRINT:
+      for each issue, extract sprint info from customfield_10020 (an array; use the last entry which is the sprint the issue was completed in).
+      sprint fields to extract: id, name, state, startDate, endDate.
+      group all issues by sprint id.
+      collect unique sprints sorted by endDate descending (most recent first).
+      take the most recent {{num_sprints}} completed sprints. if fewer exist, use all available.
+
+      STEP 3 — COMPUTE PER-SPRINT VELOCITY:
+      for each sprint in the selected set:
+      - total_tickets: count of all issues in the sprint
+      - done_tickets: count of issues with status = 'Done'
+      - committed_points: sum of customfield_10016 across all sprint issues (treat null as 0)
+      - completed_points: sum of customfield_10016 for Done issues only (treat null as 0)
+      - completion_rate: done_tickets / total_tickets * 100 (or 'N/A' if total is 0)
+      sort sprints chronologically (oldest first) for trend analysis.
+
+      STEP 4 — COMPUTE ROLLING AVERAGE:
+      rolling_avg_points = average of completed_points across all selected sprints (round to 1 decimal).
+      rolling_avg_tickets = average of done_tickets across all selected sprints (round to 1 decimal).
+
+      STEP 5 — DETECT TREND:
+      compare the two most recent sprints against the rolling average of all selected sprints:
+      - last1 = most recent sprint completed_points
+      - last2 = second most recent sprint completed_points (if available, else use last1)
+      - recent_avg = (last1 + last2) / 2
+      - delta_pct = (recent_avg - rolling_avg_points) / rolling_avg_points * 100 (or 0 if rolling avg is 0)
+      classify:
+        ACCELERATING  if delta_pct >= +10%
+        STABLE        if delta_pct between -10% and +10%
+        DECELERATING  if delta_pct <= -10%
+      if only one sprint is available, classify as STABLE.
+
+      STEP 6 — FORECAST NEXT SPRINT CAPACITY:
+      forecast_points = rolling_avg_points (round to nearest whole number).
+      forecast_tickets = rolling_avg_tickets (round to nearest whole number).
+      if trend is ACCELERATING: also show optimistic forecast = recent_avg * 1.05 (round to nearest whole number).
+      if trend is DECELERATING: also show conservative forecast = recent_avg * 0.95 (round to nearest whole number).
+
+      STEP 7 — OUTPUT VELOCITY REPORT:
+      print the full report to stdout in this format:
+
+      # Velocity Report — {{project_key}}
+      **Sprints Analyzed:** <N>  |  **Date:** <today>  |  **Trend:** <ACCELERATING / STABLE / DECELERATING>
+
+      ## Velocity History
+      | Sprint | Done Tickets | Completed Points | Committed Points | Completion Rate |
+      |--------|-------------|-----------------|-----------------|----------------|
+      | <sprint name> | N | N | N | XX% |
+      ...
+      | **Rolling Avg** | **N** | **N** | — | — |
+
+      ## Trend Analysis
+      | Metric | Value |
+      |--------|-------|
+      | Rolling Avg (points) | N |
+      | Rolling Avg (tickets) | N |
+      | Recent Avg (last 2 sprints, points) | N |
+      | Delta vs Rolling Avg | +/-XX% |
+      | Trend | ACCELERATING / STABLE / DECELERATING |
+
+      ## Capacity Forecast (Next Sprint)
+      | Scenario | Story Points | Tickets |
+      |----------|-------------|---------|
+      | Base (rolling avg) | N | N |
+      | Optimistic (if ACCELERATING) | N | — |
+      | Conservative (if DECELERATING) | N | — |
+
+      ## Highlights
+      - <1-3 bullet observations: trend drivers, notable outlier sprints, capacity change vs last sprint, planning recommendation>
+
+      {{hint}}"

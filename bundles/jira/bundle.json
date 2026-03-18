@@ -4,7 +4,8 @@
   "title": "Jira",
   "description": "Workflows for Jira project management: sprint status reports, issue management, and PM agent automation",
   "workflows": [
-    "agent_pm_sprint_status.yaml"
+    "agent_pm_sprint_status.yaml",
+    "agent_pm_velocity.yaml"
   ],
   "requires": {
     "llm": false,
