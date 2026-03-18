@@ -1,0 +1,120 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2026-03-18"
+id: agent_pm_sprint_health
+title: "PM Agent: Sprint Health Snapshot"
+description: "On-demand sprint health snapshot: completion rate, agent utilization, job pipeline status, and anomaly flags"
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: pm
+
+params:
+  project_key:
+    type: string
+    description: "Jira project key (e.g. SCRUM)"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: PM Sprint Health"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: >-
+      source ~/.agent-env && claude --dangerously-skip-permissions
+      "you are a PM agent. your job is to produce a compact one-screen health snapshot for the active sprint in project {{project_key}}.
+
+      STEP 1 — READ ACTIVE SPRINT TICKETS:
+      use mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql (cloudId: 'venmate.atlassian.net') with JQL:
+      'project = {{project_key}} AND sprint in openSprints() ORDER BY status ASC'
+      request fields: summary, status, updated, assignee, priority, labels, issuelinks.
+      group tickets by status: To Do | In Progress | In Review | Done | other.
+      compute:
+      - total = sum of all buckets
+      - completion_rate = Done / total * 100 (0 if total is 0)
+      - stuck_tickets: tickets NOT in Done where updated timestamp is more than 48 hours before now
+        (get current UTC time via Bash: date -u +\"%Y-%m-%dT%H:%M:%SZ\")
+      - blocked_tickets: tickets that have a 'blocked' label OR an issue link type 'is blocked by'
+      if the JQL call fails, stop and report the error.
+
+      STEP 2 — READ AGENT FLEET STATUS:
+      fetch running agent jobs via Bash:
+        curl -s http://localhost:9876/api/agents
+      the response is JSON with shape: { running: [...], completed: [...] }
+      - running_count = length of the running array (agents currently active)
+      - recent_count = length of the completed array (recently finished agents, up to last 20)
+      also fetch the local instance health signal:
+        curl -s http://localhost:9876/health
+      check if idle_since is set in the response (current agent is idle).
+      if the curl call fails, note 'fleet status unavailable' and set running_count = 0, recent_count = 0.
+      agent utilization: if (running_count + recent_count) > 0, utilization = running_count / (running_count + recent_count) * 100, else 'N/A'.
+
+      STEP 3 — READ RECENT JOB PIPELINE (LAST 24H):
+      call mcp__sidebutton__list_run_logs with limit=100 to get recent workflow runs.
+      the response includes run log metadata entries, each with: id, workflow_id, timestamp (ISO string), status ('success' | 'failed' | 'cancelled'), duration_ms.
+      filter to entries where timestamp is within the last 24 hours (compare against current UTC time minus 24h).
+      count:
+      - successful: status = 'success'
+      - failed: status = 'failed' or 'cancelled'
+      - total_finished = successful + failed
+      job_success_rate = successful / total_finished * 100 if total_finished >= 1, else 'N/A'.
+
+      STEP 4 — FLAG ANOMALIES:
+      check these conditions in order. record each triggered anomaly with severity and message:
+      - HIGH_FAILURE_RATE [CRIT]: job_success_rate < 70 AND total_finished >= 3
+        message: 'Job success rate {{job_success_rate}}% — {{failed}} of {{total_finished}} jobs failed in last 24h'
+      - STUCK_TICKETS [CRIT if >2 stuck, else WARN]: stuck_tickets count > 0
+        message: '{{N}} ticket(s) not updated in >48h: list first 3 keys'
+      - IDLE_AGENTS_WITH_WORK [WARN]: running_count = 0 AND (In Progress + In Review count) > 2
+        message: 'No active agents but {{N}} tickets are In Progress or In Review'
+      - LOW_COMPLETION [WARN]: completion_rate < 30 AND total >= 5
+        message: 'Only {{completion_rate}}% done with {{total}} sprint tickets'
+      - BLOCKED_ITEMS [WARN]: blocked_tickets count > 0
+        message: '{{N}} ticket(s) flagged as blocked'
+      if no anomalies triggered, record 'None'.
+
+      {{hint}}
+
+      STEP 5 — OUTPUT HEALTH DASHBOARD:
+      print the following compact dashboard to stdout. use current date as YYYY-MM-DD:
+
+      ═══════════════════════════════════════════════════════
+       SPRINT HEALTH SNAPSHOT — {{project_key}}  [<DATE>]
+      ═══════════════════════════════════════════════════════
+
+      SPRINT PROGRESS
+        [<BAR>] <completion_rate>%
+        Done: <N>  In Progress: <N>  In Review: <N>  To Do: <N>
+        Stuck >48h: <N> tickets  |  Blocked: <N> tickets
+
+      AGENT FLEET
+        Active: <running_count>  Recent: <recent_count>  |  Utilization: <utilization>%
+        Fleet: <ACTIVE if running_count > 0, IDLE if running_count = 0>
+
+      JOB PIPELINE (last 24h)
+        Success: <successful>  Failed: <failed>  |  Success rate: <job_success_rate>%
+
+      ANOMALIES
+        <[CRIT] or [WARN] anomaly line, one per line>
+        (or: None)
+
+      ═══════════════════════════════════════════════════════
+
+      render the progress bar:
+      - fill = floor(completion_rate / 5) characters of block (unicode FULL BLOCK: \u2588)
+      - empty = 20 minus fill characters of light shade (unicode LIGHT SHADE: \u2591)
+      - format: [<fill><empty>] <completion_rate>%
+      example at 40%: [\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 40%
+
+      if any CRIT anomaly was triggered, add after the closing line:
+      ⚠  ACTION REQUIRED: <description of first CRIT anomaly>"
