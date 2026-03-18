@@ -1,0 +1,135 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2026-03-18"
+id: agent_pm_sprint_plan
+title: "PM Agent: Sprint Planning"
+description: "Analyze backlog, suggest sprint scope respecting capacity and dependencies, and optionally move selected tickets into the active sprint"
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: pm
+
+params:
+  project_key:
+    type: string
+    description: "Jira project key (e.g. SCRUM)"
+  capacity:
+    type: string
+    description: "Target sprint capacity — number of tickets or story points (e.g. '10' or '40')"
+  sprint_name:
+    type: string
+    default: ""
+    description: "Target sprint to plan into. Leave empty to use the active sprint."
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions. Pass 'move tickets' to assign selected tickets to the sprint."
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: shell.run
+    cmd: >-
+      cd {{entry_path}} && source ~/.agent-env && claude --dangerously-skip-permissions
+      "you are a PM agent running sprint planning for project {{project_key}}.
+      your capacity target is {{capacity}} (tickets or story points).
+
+      STEP 1 — READ ACTIVE SPRINT STATE:
+      use mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql (cloudId: 'venmate.atlassian.net') with JQL:
+      'project = {{project_key}} AND sprint in openSprints() ORDER BY status ASC'
+      fetch fields: key, summary, status, priority, assignee, customfield_10016 (story points), issuelinks, customfield_10020 (sprint).
+      from the first result's customfield_10020 sprint array, extract: sprint id, sprint name, startDate, endDate.
+      record total tickets and total story points already committed to the sprint.
+      if sprint_name is provided ('{{sprint_name}}') and differs from the active sprint name,
+      re-fetch using: 'project = {{project_key}} AND sprint = \"{{sprint_name}}\" ORDER BY status ASC'.
+      if the JQL call fails, stop and report the error.
+
+      STEP 2 — READ BACKLOG:
+      fetch all unscheduled backlog tickets using JQL:
+      'project = {{project_key}} AND status = \"To Do\" AND sprint is EMPTY ORDER BY priority ASC, created ASC'
+      request fields: key, summary, priority, assignee, customfield_10016 (story points), issuelinks.
+      if no backlog tickets are found, report 'Backlog is empty — nothing to plan.' and skip to STEP 6.
+
+      STEP 3 — COMPUTE VELOCITY BASELINE:
+      search recently closed sprints using JQL:
+      'project = {{project_key}} AND sprint in closedSprints() ORDER BY updated DESC'
+      for up to 3 closed sprints, count Done tickets and sum their story points.
+      velocity = average tickets/sprint (or average points/sprint if most tickets have story point estimates).
+      compare velocity to {{capacity}} and note the ratio (e.g. 'capacity is 1.2x velocity — slightly ambitious').
+      if no closed sprints exist, skip comparison and note 'No completed sprints — velocity unknown.'
+
+      STEP 4 — SELECT SPRINT CANDIDATES:
+      choose capacity unit: if {{capacity}} > 20 or most backlog tickets have story point estimates, use points; otherwise use ticket count.
+      selection rules:
+      1. always include Highest-priority tickets and any tickets that other selected tickets depend on ('is blocked by') first.
+      2. skip tickets that are blocked by tickets NOT in the selected set (they cannot start).
+      3. fill remaining capacity with highest-priority tickets in order.
+      4. allow up to 20% overage (rounding allowance).
+      record selected list (key, summary, priority, points) and deferred list (key, summary, reason for deferral).
+
+      STEP 5 — GROUP BY EXECUTION ORDER:
+      for each selected ticket, examine issuelinks for 'blocks' and 'is blocked by' relationships within the selected set.
+      build dependency groups:
+      - Group A (parallel — no unresolved blockers): tickets with no 'is blocked by' links in the selected set.
+      - Group B (after A): tickets that are blocked only by Group A tickets.
+      - Group C+ (deeper chains): follow-on dependencies.
+      if no dependency links exist among selected tickets, put all in Group A.
+
+      STEP 6 — POST SPRINT PLAN COMMENT:
+      find a suitable ticket to post the plan on:
+      first, search for a sprint planning ticket: JQL 'project = {{project_key}} AND summary ~ \"sprint\" AND status != Done ORDER BY updated DESC'
+      use the first result. if none found, post to the most recently updated open ticket in the sprint from STEP 1.
+      post one structured comment using mcp__claude_ai_Atlassian__addCommentToJiraIssue (cloudId: 'venmate.atlassian.net').
+      format the comment in markdown:
+
+      ## Sprint Plan — {{project_key}} — <sprint name or Active Sprint>
+      **Date:** <today>  |  **Capacity:** {{capacity}}  |  **Already committed:** <N tickets / P points>  |  **Velocity baseline:** <avg/sprint or N/A>
+
+      ### Proposed Scope (<N tickets, P points total>)
+      | Key | Summary | Priority | Points | Exec Group |
+      |-----|---------|----------|--------|------------|
+      | KEY-N | ... | High | N | A |
+
+      ### Execution Groups
+      **Group A (independent — run in parallel):**
+      - KEY-N: <summary>
+
+      **Group B (after Group A):**
+      - KEY-N: <summary>
+
+      *(omit empty groups)*
+
+      ### Deferred (<N tickets>)
+      | Key | Summary | Reason |
+      |-----|---------|--------|
+      | KEY-N | ... | Exceeds capacity / Blocked by unresolved dependency |
+
+      ### Risk Flags
+      - <flag any high-priority tickets deferred, unassigned tickets in selected scope, dependency risks, or capacity vs velocity concerns>
+      - (write 'None' if no risks)
+
+      ### Velocity Note
+      <1 sentence: proposed scope vs velocity baseline and assessment (e.g. 'This sprint is at 1.1x average velocity — slightly ambitious but within normal range.')>
+
+      {{hint}}
+
+      STEP 7 — OPTIONALLY MOVE TICKETS TO SPRINT:
+      only execute this step if '{{hint}}' contains the phrase 'move tickets'.
+      for each ticket in the selected scope list, assign it to the sprint using the Jira agile API.
+      get the sprint ID recorded in STEP 1.
+      for each selected ticket key, run via Bash:
+      curl -s -X POST -H 'Content-Type: application/json'
+      -u \"$JIRA_EMAIL:$JIRA_API_TOKEN\"
+      \"https://$JIRA_URL/rest/agile/1.0/sprint/$SPRINT_ID/issue\"
+      -d \"{\\\"issues\\\": [\\\"KEY-N\\\"]}\"
+      (substitute actual sprint ID and ticket key; JIRA_URL, JIRA_EMAIL, JIRA_API_TOKEN are sourced from ~/.agent-env)
+      report: which tickets were moved successfully (HTTP 204) and which failed with error details."
+    as: result
+
+  - type: control.stop
+    message: "{{result}}"
