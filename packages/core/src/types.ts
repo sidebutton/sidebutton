@@ -511,6 +511,7 @@ export interface HealthResponse {
   result?: { type: string; at: string } | null;
   last_tool_use?: string | null;
   workflows_running?: number;
+  claude_running?: boolean;
 }
 
 // Workflow summary for listing

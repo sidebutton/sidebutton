@@ -10,6 +10,7 @@ import fastifyFormbody from '@fastify/formbody';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as crypto from 'node:crypto';
+import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ExtensionClientImpl } from './extension.js';
 import { McpHandler } from './mcp/handler.js';
@@ -1415,6 +1416,16 @@ export async function startServer(config: ServerConfig): Promise<void> {
       const lastTool = fs.readFileSync(path.join(sidebuttonDir, 'last-tool-use'), 'utf8').trim();
       if (lastTool) response.last_tool_use = lastTool;
     } catch { /* no last tool use marker */ }
+
+    // Check if Claude Code process is running.
+    // This prevents the orchestrator from incorrectly treating a quiet-but-alive
+    // Claude session (e.g. waiting on a long LLM API response) as stalled or idle.
+    try {
+      execSync('pgrep -x claude', { stdio: 'ignore' });
+      response.claude_running = true;
+    } catch {
+      response.claude_running = false;
+    }
 
     return response;
   });
