@@ -1,0 +1,15 @@
+{
+  "name": "sidebutton/jira",
+  "version": "1.0.0",
+  "title": "Jira Automation",
+  "description": "PM agent workflows for Jira sprint management, ticket triage, and project reporting",
+  "workflows": [
+    "agent_pm_ticket_triage.yaml"
+  ],
+  "requires": {
+    "llm": true,
+    "browser": false
+  },
+  "tos_warning": false,
+  "tags": ["jira", "pm", "triage", "sprint"]
+}

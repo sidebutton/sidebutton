@@ -1,0 +1,116 @@
+schema_version: 1
+version: "1.0.0"
+id: agent_pm_ticket_triage
+title: "PM Agent: Ticket Triage"
+description: "Classify a new Jira ticket by type, suggest priority, estimate effort, check for duplicates, and post a triage summary comment"
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: pm
+
+params:
+  ticket_url:
+    type: string
+    description: "Full Jira ticket URL (e.g. https://yoursite.atlassian.net/browse/PROJ-123)"
+  hint:
+    type: string
+    default: ""
+    description: "Optional context about the ticket source or any specific triage concerns"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: shell.run
+    cmd: >-
+      cd {{entry_path}} && source ~/.agent-env && claude --dangerously-skip-permissions
+      "you are a PM agent performing ticket triage. your job is to classify a new ticket, assess its priority and effort, check for duplicates, and post a structured triage comment.
+
+      TICKET URL: {{ticket_url}}
+
+      STEP 1 — PARSE TICKET KEY:
+      extract the ticket key from the URL (e.g. PROJ-123 from https://...atlassian.net/browse/PROJ-123).
+      extract the project key (e.g. PROJ) from the ticket key (everything before the dash).
+
+      STEP 2 — READ TICKET:
+      use mcp__claude_ai_Atlassian__getJiraIssue (cloudId: 'venmate.atlassian.net') with the ticket key.
+      extract: summary, description, reporter, labels, issue type, priority, status, created date.
+
+      STEP 3 — CLASSIFY TYPE:
+      based on the summary and description, classify the ticket as exactly one of:
+      - Bug: something that used to work and no longer does, or produces an incorrect/unexpected result
+      - Feature: new functionality that does not exist yet
+      - Improvement: enhancement to existing functionality (better UX, faster, more configurable)
+      - Tech Debt: refactoring, cleanup, or internal improvement with no user-visible change
+      - Support: customer question, data fix, configuration request, or operational task
+      choose the best match and write one sentence justification.
+
+      STEP 4 — SUGGEST PRIORITY:
+      assess priority based on three factors:
+      - severity: does it block core user workflows? cause data loss or security exposure?
+      - affected users: one customer, a segment, all users, or internal only?
+      - business impact: revenue risk, compliance requirement, reputational risk, or cosmetic?
+      suggest one of: Critical | High | Medium | Low
+      write one sentence justification.
+
+      STEP 5 — ESTIMATE EFFORT:
+      estimate implementation effort as one of:
+      - Small (1-2h): isolated, well-scoped change with no significant unknowns
+      - Medium (half day): moderate complexity, some investigation or cross-file changes needed
+      - Large (full day+): significant rework, cross-cutting concerns, or substantial uncertainty in scope
+      write one sentence justification.
+
+      STEP 6 — SUGGEST SPRINT ASSIGNMENT:
+      use mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql (cloudId: 'venmate.atlassian.net') with JQL:
+      'project = <PROJECT_KEY> AND sprint in openSprints() AND status in (\"To Do\", \"In Progress\")'
+      count open items to gauge current sprint load.
+      assign to Current Sprint if: priority is Critical or High AND sprint has fewer than 10 open items.
+      otherwise assign to Backlog.
+      state the recommendation with a one-line reason.
+
+      STEP 7 — CHECK FOR DUPLICATES / RELATED TICKETS:
+      extract 2-3 distinctive keywords from the ticket summary.
+      run two JQL searches using mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql (cloudId: 'venmate.atlassian.net'):
+      1. 'project = <PROJECT_KEY> AND summary ~ \"<keyword1>\" ORDER BY created DESC'
+      2. 'project = <PROJECT_KEY> AND summary ~ \"<keyword2>\" ORDER BY created DESC'
+      exclude the current ticket key from results.
+      collect up to 3 related or potentially duplicate tickets (key, summary, status).
+      if none found after both searches, state 'No related tickets found'.
+
+      {{hint}}
+
+      STEP 8 — POST TRIAGE COMMENT:
+      post a triage comment using mcp__claude_ai_Atlassian__addCommentToJiraIssue (cloudId: 'venmate.atlassian.net') on the ticket.
+      format the comment exactly as:
+
+      ## Triage Summary
+
+      | Field | Value |
+      |-------|-------|
+      | Type | <Bug / Feature / Improvement / Tech Debt / Support> |
+      | Suggested Priority | <Critical / High / Medium / Low> |
+      | Effort Estimate | <Small (1-2h) / Medium (half day) / Large (full day+)> |
+      | Sprint Assignment | <Current Sprint / Backlog> |
+
+      **Classification:** <one sentence justification for type>
+
+      **Priority Rationale:** <one sentence>
+
+      **Effort Rationale:** <one sentence>
+
+      **Sprint Rationale:** <one sentence>
+
+      ### Related / Potential Duplicates
+
+      <either a markdown table with columns Key | Summary | Status, or 'No related tickets found'>
+
+      ---
+      *Triaged by PM agent — review and adjust as needed.*"
+    as: result
+
+  - type: control.stop
+    message: "{{result}}"
