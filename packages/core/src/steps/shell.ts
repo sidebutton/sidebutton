@@ -103,9 +103,12 @@ export async function executeTerminalRun(
 
   let cmd = ctx.interpolate(step.cmd);
 
-  // Inject --effort flag into Claude CLI commands for non-default effort levels
+  // Inject --effort flag into Claude CLI commands for non-default effort levels.
+  // Claude CLI accepts: low | medium | high. 'max' is a SideButton-internal level
+  // (selects Opus model) that maps to 'high' at the CLI layer.
   if (ctx.effortLevel && ctx.effortLevel !== 'medium' && cmd.includes('claude ')) {
-    cmd = cmd.replace('claude ', `claude --effort ${ctx.effortLevel} `);
+    const cliEffort = ctx.effortLevel === 'max' ? 'high' : ctx.effortLevel;
+    cmd = cmd.replace('claude ', `claude --effort ${cliEffort} `);
   }
 
 
