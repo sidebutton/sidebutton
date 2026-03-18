@@ -1,0 +1,127 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2026-03-18"
+id: agent_pm_dependency_check
+title: "PM Agent: Dependency & Risk Check"
+description: "Scan active sprint tickets for cross-ticket dependencies, out-of-order execution risks, file-level conflict risks, and external blockers — post a dependency risk report"
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: pm
+
+params:
+  project_key:
+    type: string
+    description: "Jira project key (e.g. SCRUM)"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: PM Dependency Check"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: >-
+      source ~/.agent-env && claude --dangerously-skip-permissions
+      "you are a PM agent. your job is to scan the active sprint for cross-ticket dependency risks and flag execution order problems.
+
+      STEP 1 — FETCH ALL SPRINT TICKETS:
+      use mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql (cloudId: 'venmate.atlassian.net') with JQL:
+      'project = {{project_key}} AND sprint in openSprints() ORDER BY status ASC'
+      fetch all tickets with fields: key, summary, status, assignee, description, issuelinks, comment (last 5), labels, parent.
+      if the JQL call fails, stop and report the error.
+      collect ALL tickets into a working list — this is your full sprint scope.
+
+      STEP 2 — EXTRACT EXECUTION GROUPS FROM COMMENTS AND DESCRIPTIONS:
+      for each ticket, scan the description and all fetched comments for execution group declarations.
+      look for patterns such as:
+        - 'Group 1:', 'Group 2:', 'Group 3:' followed by ticket keys
+        - 'execution order:', 'depends on:', 'must run after:', 'blocked by:'
+        - numbered implementation phases listing ticket keys (e.g. 'Phase 1: SCRUM-10, SCRUM-11')
+        - JSON or YAML blocks listing dependency arrays
+      extract: which group (or phase) each ticket belongs to, and which tickets it depends on.
+      build a dependency map: { ticket_key -> { group: N, depends_on: [keys] } }
+      if a ticket has no declared group, treat it as Group 1 (independent).
+
+      STEP 3 — CHECK OUT-OF-ORDER EXECUTION:
+      using the dependency map from Step 2:
+      for each ticket that belongs to Group 2 or higher (or has explicit depends_on entries):
+        - check if ALL its dependencies are in status 'Done'
+        - if any dependency is NOT Done (i.e., To Do / In Progress / In Review) AND the dependent ticket is 'In Progress':
+          flag as OUT-OF-ORDER: ticket is being worked before its dependency is complete
+        - if the dependent ticket is 'To Do' but its dependency is also 'To Do' with no assignee: flag as PLANNING GAP
+      record: dependent_ticket, dependency_ticket, dependency_status, risk_level (CRITICAL if In Progress, WARNING if To Do)
+
+      STEP 4 — DETECT FILE/MODULE CONFLICT RISKS:
+      for each ticket, scan description and comments for file paths, module names, or code areas.
+      look for patterns such as:
+        - file paths: 'src/...', 'packages/...', file extensions (.ts, .yaml, .json, .py, etc.)
+        - module mentions: 'the X module', 'X component', 'X service', 'X handler'
+        - PR links (github.com/pull/) — if found, run: gh pr view <PR> --json files --repo <owner/repo> to get actual changed files
+      build a map: { file_or_module -> [ticket_keys] }
+      flag any file_or_module touched by 2 or more In Progress or In Review tickets as CONFLICT RISK.
+      record: file_or_module, tickets_touching_it, their statuses.
+
+      STEP 5 — FLAG EXTERNAL DEPENDENCIES:
+      scan ticket descriptions and comments for mentions of:
+        - third-party APIs or services (Stripe, Twilio, SendGrid, AWS, Firebase, OpenAI, etc.)
+        - 'waiting for', 'pending', 'external', 'vendor', 'API key', 'credentials', 'webhook setup'
+        - environment variables or secrets not yet provisioned
+      for each ticket with external dependencies: record the ticket key, summary, and the external dependency identified.
+      flag as EXTERNAL BLOCKER if the ticket is In Progress or To Do and relies on something outside the team's control.
+
+      STEP 6 — BUILD ISSUE LINK DEPENDENCY GRAPH:
+      use the issuelinks field fetched in Step 1.
+      for each ticket, extract formal Jira links of type 'is blocked by', 'depends on', or 'blocks'.
+      for each 'is blocked by' or 'depends on' link where the blocker ticket is NOT Done:
+        if the current ticket is In Progress: flag as LINK-BLOCKED (formal link blocker unresolved)
+      supplement the dependency map from Step 2 with any link-based dependencies not already captured.
+
+      STEP 7 — COMPOSE AND POST DEPENDENCY RISK REPORT:
+      post one comment to the ticket for the current sprint or, if none exists, to the first In Progress ticket in the sprint.
+      to find a sprint summary ticket: search Jira for a ticket with 'sprint' or 'planning' in the title in project {{project_key}}, status not Done.
+      if no such ticket exists, post to the first In Progress ticket.
+      use mcp__claude_ai_Atlassian__addCommentToJiraIssue (cloudId: 'venmate.atlassian.net').
+
+      format the report as:
+
+      ## Dependency Risk Report — {{project_key}} — <DATE>
+
+      ### Out-of-Order Execution
+      | Ticket | Summary | Depends On | Dependency Status | Risk |
+      |--------|---------|------------|-------------------|------|
+      | KEY-N  | ...     | KEY-M      | In Progress       | CRITICAL |
+      (write 'None detected' if section is empty)
+
+      ### File / Module Conflict Risks
+      | File or Module | Tickets | Statuses |
+      |----------------|---------|----------|
+      | src/foo.ts     | KEY-N, KEY-M | In Progress, In Review |
+      (write 'None detected' if section is empty)
+
+      ### External Blockers
+      | Ticket | Summary | External Dependency |
+      |--------|---------|---------------------|
+      | KEY-N  | ...     | Stripe API key not provisioned |
+      (write 'None detected' if section is empty)
+
+      ### Link-Blocked Tickets
+      | Ticket | Summary | Blocked By | Blocker Status |
+      |--------|---------|-----------|----------------|
+      | KEY-N  | ...     | KEY-M     | In Progress |
+      (write 'None detected' if section is empty)
+
+      ### Summary
+      - CRITICAL risks: N  |  WARNING risks: N  |  External blockers: N
+      - <1-3 bullet recommendations: which tickets to pause, which to prioritize, any planning gaps to resolve>
+
+      {{hint}}"
