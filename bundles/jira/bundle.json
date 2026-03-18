@@ -1,0 +1,15 @@
+{
+  "name": "sidebutton/jira",
+  "version": "1.0.0",
+  "title": "Jira PM Workflows",
+  "description": "PM agent workflows for Jira: sprint status, backlog grooming, and triage automation",
+  "workflows": [
+    "agent_pm_backlog_groom.yaml"
+  ],
+  "requires": {
+    "llm": false,
+    "browser": false
+  },
+  "tos_warning": false,
+  "tags": ["jira", "pm", "agile", "grooming"]
+}

@@ -1,0 +1,156 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2026-03-18"
+
+id: agent_pm_backlog_groom
+title: "PM: Backlog Grooming"
+description: "Review, prioritize, and clean up backlog items — flags stale tickets, duplicate candidates, incomplete specs, and suggests priority adjustments. Posts a grooming report as a Jira comment."
+category:
+  level: process
+  domain: ops
+  reusable: true
+
+params:
+  project_key: string
+  hint: string
+
+steps:
+  # Step 1: Fetch all backlog tickets (To Do, no sprint) via Jira JQL
+  - type: shell.run
+    cmd: |
+      jira_url="${JIRA_URL:-}"
+      jira_user="${JIRA_USER:-}"
+      jira_token="${JIRA_API_TOKEN:-}"
+
+      if [ -z "$jira_url" ] || [ -z "$jira_user" ] || [ -z "$jira_token" ]; then
+        echo '{"error":"Missing Jira credentials: JIRA_URL, JIRA_USER, JIRA_API_TOKEN must be set","issues":[],"total":0}'
+        exit 0
+      fi
+
+      jql="project = {{project_key}} AND status = \"To Do\" AND sprint is EMPTY ORDER BY created ASC"
+      encoded_jql=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$jql")
+
+      curl -s -u "${jira_user}:${jira_token}" \
+        -H "Accept: application/json" \
+        "${jira_url}/rest/api/3/search?jql=${encoded_jql}&maxResults=100&fields=summary,description,priority,created,updated,comment,status,issuetype,labels"
+    as: backlog_raw
+
+  # Step 2: Analyze backlog and build grooming report via LLM
+  - type: llm.generate
+    prompt: |
+      You are a PM agent performing backlog grooming. Analyze the following Jira backlog data and produce a structured grooming report.
+
+      PROJECT: {{project_key}}
+      FOCUS HINT: {{hint}}
+
+      BACKLOG DATA (JSON):
+      {{backlog_raw}}
+
+      Perform the following analysis:
+
+      1. STALE TICKETS
+         Flag tickets where:
+         - created date is older than 30 days (compare against today's date: use the "created" field)
+         - updated date is also older than 30 days (no recent activity)
+         For each: list key, summary, age in days, and recommendation (Close / Archive / Keep).
+
+      2. DUPLICATE CANDIDATES
+         Compare summaries and descriptions across all tickets. Identify tickets covering the same issue or feature.
+         Group them and suggest which to keep (most recent, most detailed) and which to close as duplicate.
+
+      3. INCOMPLETE TICKETS
+         Flag tickets missing any of:
+         - Priority (null, unset, or "Medium" as a default placeholder with no real triage evidence)
+         - Description (absent, empty, or fewer than 20 words)
+         - Acceptance criteria (no "acceptance criteria", "done when", or "definition of done" section)
+         For each: list key, summary, and what is missing.
+
+      4. PRIORITY ADJUSTMENT SUGGESTIONS
+         Based on ticket age, severity language in title/description (words like "critical", "broken", "blocks", "regression"), and any dependency mentions:
+         - Suggest raising priority for: aged bugs, regressions, tickets blocking others
+         - Suggest lowering priority for: speculative features, nice-to-have enhancements with no engagement
+         For each suggestion: list key, summary, current priority → suggested priority, and reason.
+
+      5. SUMMARY COUNTS
+         - Total backlog tickets reviewed
+         - Stale: N
+         - Duplicate candidates: N groups
+         - Incomplete: N
+         - Priority suggestions: N
+
+      If the FOCUS HINT is non-empty, also add a section: "HINT OBSERVATIONS" addressing the specific focus area.
+
+      Format your response as clean markdown with ## section headers. Be concise and actionable.
+      If BACKLOG DATA contains an error field, report the error and stop.
+    as: grooming_report
+
+  # Step 3: Post grooming report as a Jira comment on the project
+  - type: shell.run
+    cmd: |
+      jira_url="${JIRA_URL:-}"
+      jira_user="${JIRA_USER:-}"
+      jira_token="${JIRA_API_TOKEN:-}"
+
+      if [ -z "$jira_url" ] || [ -z "$jira_user" ] || [ -z "$jira_token" ]; then
+        echo "Skipped: Jira credentials not configured. Report was generated but not posted."
+        exit 0
+      fi
+
+      # Find the most recently created backlog ticket to attach the report to
+      jql="project = {{project_key}} AND status = \"To Do\" AND sprint is EMPTY ORDER BY created DESC"
+      encoded_jql=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$jql")
+
+      ticket_key=$(curl -s -u "${jira_user}:${jira_token}" \
+        -H "Accept: application/json" \
+        "${jira_url}/rest/api/3/search?jql=${encoded_jql}&maxResults=1&fields=key" \
+        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['issues'][0]['key'] if d.get('issues') else '')" 2>/dev/null)
+
+      if [ -z "$ticket_key" ]; then
+        echo "No backlog tickets found for project {{project_key}}. Report was generated but not posted."
+        exit 0
+      fi
+
+      report=$(cat <<'REPORT_EOF'
+      {{grooming_report}}
+      REPORT_EOF
+      )
+
+      payload=$(python3 -c "
+      import json, sys
+      report = sys.argv[1]
+      body = {
+        'body': {
+          'type': 'doc',
+          'version': 1,
+          'content': [{
+            'type': 'paragraph',
+            'content': [{'type': 'text', 'text': report}]
+          }]
+        }
+      }
+      print(json.dumps(body))
+      " "$report")
+
+      response=$(curl -s -o /dev/null -w "%{http_code}" \
+        -u "${jira_user}:${jira_token}" \
+        -X POST \
+        -H "Accept: application/json" \
+        -H "Content-Type: application/json" \
+        -d "$payload" \
+        "${jira_url}/rest/api/3/issue/${ticket_key}/comment")
+
+      if [ "$response" = "201" ]; then
+        echo "Grooming report posted to ${ticket_key}"
+      else
+        echo "Warning: comment post returned HTTP ${response}. Report:\n{{grooming_report}}"
+      fi
+    as: post_result
+
+  - type: control.stop
+    message: |
+      ## Backlog Grooming Complete — {{project_key}}
+
+      {{grooming_report}}
+
+      ---
+      {{post_result}}
