@@ -44,6 +44,7 @@ export type {
   UserContext,
   FullLlmConfig,
   Settings,
+  JiraConfig,
   SkillRegistry,
   // Skill pack system
   SkillPackManifest,

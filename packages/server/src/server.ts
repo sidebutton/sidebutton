@@ -36,6 +36,7 @@ import * as yaml from 'js-yaml';
 import type { WebSocket } from 'ws';
 import type {
   Settings,
+  JiraConfig,
   FullLlmConfig,
   Recording,
   RecordingMetadata,
@@ -57,7 +58,7 @@ import type {
   AgentJob,
   SkillRegistry,
 } from '@sidebutton/core';
-import { ExecutionContext, executeWorkflow, JiraProvider, PROVIDER_DEFINITIONS, getProviderStatuses, getActiveUsageFile, detectCli, getContextSource } from '@sidebutton/core';
+import { ExecutionContext, executeWorkflow, JiraProvider, getJiraAuth, PROVIDER_DEFINITIONS, getProviderStatuses, getActiveUsageFile, detectCli, getContextSource } from '@sidebutton/core';
 import type { ConnectorType } from '@sidebutton/core';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -231,6 +232,12 @@ function getEnvVarsFromSettings(settings: Settings): Record<string, string> {
   const envVars: Record<string, string> = {};
   for (const uc of settings.user_contexts ?? []) {
     if (uc.type === 'env') envVars[uc.name] = uc.value;
+  }
+  // Overlay jira config (primary) over env vars (fallback)
+  if (settings.jira) {
+    if (settings.jira.url) envVars['JIRA_URL'] = settings.jira.url;
+    if (settings.jira.email) envVars['JIRA_USER_EMAIL'] = settings.jira.email;
+    if (settings.jira.api_token) envVars['JIRA_API_TOKEN'] = settings.jira.api_token;
   }
   return envVars;
 }
@@ -1812,9 +1819,31 @@ export async function startServer(config: ServerConfig): Promise<void> {
       external_mcps: request.body.external_mcps ?? current.external_mcps,
       reporting: request.body.reporting ?? current.reporting,
       skill_registries: request.body.skill_registries ?? current.skill_registries,
+      jira: request.body.jira !== undefined ? request.body.jira : current.jira,
     };
     saveSettings(config.configDir, updated);
     return { settings: updated };
+  });
+
+  // Test Jira credentials
+  fastify.post<{ Body: Partial<JiraConfig> }>('/api/settings/jira/test', async (request) => {
+    const { url, email, api_token } = request.body;
+    if (!url || !email || !api_token) {
+      return { success: false, message: 'URL, email, and API token are required' };
+    }
+    try {
+      const auth = getJiraAuth({ JIRA_URL: url, JIRA_USER_EMAIL: email, JIRA_API_TOKEN: api_token });
+      const response = await fetch(`${auth.baseUrl}/rest/api/3/myself`, {
+        headers: { Authorization: auth.authHeader, Accept: 'application/json' },
+      });
+      if (response.ok) {
+        const user = await response.json() as { displayName?: string };
+        return { success: true, message: `Connected as ${user.displayName ?? email}` };
+      }
+      return { success: false, message: `Authentication failed (${response.status})` };
+    } catch (e) {
+      return { success: false, message: `Connection failed: ${(e as Error).message}` };
+    }
   });
 
   // Get specific external MCP configuration
@@ -2151,10 +2180,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
       case 'claude-code': {
         // For Atlassian, try direct API call via JiraProvider if credentials are available
         if (mcpName === 'atlassian' && toolName === 'createJiraIssue') {
-          const envVars: Record<string, string> = {};
-          for (const uc of settings.user_contexts ?? []) {
-            if (uc.type === 'env') envVars[uc.name] = uc.value;
-          }
+          const envVars = getEnvVarsFromSettings(settings);
 
           if (envVars.JIRA_USER_EMAIL && envVars.JIRA_API_TOKEN) {
             try {
