@@ -1463,6 +1463,13 @@ export async function startServer(config: ServerConfig): Promise<void> {
       response.cooldown = null;
     }
 
+    // Collect dependency versions
+    const depVersions: HealthResponse['dependency_versions'] = { sidebutton: VERSION };
+    try { depVersions.claude_code = execSync('claude --version 2>/dev/null', { encoding: 'utf8', timeout: 3000 }).trim(); } catch { /* not installed */ }
+    try { depVersions.node = execSync('node --version', { encoding: 'utf8', timeout: 3000 }).trim().replace(/^v/, ''); } catch { /* */ }
+    try { depVersions.npm = execSync('npm --version', { encoding: 'utf8', timeout: 3000 }).trim(); } catch { /* */ }
+    response.dependency_versions = depVersions;
+
     return response;
   });
 
