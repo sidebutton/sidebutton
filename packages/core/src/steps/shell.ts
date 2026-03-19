@@ -108,6 +108,11 @@ export async function executeTerminalRun(
     cmd = cmd.replace('claude ', `claude --effort ${ctx.effortLevel} `);
   }
 
+  // Inject --model flag into Claude CLI commands when model is overridden
+  if (ctx.llmModelOverride && cmd.includes('claude ')) {
+    cmd = cmd.replace('claude ', `claude --model ${ctx.llmModelOverride} `);
+  }
+
 
   ctx.emitLog('info', `Running in terminal: ${cmd}`);
 

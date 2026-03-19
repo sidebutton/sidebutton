@@ -1598,6 +1598,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
     const llmOverride = request.body.llm;
     if (llmOverride?.model) {
       ctx.llmConfig = { ...ctx.llmConfig, model: llmOverride.model };
+      ctx.llmModelOverride = llmOverride.model;
     }
     ctx.effortLevel = llmOverride?.effort || 'medium';
 
