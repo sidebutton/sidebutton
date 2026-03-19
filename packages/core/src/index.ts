@@ -43,6 +43,7 @@ export type {
   DashboardShortcut,
   UserContext,
   FullLlmConfig,
+  JiraConfig,
   Settings,
   SkillRegistry,
   // Skill pack system

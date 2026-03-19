@@ -232,6 +232,10 @@ function getEnvVarsFromSettings(settings: Settings): Record<string, string> {
   for (const uc of settings.user_contexts ?? []) {
     if (uc.type === 'env') envVars[uc.name] = uc.value;
   }
+  // Overlay dedicated Jira config (takes priority over env user_contexts)
+  if (settings.jira?.url) envVars.JIRA_URL = settings.jira.url;
+  if (settings.jira?.email) envVars.JIRA_USER_EMAIL = settings.jira.email;
+  if (settings.jira?.api_token) envVars.JIRA_API_TOKEN = settings.jira.api_token;
   return envVars;
 }
 
@@ -1811,6 +1815,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
       external_mcps: request.body.external_mcps ?? current.external_mcps,
       reporting: request.body.reporting ?? current.reporting,
       skill_registries: request.body.skill_registries ?? current.skill_registries,
+      jira: request.body.jira ?? current.jira,
     };
     saveSettings(config.configDir, updated);
     return { settings: updated };
@@ -1824,6 +1829,31 @@ export async function startServer(config: ServerConfig): Promise<void> {
       return { enabled: false, error: `MCP "${request.params.mcpName}" not configured` };
     }
     return mcpConfig;
+  });
+
+  // Test Jira credentials by calling GET /rest/api/3/myself
+  fastify.post<{ Body: { url: string; email: string; api_token: string } }>('/api/settings/jira/test', async (request, reply) => {
+    const { url, email, api_token } = request.body;
+    if (!url || !email || !api_token) {
+      reply.status(400);
+      return { success: false, message: 'URL, email, and API token are all required' };
+    }
+    const baseUrl = url.startsWith('https://') ? url : `https://${url}`;
+    try {
+      const resp = await fetch(`${baseUrl}/rest/api/3/myself`, {
+        headers: {
+          'Authorization': `Basic ${Buffer.from(`${email}:${api_token}`).toString('base64')}`,
+          'Accept': 'application/json',
+        },
+      });
+      if (!resp.ok) {
+        return { success: false, message: `Jira returned ${resp.status}: ${resp.statusText}` };
+      }
+      const data = await resp.json() as { displayName?: string };
+      return { success: true, message: `Connected as ${data.displayName ?? email}` };
+    } catch (e) {
+      return { success: false, message: `Connection failed: ${e instanceof Error ? e.message : String(e)}` };
+    }
   });
 
   // ============================================================================

@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import { getSettings, saveSettings, getContextAll, updatePersona, createRole, updateRole, deleteRole as apiDeleteRole, createTarget, updateTarget, deleteTarget as apiDeleteTarget, getProviderStatuses as apiGetProviderStatuses, setProviderConnector } from "../api";
+  import { getSettings, saveSettings, getContextAll, updatePersona, createRole, updateRole, deleteRole as apiDeleteRole, createTarget, updateTarget, deleteTarget as apiDeleteTarget, getProviderStatuses as apiGetProviderStatuses, setProviderConnector, testJiraConnection } from "../api";
   import { settings as settingsStore } from "../stores";
   import { navigateBack } from "../router";
-  import type { Settings, FullLlmConfig, UserContext, RoleContext, TargetContext, PersonaContext, ProviderStatus, ConnectorType } from "../types";
+  import type { Settings, FullLlmConfig, UserContext, RoleContext, TargetContext, PersonaContext, ProviderStatus, ConnectorType, JiraConfig } from "../types";
   import { isLlmContext, isEnvContext } from "../types";
   import ContextModal from "../components/ContextModal.svelte";
   import ContextTabs from "../components/ContextTabs.svelte";
@@ -26,6 +26,16 @@
   let baseUrl = $state<string>('');
   let apiKey = $state<string>('');
   let model = $state<string>('');
+
+  // Jira config form state
+  let jiraUrl = $state<string>('');
+  let jiraEmail = $state<string>('');
+  let jiraApiToken = $state<string>('');
+  let showJiraToken = $state(false);
+  let isTestingJira = $state(false);
+  let isSavingJira = $state(false);
+  let jiraTestResult = $state<{ success: boolean; message: string } | null>(null);
+  let jiraSaveSuccess = $state(false);
 
   // User contexts state (inline tab)
   let userContexts = $state<UserContext[]>([]);
@@ -108,6 +118,9 @@
         model = settings.llm.model || '';
       }
       userContexts = settings.user_contexts || [];
+      jiraUrl = settings.jira?.url || '';
+      jiraEmail = settings.jira?.email || '';
+      jiraApiToken = settings.jira?.api_token || '';
       persona = context.persona;
       roles = context.roles;
       targets = context.targets;
@@ -187,6 +200,37 @@
       error = e instanceof Error ? e.message : "Failed to save persona";
     } finally {
       isSavingPersona = false;
+    }
+  }
+
+  // Jira handlers
+  async function handleTestJira() {
+    isTestingJira = true;
+    jiraTestResult = null;
+    try {
+      jiraTestResult = await testJiraConnection({ url: jiraUrl, email: jiraEmail, api_token: jiraApiToken });
+    } catch (e) {
+      jiraTestResult = { success: false, message: e instanceof Error ? e.message : 'Test failed' };
+    } finally {
+      isTestingJira = false;
+      setTimeout(() => jiraTestResult = null, 5000);
+    }
+  }
+
+  async function handleSaveJira() {
+    isSavingJira = true;
+    error = null;
+    jiraSaveSuccess = false;
+    try {
+      const jira: JiraConfig = { url: jiraUrl, email: jiraEmail, api_token: jiraApiToken };
+      const updated = await saveSettings({ jira });
+      settingsStore.set(updated);
+      jiraSaveSuccess = true;
+      setTimeout(() => jiraSaveSuccess = false, 3000);
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to save Jira settings';
+    } finally {
+      isSavingJira = false;
     }
   }
 
@@ -613,6 +657,62 @@
                     </div>
                   </div>
                 {/each}
+              </div>
+
+              <!-- Jira Credentials Section -->
+              <div class="jira-credentials">
+                <h3>Jira Credentials</h3>
+                <p class="jira-hint">Save your Jira URL, email, and API token so the Jira provider can authenticate without environment variables.</p>
+                <div class="form-section">
+                  <div class="form-group">
+                    <label for="jira-url">Jira URL</label>
+                    <input
+                      id="jira-url"
+                      type="text"
+                      bind:value={jiraUrl}
+                      placeholder="https://yourcompany.atlassian.net"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="jira-email">Email</label>
+                    <input
+                      id="jira-email"
+                      type="email"
+                      bind:value={jiraEmail}
+                      placeholder="you@company.com"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="jira-token">
+                      API Token
+                      <button class="toggle-visibility" onclick={() => showJiraToken = !showJiraToken}>
+                        {showJiraToken ? 'Hide' : 'Show'}
+                      </button>
+                    </label>
+                    <input
+                      id="jira-token"
+                      type={showJiraToken ? 'text' : 'password'}
+                      bind:value={jiraApiToken}
+                      placeholder={jiraApiToken ? '(configured — enter new to change)' : 'ATATT3x...'}
+                    />
+                  </div>
+                </div>
+                <div class="actions">
+                  <button class="btn-secondary" onclick={handleTestJira} disabled={isTestingJira || !jiraUrl || !jiraEmail || !jiraApiToken}>
+                    {isTestingJira ? 'Testing...' : 'Test Connection'}
+                  </button>
+                  <button class="btn-primary" onclick={handleSaveJira} disabled={isSavingJira}>
+                    {isSavingJira ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+                {#if jiraTestResult}
+                  <div class="test-result" class:success={jiraTestResult.success} class:error={!jiraTestResult.success}>
+                    {jiraTestResult.message}
+                  </div>
+                {/if}
+                {#if jiraSaveSuccess}
+                  <div class="test-result success">Jira settings saved</div>
+                {/if}
               </div>
             {/if}
           {/if}
@@ -1554,5 +1654,25 @@
     color: #0369a1;
     padding: 2px 6px;
     border-radius: 3px;
+  }
+
+  /* Jira Credentials */
+  .jira-credentials {
+    margin-top: 20px;
+    padding: 16px;
+    background: #fafafa;
+    border: 1px solid #eee;
+    border-radius: 8px;
+  }
+
+  .jira-credentials h3 {
+    margin: 0 0 4px 0;
+    font-size: 0.95rem;
+  }
+
+  .jira-hint {
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin: 0 0 12px 0;
   }
 </style>

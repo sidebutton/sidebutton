@@ -43,6 +43,7 @@ export type {
   LlmProvider,
   LlmConfig,
   FullLlmConfig,
+  JiraConfig,
   Settings,
   // Recording types
   RecordingMetadata,
