@@ -1416,6 +1416,20 @@ export async function startServer(config: ServerConfig): Promise<void> {
       if (lastTool) response.last_tool_use = lastTool;
     } catch { /* no last tool use marker */ }
 
+    // Collect dependency versions (fail-silent per command, 3s timeout)
+    const { execSync } = await import('node:child_process');
+    const getVersion = (cmd: string): string | null => {
+      try {
+        return execSync(cmd, { timeout: 3000, encoding: 'utf8' }).trim().replace(/^v/, '');
+      } catch { return null; }
+    };
+    response.dependency_versions = {
+      claude_code: getVersion('claude --version'),
+      node: getVersion('node --version'),
+      npm: getVersion('npm --version'),
+      sidebutton: VERSION,
+    };
+
     return response;
   });
 
