@@ -1524,17 +1524,29 @@ export async function startServer(config: ServerConfig): Promise<void> {
   });
 
   // REST API endpoints
-  fastify.get('/api/workflows', async (): Promise<{ workflows: WorkflowSummary[] }> => {
+  fastify.get('/api/workflows', async (): Promise<{ workflows: WorkflowSummary[]; installed_packs: { domain: string; name: string }[] }> => {
     mcpHandler.reload();
     const workflows = mcpHandler.getAllWorkflows();
     return {
-      workflows: workflows.map((w): WorkflowSummary => ({
-        id: w.id,
-        title: w.title,
-        description: w.description,
-        params: w.params ?? {},
-        source: 'workflows',
-      })),
+      workflows: workflows.map((w): WorkflowSummary => {
+        const meta = mcpHandler.getWorkflowMeta(w.id);
+        return {
+          id: w.id,
+          title: w.title,
+          description: w.description,
+          params: w.params ?? {},
+          source: meta?.source_type === 'custom' ? 'actions' : 'workflows',
+          source_type: meta?.source_type ?? 'default',
+          domain: meta?.domain ?? w.category?.domain,
+          skill_pack: meta?.skill_pack,
+          enabled: meta?.enabled ?? true,
+          entry_path: w.id,
+          version: w.version,
+          category: w.category,
+          steps_count: w.steps?.length ?? 0,
+        };
+      }),
+      installed_packs: mcpHandler.getInstalledPacks(),
     };
   });
 

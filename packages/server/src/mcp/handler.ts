@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import * as yaml from 'js-yaml';
 import {
   type Workflow,
+  type WorkflowSourceType,
   type RunLog,
   type RunLogMetadata,
   type Settings,
@@ -87,6 +88,14 @@ export interface RunningWorkflowsTracker {
   getAll(): { run_id: string; workflow_id: string; workflow_title: string; started_at: string; params: Record<string, string> }[];
 }
 
+// Metadata about where a workflow came from
+export interface WorkflowMeta {
+  source_type: WorkflowSourceType;
+  domain?: string;
+  skill_pack?: string;
+  enabled: boolean;
+}
+
 export class McpHandler {
   private actionsDir: string;
   private workflowsDir: string;
@@ -97,6 +106,7 @@ export class McpHandler {
   private actions: Workflow[] = [];
   private workflows: Workflow[] = [];
   private templates: Workflow[] = [];
+  private workflowMetaMap: Map<string, WorkflowMeta> = new Map();
   private broadcaster: DashboardBroadcaster | null = null;
   private runningWorkflowsTracker: RunningWorkflowsTracker | null = null;
 
@@ -141,6 +151,18 @@ export class McpHandler {
       ? loadWorkflowsFromDir(this.templatesDir)
       : [];
 
+    // Build metadata map
+    this.workflowMetaMap.clear();
+    const defaultIds = new Set<string>();
+
+    for (const w of this.actions) {
+      this.workflowMetaMap.set(w.id, { source_type: 'custom', enabled: true });
+    }
+    for (const w of this.workflows) {
+      this.workflowMetaMap.set(w.id, { source_type: 'default', enabled: true });
+      defaultIds.add(w.id);
+    }
+
     // Load workflows from installed skill packs: skills/<domain>/**/*.yaml
     const skillsDir = path.join(this.configDir, 'skills');
     if (fs.existsSync(skillsDir)) {
@@ -148,13 +170,67 @@ export class McpHandler {
         for (const domain of fs.readdirSync(skillsDir)) {
           const domainDir = path.join(skillsDir, domain);
           if (!fs.statSync(domainDir).isDirectory()) continue;
+
+          // Read skill pack name from manifest if available
+          let packName: string | undefined;
+          const manifestPath = path.join(domainDir, 'skill-pack.json');
+          if (fs.existsSync(manifestPath)) {
+            try {
+              const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+              packName = manifest.title || manifest.name;
+            } catch { /* skip */ }
+          }
+
           const skillWorkflows = loadWorkflowsRecursive(domainDir);
+          for (const w of skillWorkflows) {
+            const isOverride = defaultIds.has(w.id);
+            this.workflowMetaMap.set(w.id, {
+              source_type: isOverride ? 'override' : 'account',
+              domain,
+              skill_pack: packName,
+              enabled: true,
+            });
+          }
           this.workflows.push(...skillWorkflows);
         }
       } catch {
         // skip if skills dir unreadable
       }
     }
+  }
+
+  /**
+   * Get metadata for a workflow by ID
+   */
+  getWorkflowMeta(id: string): WorkflowMeta | undefined {
+    return this.workflowMetaMap.get(id);
+  }
+
+  /**
+   * Get all installed skill pack names (domain → pack title)
+   */
+  getInstalledPacks(): { domain: string; name: string }[] {
+    const packs: { domain: string; name: string }[] = [];
+    const skillsDir = path.join(this.configDir, 'skills');
+    if (!fs.existsSync(skillsDir)) return packs;
+
+    try {
+      for (const domain of fs.readdirSync(skillsDir)) {
+        const domainDir = path.join(skillsDir, domain);
+        if (!fs.statSync(domainDir).isDirectory()) continue;
+        let name = domain;
+        const manifestPath = path.join(domainDir, 'skill-pack.json');
+        if (fs.existsSync(manifestPath)) {
+          try {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+            name = manifest.title || manifest.name || domain;
+          } catch { /* skip */ }
+        }
+        packs.push({ domain, name });
+      }
+    } catch { /* skip */ }
+
+    return packs;
   }
 
   /**

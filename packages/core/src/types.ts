@@ -513,6 +513,9 @@ export interface HealthResponse {
   workflows_running?: number;
 }
 
+// Workflow source type for provenance tracking
+export type WorkflowSourceType = 'default' | 'account' | 'override' | 'custom';
+
 // Workflow summary for listing
 export interface WorkflowSummary {
   id: string;
@@ -520,6 +523,14 @@ export interface WorkflowSummary {
   description?: string;
   params: Record<string, string>;
   source: 'actions' | 'workflows';
+  source_type: WorkflowSourceType;
+  domain?: string;          // skill pack domain (e.g. "agent", "sidebutton.com")
+  skill_pack?: string;      // skill pack display name
+  enabled: boolean;
+  entry_path: string;       // workflow ID / dispatch path
+  version?: string;
+  category?: Category;
+  steps_count: number;
 }
 
 // ============================================================================

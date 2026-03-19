@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { listWorkflows, getAllWorkflowStats, reloadAll } from "../api";
-  import { workflows, workflowStats } from "../stores";
+  import { workflows, workflowStats, installedPacks } from "../stores";
   import { navigateToWorkflowDetail } from "../router";
-  import type { Action, CategoryLevel } from "../types";
+  import type { WorkflowSummary, CategoryLevel } from "../types";
   import CategoryFilter from "../components/CategoryFilter.svelte";
   import SearchInput from "../components/SearchInput.svelte";
   import WorkflowCard from "../components/WorkflowCard.svelte";
@@ -37,6 +37,7 @@
         w.title.toLowerCase().includes(q) ||
         w.description?.toLowerCase().includes(q) ||
         w.category?.domain?.toLowerCase().includes(q) ||
+        w.domain?.toLowerCase().includes(q) ||
         w.id.toLowerCase().includes(q)
       );
     }
@@ -56,9 +57,7 @@
           const rateB = statsB?.total_runs ? (statsB.success_count / statsB.total_runs) : 0;
           return rateB - rateA;
         case 'recent':
-          const dateA = a.last_verified ? new Date(a.last_verified).getTime() : 0;
-          const dateB = b.last_verified ? new Date(b.last_verified).getTime() : 0;
-          return dateB - dateA;
+          return 0; // WorkflowSummary doesn't have last_verified
         default:
           return 0;
       }
@@ -70,11 +69,12 @@
   async function loadWorkflows() {
     isLoading = true;
     try {
-      const [loaded, stats] = await Promise.all([
+      const [response, stats] = await Promise.all([
         listWorkflows(),
         getAllWorkflowStats(),
       ]);
-      workflows.set(loaded);
+      workflows.set(response.workflows);
+      installedPacks.set(response.installed_packs);
       workflowStats.set(stats);
     } catch (e) {
       console.error("Failed to load workflows:", e);
@@ -100,7 +100,7 @@
     return $workflowStats[workflowId] || null;
   }
 
-  function selectWorkflow(workflow: Action) {
+  function selectWorkflow(workflow: WorkflowSummary) {
     navigateToWorkflowDetail(workflow.id);
   }
 
@@ -126,6 +126,14 @@
 </script>
 
 <div class="workflows-view">
+  {#if $installedPacks.length > 0}
+    <div class="packs-bar">
+      {#each $installedPacks as pack}
+        <span class="pack-tag">{pack.name}</span>
+      {/each}
+    </div>
+  {/if}
+
   <header>
     <div class="header-left">
       <h1>Library</h1>
@@ -186,7 +194,7 @@
       <div class="workflow-list">
         {#each Array(6) as _}
           <WorkflowCard
-            workflow={{ id: '', title: '', steps: [] } as Action}
+            workflow={{ id: '', title: '', params: {}, source: 'workflows', source_type: 'default', enabled: true, entry_path: '', steps_count: 0 } as WorkflowSummary}
             stats={null}
             loading={true}
             onclick={() => {}}
@@ -235,6 +243,29 @@
     flex-direction: column;
     background: #fafafa;
     color: #1a1a1a;
+  }
+
+  .packs-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 24px;
+    background: #f0f7ff;
+    border-bottom: 1px solid #d0e3f7;
+    flex-wrap: wrap;
+  }
+
+  .pack-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 12px;
+    background: #fff;
+    border: 1px solid #b3d4f5;
+    border-radius: 16px;
+    font-size: 0.78rem;
+    color: #1565c0;
+    font-weight: 500;
   }
 
   header {

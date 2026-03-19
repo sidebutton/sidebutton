@@ -54,6 +54,7 @@ export type {
   WorkflowStats,
   // API types
   HealthResponse,
+  WorkflowSourceType,
   WorkflowSummary,
   // Skill pack types
   SkillPackManifest,

@@ -1,11 +1,10 @@
 <script lang="ts">
-  import type { Action, WorkflowStats, CategoryDomain } from '../types';
+  import type { WorkflowSummary, WorkflowStats, WorkflowSourceType, CategoryDomain } from '../types';
   import { domainColors } from '../theme';
   import CategoryBadge from './CategoryBadge.svelte';
-  import StepIcon from './StepIcon.svelte';
 
   interface Props {
-    workflow: Action;
+    workflow: WorkflowSummary;
     stats: WorkflowStats | null;
     loading?: boolean;
     onclick: () => void;
@@ -24,11 +23,13 @@
     };
   }
 
-  // Get first N step types for preview
-  function getPreviewSteps(w: Action, max: number = 4): string[] {
-    if (!w.steps || w.steps.length === 0) return [];
-    return w.steps.slice(0, max).map(s => s.type);
-  }
+  // Source badge color mapping
+  const SOURCE_STYLES: Record<WorkflowSourceType, { label: string; color: string; bg: string }> = {
+    default: { label: 'default', color: '#616161', bg: '#f5f5f5' },
+    account: { label: 'account', color: '#1565c0', bg: '#e3f2fd' },
+    override: { label: 'override', color: '#e65100', bg: '#fff3e0' },
+    custom: { label: 'custom', color: '#2e7d32', bg: '#e8f5e9' },
+  };
 
   // Format fail rate
   function formatFailRate(s: WorkflowStats): string {
@@ -37,30 +38,8 @@
     return `${rate}%`;
   }
 
-  // Format relative time
-  function formatRelativeTime(date: string | undefined): string {
-    if (!date) return '';
-    const d = new Date(date);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return 'today';
-    if (diffDays === 1) return '1d';
-    if (diffDays < 7) return `${diffDays}d`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w`;
-    if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo`;
-    return `${Math.floor(diffDays / 365)}y`;
-  }
-
-  // Check if has embed or domain restrictions
-  function hasEmbed(w: Action): boolean {
-    return !!w.embed || (w.policies?.allowed_domains?.length ?? 0) > 0;
-  }
-
   let domainStyle = $derived(getDomainStyle(workflow.category?.domain));
-  let previewSteps = $derived(getPreviewSteps(workflow));
-  let stepCount = $derived(workflow.steps?.length ?? 0);
+  let sourceStyle = $derived(SOURCE_STYLES[workflow.source_type] ?? SOURCE_STYLES.default);
 </script>
 
 {#if loading}
@@ -108,6 +87,7 @@
   <!-- Actual Card -->
   <button
     class="workflow-card"
+    class:disabled={!workflow.enabled}
     style="--border-accent: {domainStyle.borderColor}; --bg-gradient: {domainStyle.bgGradient}"
     onclick={onclick}
   >
@@ -115,16 +95,15 @@
     <div class="card-header">
       <h3 class="title">{workflow.title}</h3>
       <div class="badges">
+        <!-- Status indicator -->
+        <span class="status-dot" class:enabled={workflow.enabled} class:disabled-dot={!workflow.enabled}
+          title={workflow.enabled ? 'Enabled' : 'Disabled'}></span>
+        <!-- Source badge -->
+        <span class="source-badge" style="color: {sourceStyle.color}; background: {sourceStyle.bg}">
+          {sourceStyle.label}
+        </span>
         {#if workflow.version}
           <span class="version-badge">v{workflow.version}</span>
-        {/if}
-        {#if hasEmbed(workflow)}
-          <span class="embed-badge" title="Embeddable">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <line x1="9" y1="3" x2="9" y2="21" />
-            </svg>
-          </span>
         {/if}
       </div>
     </div>
@@ -136,7 +115,7 @@
       <p class="description empty">No description</p>
     {/if}
 
-    <!-- Meta: Category + Step Icons + Count -->
+    <!-- Meta: Category + Domain + Steps -->
     <div class="card-meta">
       <div class="meta-left">
         {#if workflow.category}
@@ -146,18 +125,18 @@
             showDomain={true}
           />
         {/if}
+        {#if workflow.domain}
+          <span class="domain-badge">{workflow.domain}</span>
+        {/if}
       </div>
       <div class="meta-right">
-        <div class="step-preview">
-          {#each previewSteps as stepType}
-            <StepIcon {stepType} size={14} />
-          {/each}
-          {#if stepCount > 4}
-            <span class="more-steps">+{stepCount - 4}</span>
-          {/if}
-        </div>
-        <span class="step-count">{stepCount} steps</span>
+        <span class="step-count">{workflow.steps_count} steps</span>
       </div>
+    </div>
+
+    <!-- Entry path (workflow ID for agent dispatch) -->
+    <div class="entry-path">
+      <code>{workflow.entry_path}</code>
     </div>
 
     <!-- Stats Footer -->
@@ -179,17 +158,10 @@
             <span class="stat-label">Rate</span>
           {/if}
         </div>
-        <div class="stat-item">
-          <span class="stat-value muted">{formatRelativeTime(workflow.last_verified)}</span>
-          <span class="stat-label">Verified</span>
-        </div>
       </div>
     {:else}
       <div class="card-footer empty">
         <span class="no-runs">No runs yet</span>
-        {#if workflow.last_verified}
-          <span class="verified-date">Verified {formatRelativeTime(workflow.last_verified)}</span>
-        {/if}
       </div>
     {/if}
   </button>
@@ -254,18 +226,53 @@
     font-family: ui-monospace, monospace;
   }
 
-  .embed-badge {
-    width: 18px;
-    height: 18px;
-    color: var(--color-success);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  .source-badge {
+    font-size: 0.68rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
   }
 
-  .embed-badge svg {
-    width: 100%;
-    height: 100%;
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .status-dot.enabled {
+    background: var(--color-success, #4caf50);
+  }
+
+  .status-dot.disabled-dot {
+    background: var(--color-text-muted, #bbb);
+  }
+
+  .workflow-card.disabled {
+    opacity: 0.55;
+  }
+
+  .domain-badge {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    background: var(--color-surface, #f5f5f5);
+    border: 1px solid var(--color-border, #e0e0e0);
+    border-radius: 4px;
+    color: var(--color-text-secondary, #666);
+    font-family: ui-monospace, monospace;
+  }
+
+  .entry-path {
+    padding-top: 2px;
+  }
+
+  .entry-path code {
+    font-size: 0.72rem;
+    font-family: ui-monospace, monospace;
+    color: var(--color-text-muted, #999);
+    word-break: break-all;
   }
 
   /* Description */
@@ -304,18 +311,6 @@
     display: flex;
     align-items: center;
     gap: 10px;
-  }
-
-  .step-preview {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .more-steps {
-    font-size: 0.7rem;
-    color: var(--color-text-muted);
-    margin-left: 2px;
   }
 
   .step-count {
@@ -372,11 +367,6 @@
     font-size: 0.8rem;
     color: var(--color-text-muted);
     font-style: italic;
-  }
-
-  .verified-date {
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
   }
 
   /* Skeleton State - min-height ensures exact match with real card */

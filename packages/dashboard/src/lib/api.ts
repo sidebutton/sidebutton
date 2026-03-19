@@ -89,9 +89,15 @@ export async function getBrowserStatus(): Promise<McpStatusResponse> {
 // Workflows API
 // ============================================================================
 
-export async function listWorkflows(): Promise<Action[]> {
-  const data = await apiFetch<{ workflows: Action[] }>('/api/workflows');
-  return data.workflows;
+import type { WorkflowSummary } from './types';
+
+export interface ListWorkflowsResponse {
+  workflows: WorkflowSummary[];
+  installed_packs: { domain: string; name: string }[];
+}
+
+export async function listWorkflows(): Promise<ListWorkflowsResponse> {
+  return apiFetch<ListWorkflowsResponse>('/api/workflows');
 }
 
 export async function getWorkflow(id: string): Promise<Action> {

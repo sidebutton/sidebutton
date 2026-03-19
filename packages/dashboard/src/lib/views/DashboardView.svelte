@@ -3,13 +3,13 @@
   import { listWorkflows, listActions, runWorkflow, getSettings, saveSettings, fetchSkillPacks, fetchSkillModules } from "../api";
   import { mcpStatus, addLog, clearLogs, isRunning, settings as settingsStore, showToast, skillPacks, activeSkillPack, skillModules } from "../stores";
   import { navigateToExecution, navigateToModuleDetail, navigateToLibrary } from "../router";
-  import type { Action as Workflow, DashboardShortcut, Settings, InstalledPack, SkillModule } from "../types";
+  import type { Action as Workflow, WorkflowSummary, DashboardShortcut, Settings, InstalledPack, SkillModule } from "../types";
   import ShortcutCard from "../components/ShortcutCard.svelte";
   import AddShortcutModal from "../components/AddShortcutModal.svelte";
   import ParamsModal from "../components/ParamsModal.svelte";
   import ContextSummaryWidget from "../components/ContextSummaryWidget.svelte";
 
-  let workflows = $state<Workflow[]>([]);
+  let workflows = $state<WorkflowSummary[]>([]);
   let actions = $state<Workflow[]>([]);
   let shortcuts = $state<DashboardShortcut[]>([]);
   let modules = $state<SkillModule[]>([]);
@@ -33,7 +33,7 @@
         getSettings(),
         fetchSkillPacks(),
       ]);
-      workflows = loadedWorkflows;
+      workflows = loadedWorkflows.workflows;
       actions = loadedActions;
       shortcuts = loadedSettings.dashboard_shortcuts || [];
       settingsStore.set(loadedSettings);
@@ -55,7 +55,7 @@
   }
 
   // Get action by ID (for shortcut display)
-  function getActionById(actionId: string): Workflow | null {
+  function getActionById(actionId: string): Workflow | WorkflowSummary | null {
     return [...actions, ...workflows].find(a => a.id === actionId) || null;
   }
 

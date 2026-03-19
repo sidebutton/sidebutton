@@ -6,6 +6,7 @@ import type {
   McpStatus,
   RunningWorkflow,
   WorkflowStats,
+  WorkflowSummary,
   RecordingMetadata,
   RecordingStatus,
   Settings,
@@ -25,7 +26,10 @@ import type {
 export const actions = writable<Action[]>([]);
 
 // Workflows list (pre-defined, from /workflows directory)
-export const workflows = writable<Action[]>([]);
+export const workflows = writable<WorkflowSummary[]>([]);
+
+// Installed skill packs (domain → display name) from workflows API
+export const installedPacks = writable<{ domain: string; name: string }[]>([]);
 
 // Recordings list
 export const recordings = writable<RecordingMetadata[]>([]);

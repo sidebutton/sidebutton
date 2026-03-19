@@ -224,7 +224,7 @@
           <h2>Metadata</h2>
           <div class="metadata-grid">
             <div class="metadata-item">
-              <span class="metadata-label">ID</span>
+              <span class="metadata-label">ID / Entry Path</span>
               <code class="metadata-value">{workflow.id}</code>
             </div>
             <div class="metadata-item">
