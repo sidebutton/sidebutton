@@ -515,6 +515,12 @@ export interface HealthResponse {
   workflows_running?: number;
   cooldown?: { until_ms: number; workflow_id: string } | null;
   claude_running?: boolean;
+  dependency_versions?: {
+    claude_code?: string;
+    node?: string;
+    npm?: string;
+    sidebutton?: string;
+  };
 }
 
 // Workflow summary for listing

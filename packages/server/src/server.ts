@@ -1463,6 +1463,19 @@ export async function startServer(config: ServerConfig): Promise<void> {
       response.cooldown = null;
     }
 
+    // Collect critical dependency versions for fleet drift detection
+    const getVersion = (cmd: string): string | undefined => {
+      try {
+        return execSync(cmd, { timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().replace(/^v/, '');
+      } catch { return undefined; }
+    };
+    response.dependency_versions = {
+      claude_code: getVersion('claude --version'),
+      node: getVersion('node --version'),
+      npm: getVersion('npm --version'),
+      sidebutton: VERSION,
+    };
+
     return response;
   });
 
