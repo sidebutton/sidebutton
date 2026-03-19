@@ -428,6 +428,8 @@ export interface Settings {
   provider_connectors?: Record<string, ConnectorType>;
   /** Configured skill pack registries (local dirs or git repos) */
   skill_registries?: SkillRegistry[];
+  /** Default effort level for workflow dispatch (max, high, medium) */
+  default_effort?: string;
 }
 
 // ============================================================================
@@ -511,6 +513,8 @@ export interface HealthResponse {
   result?: { type: string; at: string } | null;
   last_tool_use?: string | null;
   workflows_running?: number;
+  cooldown?: { until_ms: number; workflow_id: string } | null;
+  claude_running?: boolean;
 }
 
 // Workflow summary for listing
@@ -601,7 +605,7 @@ export interface AgentMetrics {
   cost_estimate?: number;
 }
 
-export type AgentStatus = 'running' | 'completed' | 'failed';
+export type AgentStatus = 'running' | 'waiting' | 'completed' | 'failed';
 
 export interface AgentJob {
   run_id: string;

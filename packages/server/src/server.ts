@@ -10,6 +10,7 @@ import fastifyFormbody from '@fastify/formbody';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as crypto from 'node:crypto';
+import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ExtensionClientImpl } from './extension.js';
 import { McpHandler } from './mcp/handler.js';
@@ -214,6 +215,7 @@ function loadSettings(configDir: string): Settings {
         repos: settings.repos,
         provider_connectors: settings.provider_connectors,
         skill_registries: settings.skill_registries,
+        default_effort: settings.default_effort,
       };
     }
   } catch (e) {
@@ -1384,6 +1386,35 @@ export async function startServer(config: ServerConfig): Promise<void> {
   // Health check endpoint (extended with job context and file-based signals)
   const sidebuttonDir = path.join(process.env.HOME || '~', '.sidebutton');
 
+  // In-memory cooldown state
+  let cooldownState: { until_ms: number; workflow_id: string; timer: ReturnType<typeof setTimeout> } | null = null;
+
+  function clearCooldown() {
+    if (cooldownState) {
+      clearTimeout(cooldownState.timer);
+      cooldownState = null;
+    }
+  }
+
+  /** POST /api/cooldown/start — enter cooldown for delay_ms, then auto-clear */
+  fastify.post('/api/cooldown/start', async (request, reply) => {
+    const body = request.body as { delay_ms?: number; workflow_id?: string };
+    const delayMs = typeof body?.delay_ms === 'number' ? body.delay_ms : 10_000;
+    const workflowId = typeof body?.workflow_id === 'string' ? body.workflow_id : 'unknown';
+    clearCooldown();
+    const until_ms = Date.now() + delayMs;
+    const timer = setTimeout(clearCooldown, delayMs);
+    cooldownState = { until_ms, workflow_id: workflowId, timer };
+    return { ok: true, until_ms, workflow_id: workflowId };
+  });
+
+  /** POST /api/cooldown/cancel — abort active cooldown */
+  fastify.post('/api/cooldown/cancel', async (_request, reply) => {
+    if (!cooldownState) return reply.code(404).send({ error: 'No active cooldown' });
+    clearCooldown();
+    return { ok: true };
+  });
+
   fastify.get('/health', async (): Promise<HealthResponse> => {
     const status = extensionClient.getStatus();
 
@@ -1416,7 +1447,32 @@ export async function startServer(config: ServerConfig): Promise<void> {
       if (lastTool) response.last_tool_use = lastTool;
     } catch { /* no last tool use marker */ }
 
+    // Check if Claude Code process is running.
+    // This prevents the orchestrator from incorrectly treating a quiet-but-alive
+    // Claude session (e.g. waiting on a long LLM API response) as stalled or idle.
+    try {
+      execSync('pgrep -x claude', { stdio: 'ignore' });
+      response.claude_running = true;
+    } catch {
+      response.claude_running = false;
+    }
+
+    if (cooldownState && cooldownState.until_ms > Date.now()) {
+      response.cooldown = { until_ms: cooldownState.until_ms, workflow_id: cooldownState.workflow_id };
+    } else {
+      response.cooldown = null;
+    }
+
     return response;
+  });
+
+  // Clear file-based markers (called by Temporal before dispatching a new job)
+  fastify.post('/api/clear-markers', async () => {
+    const markers = ['idle-marker', 'result-marker.json', 'last-tool-use'];
+    for (const marker of markers) {
+      try { fs.unlinkSync(path.join(sidebuttonDir, marker)); } catch { /* doesn't exist */ }
+    }
+    return { ok: true, cleared: markers };
   });
 
   // Job context endpoints (file-based, used by Temporal orchestrator)
@@ -1598,8 +1654,9 @@ export async function startServer(config: ServerConfig): Promise<void> {
     const llmOverride = request.body.llm;
     if (llmOverride?.model) {
       ctx.llmConfig = { ...ctx.llmConfig, model: llmOverride.model };
+      ctx.llmModelOverride = llmOverride.model;
     }
-    ctx.effortLevel = llmOverride?.effort || 'medium';
+    ctx.effortLevel = llmOverride?.effort || settings.default_effort || 'medium';
 
     // Inject env-type user contexts as envVars (for platform providers)
     for (const uc of settings.user_contexts ?? []) {
@@ -2692,16 +2749,40 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
   /**
    * Reconcile running agent jobs against live processes.
-   * If an agent has a recorded PID and that process is gone,
-   * transition the job to 'completed' (halted).
+   * Two signals:
+   * 1. PID-based: if the recorded process is gone, job is done.
+   * 2. File-based: for jobs with no PID (orchestrator-dispatched), check the
+   *    idle-marker written by the Claude Code Notification hook. If the marker
+   *    timestamp is newer than the job's started_at, the agent has gone idle
+   *    after this job started, which means the job completed.
    */
   function reconcileAgentJobs(): void {
+    // Read idle-marker once; used as fallback for jobs that have no PID.
+    let idleTimestamp: number | null = null;
+    try {
+      const raw = fs.readFileSync(path.join(sidebuttonDir, 'idle-marker'), 'utf8').trim();
+      if (raw) idleTimestamp = new Date(raw).getTime();
+    } catch { /* file absent — no idle signal */ }
+
     for (const job of agentJobs.values()) {
       if (job.status !== 'running') continue;
+
+      // Signal 1: process exited (PID tracking)
       if (job.pid && !isProcessAlive(job.pid)) {
         job.status = 'completed';
         job.duration_ms = Date.now() - new Date(job.started_at).getTime();
         job.result_summary = 'Agent process exited';
+        continue;
+      }
+
+      // Signal 2: idle-marker written after this job started (no PID set)
+      if (!job.pid && idleTimestamp !== null) {
+        const startTime = new Date(job.started_at).getTime();
+        if (idleTimestamp > startTime) {
+          job.status = 'completed';
+          job.duration_ms = idleTimestamp - startTime;
+          job.result_summary = 'Agent job completed';
+        }
       }
     }
   }
@@ -2709,8 +2790,8 @@ export async function startServer(config: ServerConfig): Promise<void> {
   fastify.get('/api/agents', async () => {
     reconcileAgentJobs();
     const jobs = Array.from(agentJobs.values());
-    const running = jobs.filter(j => j.status === 'running');
-    const completed = jobs.filter(j => j.status !== 'running')
+    const running = jobs.filter(j => j.status === 'running' || j.status === 'waiting');
+    const completed = jobs.filter(j => j.status === 'completed' || j.status === 'failed')
       .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
       .slice(0, 20);
     return { running, completed };
@@ -2774,6 +2855,29 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
 
     return { stopped: true, agent: job };
+  });
+
+  fastify.post<{ Params: { id: string } }>('/api/agents/:id/resend', async (request) => {
+    const { id } = request.params;
+    const original = agentJobs.get(id);
+    if (!original) {
+      throw { statusCode: 404, message: `Agent not found: ${id}` };
+    }
+
+    const runId = `agent_${crypto.randomUUID()}`;
+    const job: AgentJob = {
+      run_id: runId,
+      workflow_id: original.workflow_id,
+      workflow_title: original.workflow_title,
+      role: original.role,
+      started_at: new Date().toISOString(),
+      status: 'waiting',
+      initial_prompt: original.initial_prompt,
+      metrics: { action_count: 0, token_count: 0 },
+    };
+
+    agentJobs.set(runId, job);
+    return { agent: job };
   });
 
   // ============================================================================

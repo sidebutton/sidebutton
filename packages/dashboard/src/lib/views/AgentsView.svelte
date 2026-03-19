@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { fetchAgents, startAgent, stopAgent, getRoles, fetchSkillPacks } from "../api";
+  import { fetchAgents, startAgent, stopAgent, resendAgent, getRoles, fetchSkillPacks } from "../api";
   import { agents, showToast, skillPacks } from "../stores";
   import { navigateToRunLogDetail } from "../router";
   import type { AgentJob, RoleContext, InstalledPack } from "../types";
@@ -17,6 +17,7 @@
   let agentPrompt = $state('');
   let isStarting = $state(false);
   let isRefreshing = $state(false);
+  let resendingId = $state<string | null>(null);
 
   async function handleRefresh() {
     isRefreshing = true;
@@ -69,6 +70,19 @@
     }
   }
 
+  async function handleResend(agentId: string) {
+    resendingId = agentId;
+    try {
+      await resendAgent(agentId);
+      showToast("Job re-queued", "success");
+      await loadData();
+    } catch (e) {
+      showToast(`Failed to resend: ${e}`, "error");
+    } finally {
+      resendingId = null;
+    }
+  }
+
   async function handleStop(agentId: string) {
     if (!confirm("Stop this agent?")) return;
     try {
@@ -112,10 +126,10 @@
 
   onMount(() => {
     loadData();
-    // Poll running agents every 5 seconds
-    pollInterval = setInterval(() => {
-      if (running.length > 0) loadData();
-    }, 5000);
+    // Poll every 5 seconds — required to catch job completions promptly.
+    // Previously gated on running.length > 0, but that caused stale "Running"
+    // badges to persist when server-side reconciliation updated between polls.
+    pollInterval = setInterval(loadData, 5000);
   });
 
   onDestroy(() => {
@@ -147,15 +161,19 @@
           <h2>Running ({running.length})</h2>
           <div class="agent-list">
             {#each running as agent (agent.run_id)}
-              <div class="agent-card running">
+              <div class="agent-card" class:running={agent.status === 'running'} class:waiting={agent.status === 'waiting'}>
                 <div class="agent-header">
                   <div class="agent-status-row">
-                    <span class="status-dot running"></span>
+                    <span class="status-dot" class:running={agent.status === 'running'} class:waiting={agent.status === 'waiting'}></span>
                     <span class="agent-title">{agent.workflow_title}</span>
                     <span class="role-badge">{agent.role.toUpperCase()}</span>
                   </div>
                   <span class="agent-time">
-                    Started {formatTimeAgo(agent.started_at)} · {formatDuration(agent.started_at)}
+                    {#if agent.status === 'waiting'}
+                      Queued {formatTimeAgo(agent.started_at)}
+                    {:else}
+                      Started {formatTimeAgo(agent.started_at)} · {formatDuration(agent.started_at)}
+                    {/if}
                   </span>
                 </div>
 
@@ -165,11 +183,13 @@
                   </div>
                 {/if}
 
-                <div class="agent-metrics">
-                  <span>Actions: {agent.metrics.action_count}</span>
-                  <span>Tokens: {formatTokens(agent.metrics.token_count)}</span>
-                  <span>Cost: {formatCost(agent.metrics.cost_estimate)}</span>
-                </div>
+                {#if agent.status === 'running'}
+                  <div class="agent-metrics">
+                    <span>Actions: {agent.metrics.action_count}</span>
+                    <span>Tokens: {formatTokens(agent.metrics.token_count)}</span>
+                    <span>Cost: {formatCost(agent.metrics.cost_estimate)}</span>
+                  </div>
+                {/if}
 
                 {#if agent.current_task}
                   <div class="agent-output">
@@ -178,8 +198,10 @@
                 {/if}
 
                 <div class="agent-actions">
-                  <button class="btn btn-ghost btn-sm" onclick={() => navigateToRunLogDetail(agent.run_id)}>View Log</button>
-                  <button class="btn btn-danger btn-sm" onclick={() => handleStop(agent.run_id)}>Stop</button>
+                  {#if agent.status === 'running'}
+                    <button class="btn btn-ghost btn-sm" onclick={() => navigateToRunLogDetail(agent.run_id)}>View Log</button>
+                    <button class="btn btn-danger btn-sm" onclick={() => handleStop(agent.run_id)}>Stop</button>
+                  {/if}
                 </div>
               </div>
             {/each}
@@ -213,6 +235,9 @@
 
                 <div class="agent-actions">
                   <button class="btn btn-ghost btn-sm" onclick={() => navigateToRunLogDetail(agent.run_id)}>View Log</button>
+                  <button class="btn btn-ghost btn-sm" onclick={() => handleResend(agent.run_id)} disabled={resendingId === agent.run_id}>
+                    {resendingId === agent.run_id ? 'Resending...' : 'Resend'}
+                  </button>
                 </div>
               </div>
             {/each}
@@ -327,12 +352,14 @@
     border-radius: var(--radius-lg); display: flex; flex-direction: column; gap: 10px;
   }
   .agent-card.running { border-left: 3px solid var(--color-success); }
+  .agent-card.waiting { border-left: 3px solid var(--color-warning, #f59e0b); }
   .agent-card.failed { border-left: 3px solid var(--color-error); }
 
   .agent-header { display: flex; flex-direction: column; gap: 4px; }
   .agent-status-row { display: flex; align-items: center; gap: 8px; }
   .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--color-text-muted); }
   .status-dot.running { background: var(--color-success); animation: pulse 2s infinite; }
+  .status-dot.waiting { background: var(--color-warning, #f59e0b); }
   .status-dot.success { background: var(--color-success); }
   .status-dot.failed { background: var(--color-error); }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }

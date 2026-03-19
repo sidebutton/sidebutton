@@ -103,9 +103,14 @@ export async function executeTerminalRun(
 
   let cmd = ctx.interpolate(step.cmd);
 
-  // Inject --effort flag into Claude CLI commands for non-default effort levels
-  if (ctx.effortLevel && ctx.effortLevel !== 'medium' && cmd.includes('claude ')) {
-    cmd = cmd.replace('claude ', `claude --effort ${ctx.effortLevel} `);
+  // Inject --effort and --model flags into Claude CLI commands.
+  if (cmd.includes('claude ')) {
+    if (ctx.effortLevel && ctx.effortLevel !== 'medium') {
+      cmd = cmd.replace('claude ', `claude --effort ${ctx.effortLevel} `);
+    }
+    if (ctx.llmModelOverride) {
+      cmd = cmd.replace('claude ', `claude --model ${ctx.llmModelOverride} `);
+    }
   }
 
 

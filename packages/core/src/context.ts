@@ -100,6 +100,9 @@ export class ExecutionContext {
   // Effort level for Claude CLI (injected as --effort flag in terminal.run)
   effortLevel: string = 'medium';
 
+  // LLM model override from dispatch (set when effort-based selection provides a specific model)
+  llmModelOverride?: string;
+
   // Event emitter callback
   private eventCallback?: (event: WorkflowEvent) => void;
 
@@ -154,6 +157,7 @@ export class ExecutionContext {
     child.llmConfig = { ...this.llmConfig };
     child.envVars = { ...this.envVars };
     child.effortLevel = this.effortLevel;
+    child.llmModelOverride = this.llmModelOverride;
     child.eventCallback = this.eventCallback;
 
     return child;

@@ -291,6 +291,21 @@ For each endpoint:
 3. Verify expected fields are present
 4. Verify arrays are populated (not empty when data should exist)
 
+## PR State Validation
+
+**Always verify a PR is OPEN before reviewing it.** `gh pr diff` and `gh pr view` work on closed and merged PRs — reviewing a non-OPEN PR and passing the ticket is a critical error that corrupts ticket state.
+
+Before any PR-based review:
+
+```bash
+gh pr view <number> --repo <org/repo> --json state --jq '.state'
+```
+
+- If `OPEN` → proceed with review
+- If `CLOSED` or `MERGED` → **abort immediately**: comment on the ticket "PR #N on org/repo is CLOSED — skipping QA review. Reopen or link a new PR to proceed." Do NOT transition the ticket.
+
+This check must happen before reading the diff, before any code analysis.
+
 ## Verifying an Issue Fix
 
 When SE marks an issue as "In Review" or "Done", this is your verification procedure.

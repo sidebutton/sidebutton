@@ -476,6 +476,14 @@ export async function stopAgent(agentId: string): Promise<void> {
   });
 }
 
+export async function resendAgent(agentId: string): Promise<AgentJob> {
+  const data = await apiFetch<{ agent: AgentJob }>(`/api/agents/${encodeURIComponent(agentId)}/resend`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+  return data.agent;
+}
+
 // ============================================================================
 // Registries (Publishers) API
 // ============================================================================
