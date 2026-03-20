@@ -44,6 +44,7 @@ export type {
   UserContext,
   FullLlmConfig,
   Settings,
+  EntryPath,
   SkillRegistry,
   // Skill pack system
   SkillPackManifest,

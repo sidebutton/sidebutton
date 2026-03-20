@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import { getSettings, saveSettings, getContextAll, updatePersona, createRole, updateRole, deleteRole as apiDeleteRole, createTarget, updateTarget, deleteTarget as apiDeleteTarget, getProviderStatuses as apiGetProviderStatuses, setProviderConnector } from "../api";
-  import { settings as settingsStore } from "../stores";
+  import { getSettings, saveSettings, getContextAll, updatePersona, createRole, updateRole, deleteRole as apiDeleteRole, createTarget, updateTarget, deleteTarget as apiDeleteTarget, getProviderStatuses as apiGetProviderStatuses, setProviderConnector, applyConfig, readConfig } from "../api";
+  import { settings as settingsStore, showToast } from "../stores";
   import { navigateBack } from "../router";
-  import type { Settings, FullLlmConfig, UserContext, RoleContext, TargetContext, PersonaContext, ProviderStatus, ConnectorType } from "../types";
+  import type { Settings, FullLlmConfig, UserContext, RoleContext, TargetContext, PersonaContext, ProviderStatus, ConnectorType, EntryPath } from "../types";
   import { isLlmContext, isEnvContext } from "../types";
   import ContextModal from "../components/ContextModal.svelte";
   import ContextTabs from "../components/ContextTabs.svelte";
@@ -19,7 +19,7 @@
   let showApiKey = $state(false);
 
   // Top-level settings tab
-  let settingsTab = $state<'context' | 'llm'>('context');
+  let settingsTab = $state<'context' | 'llm' | 'agents'>('context');
 
   // LLM config form state
   let provider = $state<string>('openai');
@@ -59,6 +59,12 @@
   // Role/target delete confirmation
   let deletingFilename = $state<string | null>(null);
 
+  // Entry paths state (Agents tab)
+  let entryPaths = $state<EntryPath[]>([]);
+  let expandedPath = $state<string | null>(null);
+  let isApplying = $state(false);
+  let newPathInput = $state('');
+
   // Scroll preservation
   let contentEl = $state<HTMLElement | null>(null);
 
@@ -82,6 +88,7 @@
   let topTabs = $derived([
     { id: 'context', label: 'AI Context' },
     { id: 'llm', label: 'LLM Provider' },
+    { id: 'agents', label: 'Agents', count: entryPaths.length },
   ]);
 
   // Filter out provider-managed targets (shown in Integrations tab instead)
@@ -108,6 +115,7 @@
         model = settings.llm.model || '';
       }
       userContexts = settings.user_contexts || [];
+      entryPaths = settings.entry_paths || [];
       persona = context.persona;
       roles = context.roles;
       targets = context.targets;
@@ -363,6 +371,73 @@
   function getProviderTypeLabel(type: string | string[]): string {
     if (Array.isArray(type)) return type.join(', ');
     return type;
+  }
+
+  // Entry path handlers (Agents tab)
+  function addEntryPath() {
+    const p = newPathInput.trim();
+    if (!p) return;
+    if (entryPaths.some(ep => ep.path === p)) {
+      showToast('Path already exists', 'warning');
+      return;
+    }
+    entryPaths = [...entryPaths, { path: p }];
+    newPathInput = '';
+    expandedPath = p;
+  }
+
+  function removeEntryPath(pathStr: string) {
+    entryPaths = entryPaths.filter(ep => ep.path !== pathStr);
+    if (expandedPath === pathStr) expandedPath = null;
+  }
+
+  function updateEntryPathField(pathStr: string, field: 'claude_md', value: string) {
+    entryPaths = entryPaths.map(ep => ep.path === pathStr ? { ...ep, [field]: value } : ep);
+  }
+
+  function updateEntryPathMcpJson(pathStr: string, jsonStr: string) {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      entryPaths = entryPaths.map(ep => ep.path === pathStr ? { ...ep, mcp_json: parsed } : ep);
+    } catch { /* invalid JSON, don't update */ }
+  }
+
+  async function handleLoadFromAgent(pathStr: string) {
+    try {
+      const result = await readConfig([pathStr]);
+      if (result.ok && result.results.length > 0) {
+        const r = result.results[0];
+        entryPaths = entryPaths.map(ep => {
+          if (ep.path !== pathStr) return ep;
+          return { ...ep, mcp_json: r.mcp_json ?? ep.mcp_json, claude_md: r.claude_md ?? ep.claude_md };
+        });
+        showToast('Loaded config from agent', 'success');
+      }
+    } catch (e) {
+      showToast(`Failed to read: ${e}`, 'error');
+    }
+  }
+
+  async function handleSaveAndApply() {
+    isApplying = true;
+    try {
+      // Save entry_paths to settings
+      await saveSettings({ entry_paths: entryPaths });
+      // Push to agent filesystem
+      const result = await applyConfig({ entry_paths: entryPaths });
+      if (result.ok) {
+        const failed = result.results.filter(r => !r.ok);
+        if (failed.length > 0) {
+          showToast(`Applied with ${failed.length} error(s): ${failed.map(f => f.error).join(', ')}`, 'warning');
+        } else {
+          showToast('Config saved and applied', 'success');
+        }
+      }
+    } catch (e) {
+      showToast(`Failed to apply: ${e}`, 'error');
+    } finally {
+      isApplying = false;
+    }
   }
 
   onMount(() => {
@@ -791,6 +866,77 @@
                 {/if}
               </div>
             </div>
+          </div>
+        {/if}
+
+        <!-- Agents Tab -->
+        {#if settingsTab === 'agents'}
+          <div class="agents-content">
+            <div class="add-path-row">
+              <input
+                type="text"
+                bind:value={newPathInput}
+                placeholder="~/workspace/my-project"
+                onkeydown={(e) => { if (e.key === 'Enter') addEntryPath(); }}
+              />
+              <button class="btn-secondary" onclick={addEntryPath}>Add Path</button>
+            </div>
+
+            {#if entryPaths.length === 0}
+              <div class="empty-state">No entry paths configured. Add a path to configure .mcp.json and CLAUDE.md for agent workspaces.</div>
+            {:else}
+              <div class="entry-path-list">
+                {#each entryPaths as ep (ep.path)}
+                  <div class="entry-path-item" class:expanded={expandedPath === ep.path}>
+                    <div class="entry-path-header">
+                      <button class="expand-toggle" onclick={() => expandedPath = expandedPath === ep.path ? null : ep.path}>
+                        <span class="chevron" class:open={expandedPath === ep.path}>&#9654;</span>
+                        <code>{ep.path}</code>
+                      </button>
+                      <div class="entry-path-actions">
+                        <button class="btn-ghost btn-sm" onclick={() => handleLoadFromAgent(ep.path)} title="Read current config from agent">Load</button>
+                        <button class="btn-danger-ghost btn-sm" onclick={() => removeEntryPath(ep.path)} title="Remove entry path">&times;</button>
+                      </div>
+                    </div>
+
+                    {#if expandedPath === ep.path}
+                      <div class="entry-path-editors">
+                        <div class="editor-section">
+                          <!-- svelte-ignore a11y_label_has_associated_control -->
+                          <label>.mcp.json</label>
+                          <textarea
+                            class="code-editor"
+                            rows="10"
+                            value={ep.mcp_json ? JSON.stringify(ep.mcp_json, null, 2) : '{}'}
+                            oninput={(e) => updateEntryPathMcpJson(ep.path, e.currentTarget.value)}
+                            spellcheck="false"
+                          ></textarea>
+                        </div>
+
+                        <div class="editor-section">
+                          <!-- svelte-ignore a11y_label_has_associated_control -->
+                          <label>CLAUDE.md</label>
+                          <textarea
+                            class="code-editor claude-editor"
+                            rows="14"
+                            value={ep.claude_md ?? ''}
+                            oninput={(e) => updateEntryPathField(ep.path, 'claude_md', e.currentTarget.value)}
+                            placeholder="# Agent instructions for this workspace..."
+                            spellcheck="false"
+                          ></textarea>
+                        </div>
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+
+              <div class="actions" style="margin-top: 16px;">
+                <button class="btn-primary" onclick={handleSaveAndApply} disabled={isApplying}>
+                  {isApplying ? 'Applying...' : 'Save & Apply'}
+                </button>
+              </div>
+            {/if}
           </div>
         {/if}
       </div>
@@ -1555,4 +1701,72 @@
     padding: 2px 6px;
     border-radius: 3px;
   }
+
+  /* Agents tab */
+  .agents-content { padding: 16px 0; }
+
+  .add-path-row {
+    display: flex; gap: 8px; margin-bottom: 16px;
+  }
+  .add-path-row input {
+    flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px;
+    font-size: 14px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+  }
+
+  .empty-state {
+    padding: 32px; text-align: center; color: #6b7280; font-size: 14px;
+    background: #f9fafb; border: 1px dashed #d1d5db; border-radius: 8px;
+  }
+
+  .entry-path-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .entry-path-item {
+    border: 1px solid #e5e7eb; border-radius: 8px; background: white; overflow: hidden;
+  }
+  .entry-path-item.expanded { border-color: #93c5fd; }
+
+  .entry-path-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px;
+  }
+
+  .expand-toggle {
+    display: flex; align-items: center; gap: 8px;
+    background: none; border: none; cursor: pointer; font-size: 14px; color: #1a1a1a;
+  }
+  .expand-toggle code { font-size: 13px; }
+
+  .chevron {
+    font-size: 10px; transition: transform 0.15s; display: inline-block; color: #9ca3af;
+  }
+  .chevron.open { transform: rotate(90deg); }
+
+  .entry-path-actions { display: flex; gap: 4px; }
+
+  .btn-danger-ghost {
+    background: none; border: none; cursor: pointer; color: #9ca3af;
+    font-size: 18px; padding: 2px 6px; border-radius: 4px; line-height: 1;
+  }
+  .btn-danger-ghost:hover { color: #ef4444; background: #fef2f2; }
+
+  .btn-ghost { background: none; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer; color: #6b7280; padding: 3px 8px; font-size: 12px; }
+  .btn-ghost:hover { color: #1a1a1a; background: #f3f4f6; }
+
+  .btn-sm { padding: 3px 8px; font-size: 12px; }
+
+  .entry-path-editors { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 12px; }
+
+  .editor-section label {
+    display: block; font-size: 12px; font-weight: 600; color: #6b7280;
+    margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.3px;
+  }
+
+  .code-editor {
+    width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace; font-size: 13px;
+    line-height: 1.5; resize: vertical; background: #fafafa; color: #1a1a1a;
+    tab-size: 2;
+  }
+  .code-editor:focus { outline: none; border-color: #3b82f6; background: white; }
+  .claude-editor { min-height: 180px; }
 </style>

@@ -216,6 +216,7 @@ function loadSettings(configDir: string): Settings {
         provider_connectors: settings.provider_connectors,
         skill_registries: settings.skill_registries,
         default_effort: settings.default_effort,
+        entry_paths: settings.entry_paths,
       };
     }
   } catch (e) {
@@ -1545,10 +1546,10 @@ export async function startServer(config: ServerConfig): Promise<void> {
       }
     }
 
-    // Write .mcp.json for each entry_path
+    // Write .mcp.json and CLAUDE.md for each entry_path
     if (Array.isArray(body.entry_paths)) {
       for (const ep of body.entry_paths) {
-        if (!ep.path || !ep.mcp_json) continue;
+        if (!ep.path) continue;
         const resolved = resolvePath(ep.path);
         if (!resolved) {
           results.push({ path: ep.path, ok: false, error: 'Path contains ".." — rejected' });
@@ -1556,13 +1557,52 @@ export async function startServer(config: ServerConfig): Promise<void> {
         }
         try {
           fs.mkdirSync(resolved, { recursive: true });
-          const mcpPath = path.join(resolved, '.mcp.json');
-          fs.writeFileSync(mcpPath, JSON.stringify(ep.mcp_json, null, 2), 'utf8');
-          results.push({ path: mcpPath, ok: true });
+          if (ep.mcp_json) {
+            const mcpPath = path.join(resolved, '.mcp.json');
+            fs.writeFileSync(mcpPath, JSON.stringify(ep.mcp_json, null, 2), 'utf8');
+            results.push({ path: mcpPath, ok: true });
+          }
+          if (ep.claude_md !== undefined) {
+            const claudePath = path.join(resolved, 'CLAUDE.md');
+            fs.writeFileSync(claudePath, ep.claude_md, 'utf8');
+            results.push({ path: claudePath, ok: true });
+          }
         } catch (err: any) {
-          results.push({ path: ep.path + '/.mcp.json', ok: false, error: err.message });
+          results.push({ path: ep.path, ok: false, error: err.message });
         }
       }
+    }
+
+    return { ok: true, results };
+  });
+
+  // Config read endpoint — read .mcp.json and CLAUDE.md from entry paths
+  fastify.post('/api/config/read', async (request) => {
+    const body = request.body as any;
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '/home/agent';
+    const paths: string[] = Array.isArray(body.paths) ? body.paths : [];
+    const results: { path: string; mcp_json?: Record<string, unknown>; claude_md?: string; error?: string }[] = [];
+
+    for (const p of paths) {
+      const resolved = p.replace(/^~/, homeDir);
+      if (resolved.includes('..')) {
+        results.push({ path: p, error: 'Path contains ".." — rejected' });
+        continue;
+      }
+      const entry: { path: string; mcp_json?: Record<string, unknown>; claude_md?: string } = { path: p };
+      try {
+        const mcpPath = path.join(resolved, '.mcp.json');
+        if (fs.existsSync(mcpPath)) {
+          entry.mcp_json = JSON.parse(fs.readFileSync(mcpPath, 'utf8'));
+        }
+      } catch { /* skip unreadable .mcp.json */ }
+      try {
+        const claudePath = path.join(resolved, 'CLAUDE.md');
+        if (fs.existsSync(claudePath)) {
+          entry.claude_md = fs.readFileSync(claudePath, 'utf8');
+        }
+      } catch { /* skip unreadable CLAUDE.md */ }
+      results.push(entry);
     }
 
     return { ok: true, results };
@@ -1885,6 +1925,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
       external_mcps: request.body.external_mcps ?? current.external_mcps,
       reporting: request.body.reporting ?? current.reporting,
       skill_registries: request.body.skill_registries ?? current.skill_registries,
+      entry_paths: request.body.entry_paths ?? current.entry_paths,
     };
     saveSettings(config.configDir, updated);
     return { settings: updated };

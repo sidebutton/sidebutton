@@ -23,6 +23,7 @@ import type {
   ContextSummary,
   SkillModule,
   AgentJob,
+  EntryPath,
   Publisher,
 } from './types';
 
@@ -302,6 +303,24 @@ export async function saveSettings(settings: Partial<Settings>): Promise<Setting
     body: JSON.stringify(settings),
   });
   return data.settings;
+}
+
+// ============================================================================
+// Config API (agent entry paths)
+// ============================================================================
+
+export async function applyConfig(body: { agent_env?: string; entry_paths?: EntryPath[] }): Promise<{ ok: boolean; results: { path: string; ok: boolean; error?: string }[] }> {
+  return apiFetch('/api/config/apply', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function readConfig(paths: string[]): Promise<{ ok: boolean; results: { path: string; mcp_json?: Record<string, unknown>; claude_md?: string; error?: string }[] }> {
+  return apiFetch('/api/config/read', {
+    method: 'POST',
+    body: JSON.stringify({ paths }),
+  });
 }
 
 // ============================================================================

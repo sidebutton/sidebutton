@@ -412,6 +412,13 @@ export interface SkillRegistry {
   enabled: boolean;
 }
 
+// Agent entry path configuration
+export interface EntryPath {
+  path: string;
+  mcp_json?: Record<string, unknown>;
+  claude_md?: string;
+}
+
 // Application settings
 export interface Settings {
   llm: FullLlmConfig;
@@ -430,6 +437,8 @@ export interface Settings {
   skill_registries?: SkillRegistry[];
   /** Default effort level for workflow dispatch (max, high, medium) */
   default_effort?: string;
+  /** Agent entry paths with per-path .mcp.json and CLAUDE.md */
+  entry_paths?: EntryPath[];
 }
 
 // ============================================================================
