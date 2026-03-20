@@ -1386,6 +1386,21 @@ export async function startServer(config: ServerConfig): Promise<void> {
   // Health check endpoint (extended with job context and file-based signals)
   const sidebuttonDir = path.join(process.env.HOME || '~', '.sidebutton');
 
+  // Cache dependency versions at startup (these only change on server restart)
+  const cachedDependencyVersions = (() => {
+    const getVer = (cmd: string): string | undefined => {
+      try {
+        return execSync(cmd, { timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().replace(/^v/, '');
+      } catch { return undefined; }
+    };
+    return {
+      claude_code: getVer('claude --version'),
+      node: getVer('node --version'),
+      npm: getVer('npm --version'),
+      sidebutton: VERSION,
+    };
+  })();
+
   // In-memory cooldown state
   let cooldownState: { until_ms: number; workflow_id: string; timer: ReturnType<typeof setTimeout> } | null = null;
 
@@ -1463,18 +1478,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
       response.cooldown = null;
     }
 
-    // Collect critical dependency versions for fleet drift detection
-    const getVersion = (cmd: string): string | undefined => {
-      try {
-        return execSync(cmd, { timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().replace(/^v/, '');
-      } catch { return undefined; }
-    };
-    response.dependency_versions = {
-      claude_code: getVersion('claude --version'),
-      node: getVersion('node --version'),
-      npm: getVersion('npm --version'),
-      sidebutton: VERSION,
-    };
+    response.dependency_versions = cachedDependencyVersions;
 
     return response;
   });
