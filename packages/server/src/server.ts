@@ -1386,20 +1386,25 @@ export async function startServer(config: ServerConfig): Promise<void> {
   // Health check endpoint (extended with job context and file-based signals)
   const sidebuttonDir = path.join(process.env.HOME || '~', '.sidebutton');
 
-  // Cache dependency versions at startup (these only change on server restart)
-  const cachedDependencyVersions = (() => {
-    const getVer = (cmd: string): string | undefined => {
-      try {
-        return execSync(cmd, { timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().replace(/^v/, '');
-      } catch { return undefined; }
-    };
-    return {
-      claude_code: getVer('claude --version'),
-      node: getVer('node --version'),
-      npm: getVer('npm --version'),
-      sidebutton: VERSION,
-    };
-  })();
+  // Dependency versions — cached, with lazy retry for failed lookups
+  const getVer = (cmd: string): string | undefined => {
+    try {
+      return execSync(cmd, { timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().replace(/^v/, '');
+    } catch { return undefined; }
+  };
+  const cachedDependencyVersions: Record<string, string | undefined> = {
+    claude_code: getVer('claude --version')?.replace(/\s*\(.*\)$/, ''),
+    node: getVer('node --version'),
+    npm: getVer('npm --version'),
+    sidebutton: VERSION,
+  };
+  function getDependencyVersions() {
+    // Retry any versions that failed on startup (e.g. PATH not ready yet)
+    if (!cachedDependencyVersions.claude_code) cachedDependencyVersions.claude_code = getVer('claude --version')?.replace(/\s*\(.*\)$/, '');
+    if (!cachedDependencyVersions.node) cachedDependencyVersions.node = getVer('node --version');
+    if (!cachedDependencyVersions.npm) cachedDependencyVersions.npm = getVer('npm --version');
+    return cachedDependencyVersions;
+  }
 
   // In-memory cooldown state
   let cooldownState: { until_ms: number; workflow_id: string; timer: ReturnType<typeof setTimeout> } | null = null;
@@ -1478,7 +1483,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
       response.cooldown = null;
     }
 
-    response.dependency_versions = cachedDependencyVersions;
+    response.dependency_versions = getDependencyVersions();
 
     return response;
   });
