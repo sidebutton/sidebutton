@@ -2,7 +2,8 @@
  * Fastify HTTP + WebSocket server
  */
 
-import Fastify, { type FastifyReply } from 'fastify';
+import Fastify, { type FastifyReply, type FastifyError } from 'fastify';
+import { Sentry } from './sentry.js';
 import fastifyWebsocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
@@ -553,6 +554,11 @@ export async function startServer(config: ServerConfig): Promise<void> {
     } catch (err) {
       done(err as Error, undefined);
     }
+  });
+
+  fastify.setErrorHandler((error: FastifyError, _request, reply) => {
+    Sentry.captureException(error);
+    reply.status(error.statusCode ?? 500).send({ error: error.message });
   });
 
   // Dashboard WebSocket broadcaster
@@ -3567,6 +3573,11 @@ export async function startSilentServer(config: SilentServerConfig): Promise<voi
     } catch (err) {
       done(err as Error, undefined);
     }
+  });
+
+  fastify.setErrorHandler((error: FastifyError, _request, reply) => {
+    Sentry.captureException(error);
+    reply.status(error.statusCode ?? 500).send({ error: error.message });
   });
 
   const { extensionClient, mcpHandler } = config;

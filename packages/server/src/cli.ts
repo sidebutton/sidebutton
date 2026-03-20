@@ -2,6 +2,7 @@
  * CLI entry point for sidebutton
  */
 
+import './sentry.js';
 import 'dotenv/config';
 import { Command } from 'commander';
 import * as path from 'node:path';
