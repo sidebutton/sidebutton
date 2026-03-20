@@ -1545,10 +1545,10 @@ export async function startServer(config: ServerConfig): Promise<void> {
       }
     }
 
-    // Write .mcp.json for each entry_path
+    // Write .mcp.json and CLAUDE.md for each entry_path
     if (Array.isArray(body.entry_paths)) {
       for (const ep of body.entry_paths) {
-        if (!ep.path || !ep.mcp_json) continue;
+        if (!ep.path) continue;
         const resolved = resolvePath(ep.path);
         if (!resolved) {
           results.push({ path: ep.path, ok: false, error: 'Path contains ".." — rejected' });
@@ -1556,11 +1556,18 @@ export async function startServer(config: ServerConfig): Promise<void> {
         }
         try {
           fs.mkdirSync(resolved, { recursive: true });
-          const mcpPath = path.join(resolved, '.mcp.json');
-          fs.writeFileSync(mcpPath, JSON.stringify(ep.mcp_json, null, 2), 'utf8');
-          results.push({ path: mcpPath, ok: true });
+          if (ep.mcp_json) {
+            const mcpPath = path.join(resolved, '.mcp.json');
+            fs.writeFileSync(mcpPath, JSON.stringify(ep.mcp_json, null, 2), 'utf8');
+            results.push({ path: mcpPath, ok: true });
+          }
+          if (ep.claude_md !== undefined) {
+            const claudePath = path.join(resolved, 'CLAUDE.md');
+            fs.writeFileSync(claudePath, ep.claude_md, 'utf8');
+            results.push({ path: claudePath, ok: true });
+          }
         } catch (err: any) {
-          results.push({ path: ep.path + '/.mcp.json', ok: false, error: err.message });
+          results.push({ path: ep.path, ok: false, error: err.message });
         }
       }
     }
