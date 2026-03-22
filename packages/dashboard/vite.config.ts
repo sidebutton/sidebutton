@@ -1,11 +1,20 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [
+    svelte(),
+    sentryVitePlugin({
+      org: 'aictpo',
+      project: 'sidebutton-dashboard',
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+    }),
+  ],
   build: {
     outDir: '../server/dashboard',
     emptyOutDir: true,
+    sourcemap: true,
   },
   server: {
     port: 5173,

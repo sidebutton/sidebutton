@@ -515,6 +515,7 @@ export interface HealthResponse {
   workflows_running?: number;
   cooldown?: { until_ms: number; workflow_id: string } | null;
   claude_running?: boolean;
+  claude_sessions?: { pid: number; cmd: string }[];
   dependency_versions?: {
     claude_code?: string;
     node?: string;

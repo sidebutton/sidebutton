@@ -2,7 +2,8 @@
  * Fastify HTTP + WebSocket server
  */
 
-import Fastify, { type FastifyReply } from 'fastify';
+import Fastify, { type FastifyReply, type FastifyError } from 'fastify';
+import { Sentry } from './sentry.js';
 import fastifyWebsocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
@@ -553,6 +554,11 @@ export async function startServer(config: ServerConfig): Promise<void> {
     } catch (err) {
       done(err as Error, undefined);
     }
+  });
+
+  fastify.setErrorHandler((error: FastifyError, _request, reply) => {
+    Sentry.captureException(error);
+    reply.status(error.statusCode ?? 500).send({ error: error.message });
   });
 
   // Dashboard WebSocket broadcaster
@@ -1386,20 +1392,25 @@ export async function startServer(config: ServerConfig): Promise<void> {
   // Health check endpoint (extended with job context and file-based signals)
   const sidebuttonDir = path.join(process.env.HOME || '~', '.sidebutton');
 
-  // Cache dependency versions at startup (these only change on server restart)
-  const cachedDependencyVersions = (() => {
-    const getVer = (cmd: string): string | undefined => {
-      try {
-        return execSync(cmd, { timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().replace(/^v/, '');
-      } catch { return undefined; }
-    };
-    return {
-      claude_code: getVer('claude --version'),
-      node: getVer('node --version'),
-      npm: getVer('npm --version'),
-      sidebutton: VERSION,
-    };
-  })();
+  // Dependency versions — cached, with lazy retry for failed lookups
+  const getVer = (cmd: string): string | undefined => {
+    try {
+      return execSync(cmd, { timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().replace(/^v/, '');
+    } catch { return undefined; }
+  };
+  const cachedDependencyVersions: Record<string, string | undefined> = {
+    claude_code: getVer('claude --version')?.replace(/\s*\(.*\)$/, ''),
+    node: getVer('node --version'),
+    npm: getVer('npm --version'),
+    sidebutton: VERSION,
+  };
+  function getDependencyVersions() {
+    // Retry any versions that failed on startup (e.g. PATH not ready yet)
+    if (!cachedDependencyVersions.claude_code) cachedDependencyVersions.claude_code = getVer('claude --version')?.replace(/\s*\(.*\)$/, '');
+    if (!cachedDependencyVersions.node) cachedDependencyVersions.node = getVer('node --version');
+    if (!cachedDependencyVersions.npm) cachedDependencyVersions.npm = getVer('npm --version');
+    return cachedDependencyVersions;
+  }
 
   // In-memory cooldown state
   let cooldownState: { until_ms: number; workflow_id: string; timer: ReturnType<typeof setTimeout> } | null = null;
@@ -1462,13 +1473,19 @@ export async function startServer(config: ServerConfig): Promise<void> {
       if (lastTool) response.last_tool_use = lastTool;
     } catch { /* no last tool use marker */ }
 
-    // Check if Claude Code process is running.
-    // This prevents the orchestrator from incorrectly treating a quiet-but-alive
-    // Claude session (e.g. waiting on a long LLM API response) as stalled or idle.
+    // Enumerate Claude Code processes with PIDs and command lines.
+    // This lets the orchestrator track individual sessions, distinguish dispatched
+    // jobs from operator debugging sessions, and detect zombie/stalled PIDs.
     try {
-      execSync('pgrep -x claude', { stdio: 'ignore' });
-      response.claude_running = true;
+      const pgrepOut = execSync('pgrep -a claude', { encoding: 'utf8', timeout: 3000 }).trim();
+      const sessions = pgrepOut.split('\n').filter(Boolean).map(line => {
+        const spaceIdx = line.indexOf(' ');
+        return { pid: parseInt(line.substring(0, spaceIdx), 10), cmd: line.substring(spaceIdx + 1) };
+      });
+      response.claude_sessions = sessions;
+      response.claude_running = sessions.length > 0;
     } catch {
+      response.claude_sessions = [];
       response.claude_running = false;
     }
 
@@ -1478,7 +1495,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
       response.cooldown = null;
     }
 
-    response.dependency_versions = cachedDependencyVersions;
+    response.dependency_versions = getDependencyVersions();
 
     return response;
   });
@@ -1545,10 +1562,10 @@ export async function startServer(config: ServerConfig): Promise<void> {
       }
     }
 
-    // Write .mcp.json for each entry_path
+    // Write .mcp.json and CLAUDE.md for each entry_path
     if (Array.isArray(body.entry_paths)) {
       for (const ep of body.entry_paths) {
-        if (!ep.path || !ep.mcp_json) continue;
+        if (!ep.path) continue;
         const resolved = resolvePath(ep.path);
         if (!resolved) {
           results.push({ path: ep.path, ok: false, error: 'Path contains ".." — rejected' });
@@ -1556,11 +1573,18 @@ export async function startServer(config: ServerConfig): Promise<void> {
         }
         try {
           fs.mkdirSync(resolved, { recursive: true });
-          const mcpPath = path.join(resolved, '.mcp.json');
-          fs.writeFileSync(mcpPath, JSON.stringify(ep.mcp_json, null, 2), 'utf8');
-          results.push({ path: mcpPath, ok: true });
+          if (ep.mcp_json) {
+            const mcpPath = path.join(resolved, '.mcp.json');
+            fs.writeFileSync(mcpPath, JSON.stringify(ep.mcp_json, null, 2), 'utf8');
+            results.push({ path: mcpPath, ok: true });
+          }
+          if (ep.claude_md !== undefined) {
+            const claudePath = path.join(resolved, 'CLAUDE.md');
+            fs.writeFileSync(claudePath, ep.claude_md, 'utf8');
+            results.push({ path: claudePath, ok: true });
+          }
         } catch (err: any) {
-          results.push({ path: ep.path + '/.mcp.json', ok: false, error: err.message });
+          results.push({ path: ep.path, ok: false, error: err.message });
         }
       }
     }
@@ -3567,6 +3591,11 @@ export async function startSilentServer(config: SilentServerConfig): Promise<voi
     } catch (err) {
       done(err as Error, undefined);
     }
+  });
+
+  fastify.setErrorHandler((error: FastifyError, _request, reply) => {
+    Sentry.captureException(error);
+    reply.status(error.statusCode ?? 500).send({ error: error.message });
   });
 
   const { extensionClient, mcpHandler } = config;
