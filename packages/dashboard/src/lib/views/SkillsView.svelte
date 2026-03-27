@@ -434,4 +434,25 @@
   .btn-sm { padding: 4px 10px; font-size: 12px; }
   .btn-danger { background: transparent; color: var(--color-error, #ef4444); border: 1px solid var(--color-error, #ef4444); }
   .btn-danger:hover { background: var(--color-error, #ef4444); color: white; }
+
+  @media (max-width: 768px) {
+    header {
+      flex-wrap: wrap;
+      padding: 14px 16px;
+      gap: 10px;
+    }
+
+    .header-actions {
+      width: 100%;
+    }
+
+    .content {
+      padding: 16px;
+    }
+
+    .pack-header {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+  }
 </style>

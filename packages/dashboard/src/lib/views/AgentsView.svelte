@@ -434,4 +434,30 @@
   .btn-danger { background: var(--color-error); color: white; }
   .btn-danger:hover { opacity: 0.9; }
   .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+  @media (max-width: 768px) {
+    header {
+      flex-wrap: wrap;
+      padding: 14px 16px;
+      gap: 10px;
+    }
+
+    .header-actions {
+      width: 100%;
+      flex-wrap: wrap;
+    }
+
+    .content {
+      padding: 16px;
+    }
+
+    .agent-metrics {
+      flex-wrap: wrap;
+    }
+
+    .agent-actions {
+      flex-wrap: wrap;
+      justify-content: flex-start;
+    }
+  }
 </style>

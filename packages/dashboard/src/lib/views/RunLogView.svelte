@@ -637,4 +637,40 @@
     margin: 0;
     font-size: 0.9rem;
   }
+
+  @media (max-width: 768px) {
+    header {
+      flex-wrap: wrap;
+      padding: 14px 16px;
+    }
+
+    .kpi-bar {
+      flex-wrap: wrap;
+      padding: 16px;
+      gap: 16px;
+    }
+
+    .kpi-divider {
+      display: none;
+    }
+
+    .kpi-stats {
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .kpi-stat {
+      min-width: 60px;
+    }
+
+    .content {
+      padding: 16px;
+    }
+
+    .running-meta,
+    .run-meta {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+  }
 </style>

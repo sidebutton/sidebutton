@@ -432,7 +432,7 @@
 
   .shortcuts-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 12px;
   }
 
@@ -468,4 +468,27 @@
   }
   .btn-primary { background: var(--color-primary); color: white; }
   .btn-primary:hover { opacity: 0.9; }
+
+  @media (max-width: 768px) {
+    header {
+      flex-wrap: wrap;
+      padding: 14px 16px;
+    }
+
+    .content {
+      padding: 16px;
+    }
+
+    .modules-grid {
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    }
+
+    .shortcuts-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .empty-state {
+      padding: 40px 16px;
+    }
+  }
 </style>

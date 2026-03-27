@@ -595,4 +595,16 @@
     white-space: pre-wrap;
     word-break: break-word;
   }
+
+  @media (max-width: 768px) {
+    header {
+      flex-wrap: wrap;
+      padding: 14px 16px;
+      gap: 8px;
+    }
+
+    .content {
+      padding: 16px;
+    }
+  }
 </style>

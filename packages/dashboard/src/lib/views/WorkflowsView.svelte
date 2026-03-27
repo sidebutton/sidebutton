@@ -428,7 +428,32 @@
 
   .workflow-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 20px;
+  }
+
+  @media (max-width: 768px) {
+    header {
+      flex-wrap: wrap;
+      padding: 14px 16px;
+      gap: 10px;
+    }
+
+    .header-controls {
+      width: 100%;
+    }
+
+    .sort-btn {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .workflow-list {
+      grid-template-columns: 1fr;
+    }
+
+    .content {
+      padding: 16px;
+    }
   }
 </style>

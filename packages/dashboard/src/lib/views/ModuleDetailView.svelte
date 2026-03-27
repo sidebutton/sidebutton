@@ -224,4 +224,25 @@
     cursor: pointer; transition: all var(--transition-fast);
   }
   .run-btn:hover { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+
+  @media (max-width: 768px) {
+    header {
+      flex-wrap: wrap;
+      padding: 14px 16px;
+      gap: 8px;
+    }
+
+    .content {
+      padding: 16px;
+    }
+
+    .row-info {
+      flex-wrap: wrap;
+    }
+
+    .row-meta {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+  }
 </style>

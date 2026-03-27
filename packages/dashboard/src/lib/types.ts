@@ -143,7 +143,7 @@ export const LLM_PROVIDER_PRESETS: Record<import('@sidebutton/core').LlmProvider
   openai: {
     label: "OpenAI",
     base_url: "https://api.openai.com/v1",
-    default_model: "gpt-5.2",
+    default_model: "gpt-5.4-mini",
     hint: "Get API key from platform.openai.com"
   },
   anthropic: {
@@ -164,7 +164,7 @@ export const DEFAULT_LLM_CONFIG: import('@sidebutton/core').FullLlmConfig = {
   provider: "openai",
   base_url: "https://api.openai.com/v1",
   api_key: "",
-  model: "gpt-5.2"
+  model: "gpt-5.4-mini"
 };
 
 // Action type alias for dashboard (uses Workflow from core)

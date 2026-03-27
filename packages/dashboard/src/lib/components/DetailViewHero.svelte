@@ -360,7 +360,8 @@
   .title-input {
     font-size: 1.5rem;
     font-weight: 600;
-    min-width: 300px;
+    min-width: 0;
+    width: 100%;
   }
 
   .edit-textarea {
@@ -417,5 +418,20 @@
 
   .btn-cancel-small:hover {
     background: #e0e0e0;
+  }
+
+  @media (max-width: 768px) {
+    .hero-section {
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+    }
+
+    .hero-badges {
+      flex-wrap: wrap;
+      flex-shrink: 1;
+    }
   }
 </style>

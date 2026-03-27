@@ -102,4 +102,21 @@
     height: 40px;
     background: var(--color-border);
   }
+
+  @media (max-width: 600px) {
+    .stats-bar {
+      flex-wrap: wrap;
+      justify-content: flex-start;
+      padding: 12px 16px;
+      gap: 4px;
+    }
+
+    .stat-item {
+      padding: 6px 16px;
+    }
+
+    .stat-divider {
+      display: none;
+    }
+  }
 </style>

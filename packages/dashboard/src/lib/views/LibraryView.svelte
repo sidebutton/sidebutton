@@ -382,4 +382,20 @@
   .btn-ghost { background: transparent; color: var(--color-text-secondary); }
   .btn-ghost:hover { color: var(--color-text); background: var(--color-surface); }
   .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+  @media (max-width: 768px) {
+    header {
+      flex-wrap: wrap;
+      padding: 14px 16px;
+      gap: 10px;
+    }
+
+    .content {
+      padding: 16px;
+    }
+
+    .publisher-bar {
+      flex-wrap: wrap;
+    }
+  }
 </style>

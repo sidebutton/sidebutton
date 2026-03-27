@@ -468,4 +468,21 @@
     font-size: 0.8rem;
     color: #666;
   }
+
+  @media (max-width: 768px) {
+    header {
+      flex-wrap: wrap;
+      padding: 14px 16px;
+      gap: 10px;
+    }
+
+    .header-controls {
+      width: 100%;
+      flex-wrap: wrap;
+    }
+
+    .content {
+      padding: 16px;
+    }
+  }
 </style>

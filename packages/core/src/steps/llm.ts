@@ -19,7 +19,7 @@ async function generateText(prompt: string, config: LlmConfig): Promise<string> 
 
   if (provider === 'openai') {
     const url = `${base_url || 'https://api.openai.com/v1'}/chat/completions`;
-    const modelName = model || 'gpt-4o-mini';
+    const modelName = model || 'gpt-5.4-mini';
     const apiKey = api_key || process.env.OPENAI_API_KEY;
 
     if (!apiKey) {

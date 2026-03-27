@@ -70,7 +70,7 @@
   }
 
   const providers = [
-    { id: 'openai', name: 'OpenAI', defaultUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4o' },
+    { id: 'openai', name: 'OpenAI', defaultUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-5.4-mini' },
     { id: 'anthropic', name: 'Anthropic', defaultUrl: 'https://api.anthropic.com', defaultModel: 'claude-3-5-sonnet-latest' },
     { id: 'ollama', name: 'Ollama', defaultUrl: 'http://localhost:11434/v1', defaultModel: 'llama3.2' },
   ];
@@ -751,7 +751,7 @@
                       id="model"
                       type="text"
                       bind:value={model}
-                      placeholder="gpt-4o"
+                      placeholder="gpt-5.4-mini"
                     />
                   </div>
                 </div>
@@ -1554,5 +1554,22 @@
     color: #0369a1;
     padding: 2px 6px;
     border-radius: 3px;
+  }
+
+  @media (max-width: 768px) {
+    header {
+      flex-wrap: wrap;
+      padding: 14px 16px;
+      gap: 8px;
+    }
+
+    .content {
+      padding: 16px;
+    }
+
+    .context-header {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
   }
 </style>

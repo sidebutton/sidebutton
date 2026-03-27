@@ -489,4 +489,10 @@
     0% { background-position: 200% 0; }
     100% { background-position: -200% 0; }
   }
+
+  @media (max-width: 480px) {
+    .card-footer {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
 </style>

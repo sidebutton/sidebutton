@@ -163,7 +163,7 @@ export class McpHandler {
   private loadSettings(): Settings {
     const settingsPath = path.join(this.configDir, 'settings.json');
     const defaultSettings: Settings = {
-      llm: { provider: 'openai', base_url: 'https://api.openai.com/v1', api_key: '', model: 'gpt-4o' },
+      llm: { provider: 'openai', base_url: 'https://api.openai.com/v1', api_key: '', model: 'gpt-5.4-mini' },
       last_used_params: {},
       dashboard_shortcuts: [],
       user_contexts: [],

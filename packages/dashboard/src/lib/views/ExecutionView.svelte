@@ -435,4 +435,12 @@
   .log-warn .log-message {
     color: #f57c00;
   }
+
+  @media (max-width: 768px) {
+    header {
+      flex-wrap: wrap;
+      padding: 14px 16px;
+      gap: 8px;
+    }
+  }
 </style>

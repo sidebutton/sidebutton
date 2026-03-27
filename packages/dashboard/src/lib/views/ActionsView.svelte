@@ -495,4 +495,16 @@
     font-size: 0.7rem;
     color: #888;
   }
+
+  @media (max-width: 768px) {
+    header {
+      flex-wrap: wrap;
+      padding: 14px 16px;
+      gap: 10px;
+    }
+
+    .content {
+      padding: 16px;
+    }
+  }
 </style>
