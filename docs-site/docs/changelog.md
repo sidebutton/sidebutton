@@ -2,16 +2,34 @@
 
 All notable changes to SideButton.
 
-## [1.0.12] - 2026-03-14
+## [1.0.12] - 2026-03-28
 
 ### Highlights
 
+- **MCP OAuth 2.1** — full OAuth discovery and registration for Claude Code 2.1.84+ compatibility
+- **Temporal orchestration panel** — real-time workflow execution visibility in job detail view
+- **Mobile-responsive portal** — Fleet Control pages adapt to mobile/tablet viewports
 - **45 step types** — added issues, git, chat, and data step categories (42 implemented, 3 chat pending)
 - **Knowledge pack CLI** — `sidebutton init`, `validate`, and `publish` for creating and sharing knowledge packs
 - **Context system** — persona, roles, and targets injected into every LLM call via both REST and MCP
 - **Community roles** — 15 built-in role templates (SE, QA, PM, SD, HR, Sales, and more)
 - **Abstract providers** — issues and git steps work across Jira, GitHub, and other platforms via auto-detected providers
-- **Delay constants** — named delays (`small`, `mid`, `large`) with jitter for human-like timing
+
+### Portal & Dashboard
+
+- Temporal orchestration panel on job detail page with phase timeline
+- Sidebar count badges for Jobs and Queue
+- Clickable navigation across all dashboard tables
+- Removed collapsibles and Steps section from job detail for cleaner UX
+- Mobile-responsive Fleet Control pages (SCRUM-356)
+- "All agents" targeting option for automations (SCRUM-353)
+
+### MCP & Agent Infrastructure
+
+- MCP OAuth 2.1 discovery and `/register` endpoint for Claude Code compatibility
+- Fixed OAuth discovery returning HTML 404 to Bun-based clients
+- Agent 10-minute inactivity timeout for Claude Code busy status (SCRUM-322)
+- Default LLM model updated to gpt-5.4-nano
 
 ### New Step Types
 

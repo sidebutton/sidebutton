@@ -206,7 +206,7 @@ GET /health
 ```json
 {
   "status": "ok",
-  "version": "1.0.0",
+  "version": "1.0.12",
   "browser_connected": true,
   "server_running": true
 }
