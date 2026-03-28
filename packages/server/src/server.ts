@@ -1793,10 +1793,15 @@ export async function startServer(config: ServerConfig): Promise<void> {
       if (!fs.existsSync(config.runLogsDir)) {
         fs.mkdirSync(config.runLogsDir, { recursive: true });
       }
-      fs.writeFileSync(
-        path.join(config.runLogsDir, `${runId}.json`),
-        JSON.stringify(runLog, null, 2)
-      );
+      const logPath = path.join(config.runLogsDir, `${runId}.json`);
+      try {
+        const data = JSON.stringify(runLog, null, 2);
+        fs.writeFileSync(logPath, data);
+      } catch (writeErr) {
+        console.error(`[RunLog] Failed to write ${runId}:`, writeErr);
+        // Clean up empty/partial file to prevent downstream JSON.parse errors
+        try { fs.unlinkSync(logPath); } catch { /* ignore */ }
+      }
 
       // Send anonymous run report (fire-and-forget)
       reportRunLog(runLog, settings.reporting);
@@ -1888,7 +1893,15 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
 
     const content = fs.readFileSync(filePath, 'utf-8');
-    return { run_log: JSON.parse(content) };
+    if (!content.trim()) {
+      throw { statusCode: 422, message: 'Run log is empty or corrupted' };
+    }
+
+    try {
+      return { run_log: JSON.parse(content) };
+    } catch {
+      throw { statusCode: 422, message: 'Run log contains invalid JSON' };
+    }
   });
 
   // ============================================================================

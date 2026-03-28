@@ -589,7 +589,16 @@ export class McpHandler {
     }
 
     const content = fs.readFileSync(filePath, 'utf-8');
-    const runLog = JSON.parse(content) as RunLog;
+    if (!content.trim()) {
+      throw new Error(`Run log is empty or corrupted: ${runId}`);
+    }
+
+    let runLog: RunLog;
+    try {
+      runLog = JSON.parse(content) as RunLog;
+    } catch {
+      throw new Error(`Run log is corrupted (invalid JSON): ${runId}`);
+    }
 
     let output = `# Run Log: ${runLog.metadata.id}\n\n`;
     output += `**Workflow:** ${runLog.metadata.workflow_title} (${runLog.metadata.workflow_id})\n`;
