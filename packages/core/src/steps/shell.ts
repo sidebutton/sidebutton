@@ -6,7 +6,7 @@
 import { exec, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { platform, homedir, tmpdir } from 'node:os';
-import { writeFileSync, chmodSync } from 'node:fs';
+import { writeFileSync, chmodSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Step } from '../types.js';
 import type { ExecutionContext } from '../context.js';
@@ -69,6 +69,15 @@ export async function executeTerminalOpen(
     `Opening terminal${title ? ` '${title}'` : ''}${cwd ? ` in ${cwd}` : ''}`
   );
 
+  // Validate cwd exists before proceeding
+  const resolvedCwd = expandHome(cwd);
+  if (resolvedCwd && !existsSync(resolvedCwd)) {
+    throw new WorkflowError(
+      `Terminal cwd does not exist: ${resolvedCwd}`,
+      'TERMINAL_ERROR'
+    );
+  }
+
   if (IS_MAC) {
     const script = buildTerminalScript(title, cwd);
     try {
@@ -83,7 +92,7 @@ export async function executeTerminalOpen(
     }
   } else {
     // Linux: defer terminal spawn to terminal.run so only ONE window opens
-    ctx.terminalCwd = expandHome(cwd);
+    ctx.terminalCwd = resolvedCwd;
     ctx.terminalActive = true;
     ctx.terminalTitle = title;
     ctx.emitLog('info', 'Terminal session prepared (opens on first command)');
