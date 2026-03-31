@@ -522,6 +522,21 @@ export interface HealthResponse {
     npm?: string;
     sidebutton?: string;
   };
+  system_metrics?: {
+    cpu_pct: number;
+    mem_used_mb: number;
+    mem_total_mb: number;
+    swap_used_mb: number;
+    swap_total_mb: number;
+    load_1m: number;
+    load_5m: number;
+    load_15m: number;
+    disk_pct: number;
+    uptime_sec: number;
+    chrome_count: number;
+    claude_code_count: number;
+    claude_code_cpu: number;
+  };
 }
 
 // Workflow summary for listing

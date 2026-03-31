@@ -1497,6 +1497,62 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
     response.dependency_versions = getDependencyVersions();
 
+    // Collect live system metrics (Linux only — agents run on Ubuntu VMs)
+    // All /proc reads are near-instant; single execSync keeps latency under ~200ms
+    if (process.platform === 'linux') {
+      try {
+        const memInfo = fs.readFileSync('/proc/meminfo', 'utf8');
+        const memMatch = (key: string) => {
+          const m = memInfo.match(new RegExp(`${key}:\\s+(\\d+)`));
+          return m ? Math.round(parseInt(m[1], 10) / 1024) : 0; // kB → MB
+        };
+        const memTotal = memMatch('MemTotal');
+        const memAvail = memMatch('MemAvailable');
+        const swapTotal = memMatch('SwapTotal');
+        const swapFree = memMatch('SwapFree');
+
+        const loadavg = fs.readFileSync('/proc/loadavg', 'utf8').trim().split(/\s+/);
+        const uptime = parseFloat(fs.readFileSync('/proc/uptime', 'utf8').split(/\s+/)[0]) || 0;
+        const nproc = (fs.readFileSync('/proc/cpuinfo', 'utf8').match(/^processor/gm) || []).length || 1;
+
+        // CPU%: derive from 1-min load average / nproc (same ballpark as top -bn1)
+        const cpuPct = Math.round(Math.min((parseFloat(loadavg[0]) / nproc) * 100, 100) * 10) / 10;
+
+        // Disk + chrome count + claude CPU in a single shell call to stay within fleet-status 3s timeout
+        let diskPct = 0;
+        let chromeCount = 0;
+        let claudeCpu = 0;
+        try {
+          const out = execSync(
+            'printf "%s\\n" "$(df / --output=pcent 2>/dev/null | tail -1)" "$(pgrep -c -f "[c]hrom" 2>/dev/null || echo 0)" "$(ps aux 2>/dev/null | awk \'/[c]laude/ {s+=$3} END {printf "%d",s+0}\')"',
+            { encoding: 'utf8', timeout: 3000 },
+          ).trim().split('\n');
+          diskPct = parseInt((out[0] || '').replace(/[^0-9]/g, ''), 10) || 0;
+          chromeCount = parseInt(out[1] || '0', 10) || 0;
+          claudeCpu = parseInt(out[2] || '0', 10) || 0;
+        } catch { /* */ }
+
+        // Reuse claude_sessions already collected above for count
+        const claudeCodeCount = response.claude_sessions?.length ?? 0;
+
+        response.system_metrics = {
+          cpu_pct: cpuPct,
+          mem_used_mb: memTotal - memAvail,
+          mem_total_mb: memTotal,
+          swap_used_mb: swapTotal - swapFree,
+          swap_total_mb: swapTotal,
+          load_1m: parseFloat(loadavg[0]) || 0,
+          load_5m: parseFloat(loadavg[1]) || 0,
+          load_15m: parseFloat(loadavg[2]) || 0,
+          disk_pct: diskPct,
+          uptime_sec: Math.floor(uptime),
+          chrome_count: chromeCount,
+          claude_code_count: claudeCodeCount,
+          claude_code_cpu: claudeCpu,
+        };
+      } catch { /* non-Linux or read failure — skip metrics */ }
+    }
+
     return response;
   });
 
