@@ -36,7 +36,7 @@
       if (stored) {
         lastUsedParams = JSON.parse(stored);
       }
-      // Load stats
+      // Load stats and hint history
       try {
         stats = await getWorkflowStats(workflowId);
       } catch {

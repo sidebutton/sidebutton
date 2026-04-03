@@ -9,6 +9,7 @@ All notable changes to SideButton.
 - **MCP OAuth 2.1** — full OAuth discovery and registration for Claude Code 2.1.84+ compatibility
 - **Temporal orchestration panel** — real-time workflow execution visibility in job detail view
 - **Mobile-responsive portal** — Fleet Control pages adapt to mobile/tablet viewports
+- **Plugin system** — extend the MCP server with custom tools via handler scripts in any language
 - **45 step types** — added issues, git, chat, and data step categories (42 implemented, 3 chat pending)
 - **Knowledge pack CLI** — `sidebutton init`, `validate`, and `publish` for creating and sharing knowledge packs
 - **Context system** — persona, roles, and targets injected into every LLM call via both REST and MCP

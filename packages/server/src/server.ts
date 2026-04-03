@@ -230,6 +230,7 @@ function saveSettings(configDir: string, settings: Settings): void {
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
 }
 
+
 function getEnvVarsFromSettings(settings: Settings): Record<string, string> {
   const envVars: Record<string, string> = {};
   for (const uc of settings.user_contexts ?? []) {

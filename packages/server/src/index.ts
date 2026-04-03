@@ -9,3 +9,4 @@ export { startStdioTransport } from './mcp/stdio.js';
 export { ExtensionClientImpl } from './extension.js';
 export { McpHandler } from './mcp/handler.js';
 export { MCP_TOOLS, type McpTool } from './mcp/tools.js';
+export { loadPlugins, type PluginManifest, type PluginToolDefinition, type LoadedPlugin } from './plugins/index.js';

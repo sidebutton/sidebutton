@@ -17,7 +17,9 @@ import {
   loadWorkflow,
 } from '@sidebutton/core';
 import type { ExtensionClientImpl } from '../extension.js';
-import { MCP_TOOLS } from './tools.js';
+import { MCP_TOOLS, type McpTool } from './tools.js';
+import { loadPlugins, executePluginTool } from '../plugins/index.js';
+import type { LoadedPlugin, PluginToolDefinition } from '../plugins/types.js';
 import { reportRunLog } from '../services/report.js';
 import { loadContextAll, loadTargets, loadRoles } from '../context.js';
 import { matchTarget } from '../matching.js';
@@ -97,6 +99,7 @@ export class McpHandler {
   private actions: Workflow[] = [];
   private workflows: Workflow[] = [];
   private templates: Workflow[] = [];
+  private plugins: LoadedPlugin[] = [];
   private broadcaster: DashboardBroadcaster | null = null;
   private runningWorkflowsTracker: RunningWorkflowsTracker | null = null;
 
@@ -155,6 +158,10 @@ export class McpHandler {
         // skip if skills dir unreadable
       }
     }
+
+    // Load agent plugins from plugins/ directory
+    const pluginsDir = path.join(this.configDir, 'plugins');
+    this.plugins = loadPlugins(pluginsDir);
   }
 
   /**
@@ -320,7 +327,7 @@ export class McpHandler {
         // Notifications don't need a response
         return {};
       case 'tools/list':
-        return { tools: MCP_TOOLS };
+        return { tools: [...MCP_TOOLS, ...this.getPluginMcpTools()] };
       case 'tools/call':
         return this.handleToolsCall(params);
       case 'resources/list':
@@ -417,9 +424,44 @@ export class McpHandler {
         return this.toolHover(args);
       case 'evaluate':
         return this.toolEvaluate(args);
-      default:
+      default: {
+        // Check plugin tools before throwing
+        const pluginMatch = this.findPluginTool(name);
+        if (pluginMatch) {
+          return executePluginTool(pluginMatch.plugin, pluginMatch.tool, args);
+        }
         throw new Error(`Tool not found: ${name}`);
+      }
     }
+  }
+
+  /**
+   * Build MCP tool definitions from loaded plugins, prefixing descriptions
+   * with [plugin: name] for discoverability.
+   */
+  private getPluginMcpTools(): McpTool[] {
+    const tools: McpTool[] = [];
+    for (const plugin of this.plugins) {
+      for (const tool of plugin.manifest.tools) {
+        tools.push({
+          name: tool.name,
+          description: `[plugin: ${plugin.manifest.name}] ${tool.description}`,
+          inputSchema: tool.inputSchema,
+        });
+      }
+    }
+    return tools;
+  }
+
+  /**
+   * Find which plugin owns a given tool name.
+   */
+  private findPluginTool(name: string): { plugin: LoadedPlugin; tool: PluginToolDefinition } | null {
+    for (const plugin of this.plugins) {
+      const tool = plugin.manifest.tools.find((t) => t.name === name);
+      if (tool) return { plugin, tool };
+    }
+    return null;
   }
 
   private async toolRunWorkflow(args: Record<string, unknown>): Promise<unknown> {

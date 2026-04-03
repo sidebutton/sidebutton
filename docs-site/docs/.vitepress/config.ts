@@ -35,6 +35,7 @@ export default defineConfig({
       { text: 'Guide', link: '/installation' },
       { text: 'Workflows', link: '/workflows/overview' },
       { text: 'Knowledge Packs', link: '/knowledge-packs/overview' },
+      { text: 'Plugins', link: '/plugins/overview' },
       { text: 'MCP', link: '/mcp/overview' },
       // { text: 'API', link: '/api/rest' }, // Hidden until Phase 2
       {
@@ -78,6 +79,15 @@ export default defineConfig({
             { text: 'Creating Packs', link: '/knowledge-packs/creating' },
             { text: 'CLI Reference', link: '/knowledge-packs/cli' },
             { text: 'Publishing', link: '/knowledge-packs/cli#creator-commands' }
+          ]
+        },
+        {
+          text: 'Plugins',
+          items: [
+            { text: 'Overview', link: '/plugins/overview' },
+            { text: 'Creating Plugins', link: '/plugins/creating' },
+            { text: 'CLI Reference', link: '/plugins/cli' },
+            { text: 'Available Plugins', link: '/plugins/available' }
           ]
         },
         {

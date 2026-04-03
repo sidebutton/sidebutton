@@ -109,7 +109,7 @@
         </button>
       </div>
 
-      <div class="hint">
+      <div class="keyboard-hint">
         Press <kbd>Cmd+Enter</kbd> to run, <kbd>Esc</kbd> to cancel
       </div>
     </div>
@@ -259,7 +259,7 @@
     background: #f0f0f0;
   }
 
-  .hint {
+  .keyboard-hint {
     text-align: center;
     padding: 8px;
     font-size: 0.75rem;

@@ -386,6 +386,16 @@ MCP tools return JSON-RPC errors when operations fail:
 | `Element not found` | Selector doesn't match | Verify selector |
 | `Missing required parameter` | Params not provided | Check workflow params |
 
+## Plugin Tools
+
+In addition to the core tools above, [plugins](/plugins/overview) can register custom tools that appear in `tools/list` with a `[plugin: name]` prefix. Plugin tools work identically to core tools from the AI's perspective.
+
+For example, installing the `screen-record` plugin adds `start_recording`, `stop_recording`, and `list_recordings` tools.
+
+See [Available Plugins](/plugins/available) for official plugins, or [Creating Plugins](/plugins/creating) to build your own.
+
+---
+
 ## Usage Tips
 
 ### Workflow vs Direct Control

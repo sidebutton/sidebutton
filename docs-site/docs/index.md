@@ -11,6 +11,7 @@ SideButton is an **open-source platform that packages domain knowledge for AI ag
 - **Define reusable workflows** in YAML with 45 step types (browser, shell, LLM, issues, git, control flow)
 - **Connect AI agents via MCP** — Claude Code, Cursor, or any MCP client gets real browser control
 - **Record actions** by clicking through a task and exporting as automation
+- **Extend with plugins** — add custom MCP tools in any language (bash, Node.js, Python)
 - **Embed buttons** directly into the pages you use (GitHub, Wikipedia, etc.)
 
 ## How It Works

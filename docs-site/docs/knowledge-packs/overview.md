@@ -144,7 +144,21 @@ sidebutton publish              # Publish to the registry
 
 See [Contributing Knowledge Packs](/contributing#contributing-skill-packs) for guidelines and best practices.
 
+## Knowledge Packs vs Plugins
+
+Knowledge packs and [plugins](/plugins/overview) are both ways to extend SideButton, but they serve different purposes:
+
+| | Knowledge Packs | Plugins |
+|---|-----------------|---------|
+| **Purpose** | Teach agents about a web app | Add new tool capabilities |
+| **Contents** | Markdown targets, YAML workflows, role playbooks | Code handlers (bash/Node.js/Python) |
+| **Requires code** | No | Yes |
+| **Example** | "How to navigate Jira, what selectors to use" | "Record the screen as an MP4 video" |
+
+If you want to teach an agent *what to do* on a domain, create a knowledge pack. If you want to give an agent *a new ability*, create a [plugin](/plugins/creating).
+
 ## Next Steps
 
 - **[Creating Knowledge Packs](/knowledge-packs/creating)** — Build and publish your own
 - **[CLI Reference](/knowledge-packs/cli)** — Install, manage, and search packs
+- **[Plugins](/plugins/overview)** — Extend SideButton with custom MCP tools

@@ -35,6 +35,12 @@ import {
   isGitRepo,
   gitCommitChanges,
 } from './registry.js';
+import {
+  loadPlugins,
+  readPluginManifest,
+  installPlugin,
+  removePlugin,
+} from './plugins/index.js';
 
 const DEFAULT_PORT = 9876;
 
@@ -1000,6 +1006,93 @@ registryCmd
         }
       }
       console.log();
+    } catch (error) {
+      console.error(chalk.red(`\n  ${error instanceof Error ? error.message : 'Unknown error'}\n`));
+      process.exit(1);
+    }
+  });
+
+// ============================================================================
+// Plugin commands
+// ============================================================================
+
+const pluginCmd = program
+  .command('plugin')
+  .description('Manage plugins');
+
+pluginCmd
+  .command('list')
+  .description('List installed plugins and their tools')
+  .action(() => {
+    const configDir = getConfigDir();
+    const pluginsDir = path.join(configDir, 'plugins');
+    const plugins = loadPlugins(pluginsDir);
+
+    console.log(chalk.cyan('\n  Installed Plugins\n'));
+
+    if (plugins.length === 0) {
+      console.log('  No plugins installed.');
+      console.log(`  Install one: ${chalk.bold('sidebutton plugin install <path>')}\n`);
+      return;
+    }
+
+    for (const plugin of plugins) {
+      const { manifest } = plugin;
+      console.log(`  ${chalk.bold(manifest.name)} v${manifest.version}`);
+      if (manifest.description) {
+        console.log(`    ${manifest.description}`);
+      }
+      console.log(`    Tools (${manifest.tools.length}): ${manifest.tools.map(t => t.name).join(', ')}`);
+      console.log();
+    }
+
+    console.log(`  Plugins dir: ${pluginsDir}\n`);
+  });
+
+pluginCmd
+  .command('install <source>')
+  .description('Install a plugin from a local directory')
+  .action((source: string) => {
+    const configDir = getConfigDir();
+    const pluginsDir = path.join(configDir, 'plugins');
+
+    console.log(chalk.cyan('\n  SideButton\n'));
+
+    const resolved = path.resolve(source);
+    if (!fs.existsSync(resolved)) {
+      console.error(chalk.red(`  Directory not found: ${resolved}\n`));
+      process.exit(1);
+    }
+
+    try {
+      readPluginManifest(resolved);
+    } catch (error) {
+      console.error(chalk.red(`  Invalid plugin: ${error instanceof Error ? error.message : 'Unknown error'}\n`));
+      process.exit(1);
+    }
+
+    try {
+      const result = installPlugin(resolved, pluginsDir);
+      console.log(`  ${chalk.green('✓')} Installed plugin: ${result.name}`);
+      console.log(`  Tools: ${result.toolNames.join(', ')}\n`);
+    } catch (error) {
+      console.error(chalk.red(`\n  ${error instanceof Error ? error.message : 'Unknown error'}\n`));
+      process.exit(1);
+    }
+  });
+
+pluginCmd
+  .command('remove <name>')
+  .description('Remove an installed plugin')
+  .action((name: string) => {
+    const configDir = getConfigDir();
+    const pluginsDir = path.join(configDir, 'plugins');
+
+    console.log(chalk.cyan('\n  SideButton\n'));
+
+    try {
+      const result = removePlugin(name, pluginsDir);
+      console.log(`  ${chalk.green('✓')} Removed plugin: ${result.name} (${result.toolCount} tools)\n`);
     } catch (error) {
       console.error(chalk.red(`\n  ${error instanceof Error ? error.message : 'Unknown error'}\n`));
       process.exit(1);

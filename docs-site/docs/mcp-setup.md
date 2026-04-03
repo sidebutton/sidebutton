@@ -87,7 +87,7 @@ Open Windsurf Settings → Cascade → MCP Servers → "View raw config", then a
 }
 ```
 
-## Available MCP Tools
+## Core MCP Tools
 
 Once connected, AI tools can use these capabilities:
 
@@ -115,6 +115,10 @@ Once connected, AI tools can use these capabilities:
 | `screenshot` | Capture page screenshot |
 | `hover` | Hover over an element |
 | `capture_page` | Get all selectors on page |
+
+### Plugin Tools
+
+Installed [plugins](/plugins/overview) add custom tools alongside the core set. See [Available Plugins](/plugins/available) for official plugins like `screen-record` and `writing-quality`.
 
 ## Example Prompts
 

@@ -34,6 +34,20 @@ sidebutton publish
 
 See [Creating Knowledge Packs](/knowledge-packs/creating) for the full guide and [CLI Reference](/knowledge-packs/cli) for all commands.
 
+## Contributing Plugins
+
+Plugins add custom MCP tools to SideButton. They're standalone repos with a `plugin.json` manifest and handler scripts.
+
+### Quick Start
+
+1. Create a repo named `plugin-<name>`
+2. Add a `plugin.json` manifest defining your tools
+3. Write handler scripts (bash, Node.js, Python, etc.)
+4. Test locally: `sidebutton plugin install /path/to/your-plugin`
+5. Publish the repo and [open a PR](https://github.com/sidebutton/sidebutton/pulls) to list it in the [Available Plugins](/plugins/available) directory
+
+See [Creating Plugins](/plugins/creating) for the full guide and [Available Plugins](/plugins/available) for examples.
+
 ## Getting Started
 
 ### Prerequisites

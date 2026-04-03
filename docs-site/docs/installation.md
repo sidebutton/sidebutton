@@ -84,6 +84,7 @@ This is expected! You need to [install the Chrome extension](/extension) and con
 2. **[Run Your First Workflow](/first-workflow)** — See it in action
 3. **[Connect AI Tools](/mcp-setup)** — Use with Claude Code or Cursor
 4. **[Install Knowledge Packs](/knowledge-packs/overview)** — Add automation for specific web apps
+5. **[Extend with Plugins](/plugins/overview)** — Add custom MCP tools
 
 ## Troubleshooting
 
