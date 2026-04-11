@@ -2,6 +2,22 @@
  * MCP JSON-RPC handler
  */
 
+/** Coerce a value to number (LLMs often send "300" instead of 300). */
+function toNum(v: unknown): number | undefined {
+  if (v === undefined || v === null) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** Coerce a value to boolean (LLMs often send "true" instead of true). */
+function toBool(v: unknown): boolean | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v === 'boolean') return v;
+  if (v === 'true' || v === '1') return true;
+  if (v === 'false' || v === '0') return false;
+  return undefined;
+}
+
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as yaml from 'js-yaml';
@@ -793,7 +809,7 @@ export class McpHandler {
       throw new Error('Browser not connected');
     }
 
-    const includeContent = (args.includeContent as boolean) ?? false;
+    const includeContent = toBool(args.includeContent) ?? false;
     const snapshot = await this.extensionClient.ariaSnapshot({ includeContent });
     return { content: [{ type: 'text', text: snapshot }] };
   }
@@ -804,7 +820,7 @@ export class McpHandler {
     }
 
     const selector = args.selector as string | undefined;
-    const ref = args.ref as number | undefined;
+    const ref = toNum(args.ref);
     const element = args.element as string | undefined;
 
     if (ref !== undefined) {
@@ -826,9 +842,9 @@ export class McpHandler {
     }
 
     const selector = args.selector as string | undefined;
-    const ref = args.ref as number | undefined;
+    const ref = toNum(args.ref);
     const text = args.text as string;
-    const submit = (args.submit as boolean) ?? false;
+    const submit = toBool(args.submit) ?? false;
     const element = args.element as string | undefined;
 
     if (ref !== undefined) {
@@ -855,7 +871,7 @@ export class McpHandler {
     }
 
     const selector = args.selector as string | undefined;
-    const ref = args.ref as number | undefined;
+    const ref = toNum(args.ref);
 
     // If ref provided, click it first to focus (same pattern as typeRef)
     if (ref !== undefined) {
@@ -873,7 +889,7 @@ export class McpHandler {
     }
 
     const direction = args.direction as string;
-    const amount = (args.amount as number) ?? 300;
+    const amount = toNum(args.amount) ?? 300;
 
     await this.extensionClient.scroll(direction, amount);
     return { content: [{ type: 'text', text: `Scrolled ${direction} by ${amount}px` }] };
@@ -885,7 +901,7 @@ export class McpHandler {
     }
 
     const selector = args.selector as string | undefined;
-    const ref = args.ref as number | undefined;
+    const ref = toNum(args.ref);
     const value = args.value as string | undefined;
     const label = args.label as string | undefined;
     const element = args.element as string | undefined;
@@ -917,9 +933,15 @@ export class McpHandler {
       throw new Error('Browser not connected');
     }
 
-    const ref = args.ref as number | undefined;
+    const ref = toNum(args.ref);
     const selector = args.selector as string | undefined;
-    const region = args.region as { x: number; y: number; width: number; height: number } | undefined;
+    const rawRegion = args.region as Record<string, unknown> | undefined;
+    const region = rawRegion ? {
+      x: toNum(rawRegion.x) ?? 0,
+      y: toNum(rawRegion.y) ?? 0,
+      width: toNum(rawRegion.width) ?? 0,
+      height: toNum(rawRegion.height) ?? 0,
+    } : undefined;
 
     const imageData = await this.extensionClient.screenshot({ ref, selector, region });
     return {
@@ -951,7 +973,7 @@ export class McpHandler {
     }
 
     const selector = args.selector as string;
-    const timeout = (args.timeout as number) ?? 5000;
+    const timeout = toNum(args.timeout) ?? 5000;
     if (!selector) throw new Error('selector parameter is required');
 
     await this.extensionClient.waitForElement(selector, timeout);
@@ -964,7 +986,7 @@ export class McpHandler {
     }
 
     const selector = args.selector as string;
-    const timeout = (args.timeout as number) ?? 2000;
+    const timeout = toNum(args.timeout) ?? 2000;
     if (!selector) throw new Error('selector parameter is required');
 
     const found = await this.extensionClient.exists(selector, timeout);

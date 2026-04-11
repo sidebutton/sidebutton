@@ -1106,9 +1106,9 @@ pluginCmd
 program
   .command('search [query]')
   .description('Search available packs across all registries')
-  .action((query?: string) => {
+  .action(async (query?: string) => {
     const configDir = getConfigDir();
-    const results = searchPacks(query, configDir);
+    const results = await searchPacks(query, configDir);
 
     console.log(chalk.cyan('\n  Available Skill Packs\n'));
 

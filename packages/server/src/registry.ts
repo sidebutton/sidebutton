@@ -381,7 +381,9 @@ export interface SearchResult extends RegistryIndexEntry {
   registry: string;
 }
 
-export function searchPacks(query: string | undefined, configDir: string): SearchResult[] {
+const REMOTE_REGISTRY_URL = 'https://sidebutton.com';
+
+export function searchPacksLocal(query: string | undefined, configDir: string): SearchResult[] {
   const settings = readRawSettings(configDir);
   const registries = settings.skill_registries ?? [];
   const results: SearchResult[] = [];
@@ -417,6 +419,68 @@ export function searchPacks(query: string | undefined, configDir: string): Searc
   }
 
   return results;
+}
+
+export async function searchPacksRemote(query: string | undefined): Promise<SearchResult[]> {
+  try {
+    const res = await fetch(`${REMOTE_REGISTRY_URL}/api/skill-packs`);
+    if (!res.ok) return [];
+    const packs = await res.json() as Array<{
+      domain: string; name: string; version: string;
+      tagline?: string; description?: string; roles?: string[];
+      status?: string; modules?: Array<{ name: string; description: string }>;
+    }>;
+
+    const results: SearchResult[] = [];
+    for (const pack of packs) {
+      if (pack.status !== 'available') continue;
+      const entry: SearchResult = {
+        name: pack.name?.toLowerCase().replace(/\s+/g, '-') || pack.domain,
+        domain: pack.domain,
+        version: pack.version || '0.0.0',
+        title: pack.name || pack.domain,
+        description: pack.tagline || pack.description || '',
+        path: pack.domain,
+        registry: 'sidebutton.com',
+      };
+
+      if (!query) {
+        results.push(entry);
+        continue;
+      }
+
+      const q = query.toLowerCase();
+      const matches =
+        entry.name.toLowerCase().includes(q) ||
+        entry.domain.toLowerCase().includes(q) ||
+        entry.title.toLowerCase().includes(q) ||
+        entry.description.toLowerCase().includes(q);
+
+      if (matches) {
+        results.push(entry);
+      }
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+export async function searchPacks(query: string | undefined, configDir: string): Promise<SearchResult[]> {
+  const [local, remote] = await Promise.all([
+    searchPacksLocal(query, configDir),
+    searchPacksRemote(query),
+  ]);
+
+  // Merge: local registries take priority, remote fills in packs not found locally
+  const seen = new Set(local.map(r => r.domain));
+  const merged = [...local];
+  for (const r of remote) {
+    if (!seen.has(r.domain)) {
+      merged.push(r);
+    }
+  }
+  return merged;
 }
 
 export function resolvePackFromRegistries(
