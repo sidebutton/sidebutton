@@ -1,6 +1,6 @@
 # SideButton
 
-**Local workflow automation for your browser, terminal, and AI.**
+**Open-source orchestration and domain knowledge for AI agents.**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0%20%2B%20FSL--1.1-blue.svg)](LICENSING.md)
 [![Website](https://img.shields.io/badge/website-sidebutton.com-purple)](https://sidebutton.com)
@@ -8,42 +8,37 @@
 
 > **[Website](https://sidebutton.com)** · **[Documentation](https://docs.sidebutton.com)** · **[GitHub](https://github.com/sidebutton/sidebutton)**
 
-Define workflows in YAML and execute them through browser automation, shell commands, and LLM integration.
+MCP server + Chrome extension + YAML workflow engine + skill packs. Connect to Claude Code, Cursor, ChatGPT, or any MCP client. Run locally or deploy on any server.
 
-## Who is this for?
+```bash
+npx sidebutton@latest
+# Dashboard at http://localhost:9876
+```
 
-- **Power users** who repeat the same browser tasks daily (data entry, form filling, content publishing)
-- **Developers** who want to automate workflows without writing code
-- **AI agent builders** who need browser automation via MCP
-- **Teams** who want shareable, version-controlled automation
-
-## Why SideButton?
+## What you get
 
 | | |
 |---|---|
-| **Reusable Workflows** | Define once in YAML, run forever. No re-prompting AI every time. |
-| **Recording Mode** | Click through any task once, export as reusable automation. |
-| **Embed Buttons** | Inject one-click action buttons directly into any web page. |
-| **AI-Powered Steps** | LLM classification and generation built into workflows. |
-| **MCP Server** | Expose workflows to AI agents like Claude Code, Cursor, VS Code. |
-| **REST API** | JSON endpoints for mobile and external integrations. |
+| **MCP Server** | 40+ tools for browser control, workflow execution, skill pack access. Stdio and SSE transports. |
+| **REST API** | 60+ endpoints. Trigger workflows remotely from webhooks, cron jobs, mobile apps, or other agents. |
+| **Workflow Engine** | YAML DSL with 34+ step types — browser, shell, LLM, control flow. Deterministic execution. |
+| **Skill Packs** | Installable domain knowledge — CSS selectors, data models, state machines, role playbooks per web app. |
+| **Chrome Extension** | 40+ browser commands. Real DOM access via WebSocket, not screenshots. Recording mode. |
+| **Dashboard** | Svelte UI — workflow browser, run logs, skill pack manager, system status. |
 
 ## Quick Start
 
 ```bash
-# Install dependencies
-pnpm install
+# Install and start
+npx sidebutton@latest
 
-# Build all packages
-pnpm build
+# Or from source
+pnpm install && pnpm build && pnpm start
 
-# Start the server
-pnpm start
-
-# Open http://localhost:9876 in your browser
+# Open http://localhost:9876
 ```
 
-Or run directly with the CLI:
+### CLI
 
 ```bash
 pnpm cli serve          # Start server with dashboard
@@ -60,36 +55,111 @@ pnpm cli search [query]            # Search available skill packs
 # Creating skill packs
 pnpm cli init [domain]             # Scaffold a new skill pack
 pnpm cli validate [path]           # Validate pack structure
-pnpm cli publish [source]          # Publish to a registry (--registry <path>)
-pnpm cli publish --registry <path> # Reindex all packs in a registry (in-place mode)
+pnpm cli publish [source]          # Publish to a registry
 ```
 
-## Features
+## MCP Server
 
-- **Config-first workflows** - Define actions in YAML files
-- **Browser automation** - Navigate, click, type, scroll, extract via Chrome extension
-- **Shell execution** - Run bash commands with output capture
-- **Terminal workflows** - Execute commands in visible terminal windows (macOS)
-- **LLM integration** - Text classification and generation via OpenAI/Anthropic
-- **Control flow** - Conditionals, retries, and nested workflows
-- **Recording mode** - Capture user actions to generate selectors
-- **Skill packs** - Install domain-specific workflows, roles, and targets from registries
-- **MCP Server** - Expose workflows to AI agents
-- **REST API** - JSON endpoints for mobile and external integrations
+SideButton is an MCP server. AI tools connect to it directly.
 
-## Creating Workflows
+Works with **Claude Code**, **Cursor**, **Claude Desktop**, **VS Code**, **Windsurf**, **ChatGPT** — any MCP client.
 
-Workflows are defined as YAML files in the `workflows/` directory.
+### Claude Code
 
-### Basic Structure
+Add to `~/.claude/settings.json`:
 
-```yaml
-id: hello_world
-title: "Hello World"
-steps:
-  - type: shell.run
-    cmd: "echo 'Hello from SideButton!'"
+```json
+{
+  "mcpServers": {
+    "sidebutton": {
+      "type": "sse",
+      "url": "http://localhost:9876/mcp"
+    }
+  }
+}
 ```
+
+### Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "sidebutton": {
+      "command": "npx",
+      "args": ["sidebutton", "--stdio"]
+    }
+  }
+}
+```
+
+### Cursor
+
+Add to `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "sidebutton": {
+      "url": "http://localhost:9876/mcp"
+    }
+  }
+}
+```
+
+### MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `run_workflow` | Execute a workflow by ID |
+| `list_workflows` | List all available workflows |
+| `get_workflow` | Get workflow YAML definition |
+| `get_run_log` | Get execution log for a run |
+| `list_run_logs` | List recent workflow executions |
+| `get_browser_status` | Check browser extension connection |
+| `capture_page` | Capture selectors from current page |
+| `navigate` | Navigate browser to URL |
+| `snapshot` | Get page accessibility snapshot |
+| `click` | Click an element |
+| `type` | Type text into an element |
+| `scroll` | Scroll the page |
+| `screenshot` | Capture page screenshot |
+| `hover` | Hover over element |
+| `extract` | Extract text from element |
+| `extract_all` | Extract all matching elements |
+| `extract_map` | Extract structured data from repeated elements |
+| `select_option` | Select dropdown option |
+| `fill` | Fill input value (React-compatible) |
+| `press_key` | Send keyboard keys |
+| `scroll_into_view` | Scroll element into viewport |
+| `evaluate` | Execute JavaScript in browser |
+| `exists` | Check if element exists |
+| `wait` | Wait for element or delay |
+| `check_writing_quality` | Evaluate text quality |
+
+## REST API
+
+60+ JSON endpoints for external integrations. Same workflows available via MCP locally and via REST remotely.
+
+```bash
+# Run a workflow
+curl -X POST http://localhost:9876/api/workflows/check_ticket/run \
+  -H "Content-Type: application/json" \
+  -d '{"params": {"ticket_id": "PROJ-123"}}'
+
+# List workflows
+curl http://localhost:9876/api/workflows
+
+# Get run log
+curl http://localhost:9876/api/runs/latest
+```
+
+Trigger workflows from webhooks, cron jobs, mobile apps, or other agents on different machines.
+
+## Workflow Engine
+
+YAML-first orchestration. 34+ step types:
 
 ### Step Types
 
@@ -99,20 +169,20 @@ steps:
 | `browser.navigate` | Open a URL |
 | `browser.click` | Click an element by selector |
 | `browser.type` | Type text into an element |
+| `browser.fill` | Fill input value (React-compatible) |
 | `browser.scroll` | Scroll the page |
-| `browser.extract` | Extract text from an element into variable |
+| `browser.extract` | Extract text from element into variable |
 | `browser.extractAll` | Extract all matching elements |
-| `browser.wait` | Wait for element or fixed time delay |
+| `browser.extractMap` | Extract structured data from repeated elements |
+| `browser.wait` | Wait for element or fixed delay |
 | `browser.exists` | Check if element exists |
 | `browser.hover` | Position cursor on element |
 | `browser.key` | Send keyboard keys |
 | `browser.snapshot` | Capture accessibility snapshot |
-| `browser.extractMap` | Extract structured data from repeated elements |
 | `browser.injectCSS` | Inject CSS styles into page |
 | `browser.injectJS` | Execute JavaScript in page |
 | `browser.select_option` | Select dropdown option |
 | `browser.scrollIntoView` | Scroll element into view |
-| `browser.fill` | Fill input value (React-compatible) |
 | **Shell** | |
 | `shell.run` | Execute a bash command |
 | `terminal.open` | Open a visible terminal window (macOS) |
@@ -128,6 +198,28 @@ steps:
 | **Data** | |
 | `data.first` | Extract first item from list |
 
+LLM steps work with Ollama (local), OpenAI, Anthropic, and Google.
+
+### Example
+
+```yaml
+id: check_ticket_status
+title: "Check Jira ticket and classify"
+steps:
+  - type: browser.navigate
+    url: "https://your-org.atlassian.net/browse/{{ticket_id}}"
+  - type: browser.extract
+    selector: "[data-testid='status-field']"
+    as: current_status
+  - type: control.if
+    condition: "{{current_status}} != 'Done'"
+    then:
+      - type: llm.classify
+        prompt: "Should this ticket be closed? Context: {{current_status}}"
+        classes: [close, keep_open]
+        as: decision
+```
+
 ### Variable Interpolation
 
 Use `{{variable}}` syntax to reference extracted values or parameters:
@@ -137,10 +229,50 @@ steps:
   - type: browser.extract
     selector: ".username"
     as: user
-
   - type: shell.run
     cmd: "echo 'Hello, {{user}}!'"
 ```
+
+## Skill Packs
+
+Installable domain knowledge per web app or domain:
+
+- **Selectors** — CSS selectors for UI elements
+- **Data models** — entity types, fields, relationships, valid states
+- **State machines** — valid transitions per state
+- **Role playbooks** — role-specific procedures (QA, SE, PM, SD)
+- **Common tasks** — step-by-step procedures, gotchas, edge cases
+
+```bash
+sidebutton install github.com
+sidebutton install atlassian.net
+```
+
+11 domains, 28+ modules published. Open registry — build and share packs for any web app.
+
+## Chrome Extension
+
+Install from the **[Chrome Web Store](https://chromewebstore.google.com/detail/sidebutton/odaefhmdmgijnhdbkfagnlnmobphgkij)**.
+
+- 40+ browser commands — navigate, click, type, extract, scroll, wait, snapshot
+- Real DOM access via CSS selectors — not pixel coordinates, not screenshots
+- Recording mode — capture manual actions as workflows
+- Embed buttons — inject action buttons into any web page
+- WebSocket connection — stable reconnection, works with local or remote server
+
+After installing:
+1. Navigate to any website
+2. Click the SideButton extension icon
+3. Click **"Connect This Tab"**
+
+## Dashboard & Observability
+
+Svelte UI at `http://localhost:9876`:
+
+- Workflow browser — list, search, run
+- Run logs — step-by-step execution traces with timing, variables, errors
+- Skill pack manager — install, browse, inspect
+- System status — extension connection, LLM config, server health
 
 ## Architecture
 
@@ -182,13 +314,13 @@ steps:
 ```
 sidebutton/
 ├── packages/
-│   ├── core/              # @sidebutton/core
+│   ├── core/              # @sidebutton/core — workflow engine
 │   │   └── src/
 │   │       ├── types.ts       # Workflow types
 │   │       ├── parser.ts      # YAML loader
 │   │       ├── executor.ts    # Workflow runner
 │   │       └── steps/         # Step implementations
-│   ├── server/            # @sidebutton/server
+│   ├── server/            # @sidebutton/server — MCP + HTTP + CLI
 │   │   ├── bin/               # CLI entry point
 │   │   └── src/
 │   │       ├── server.ts      # Fastify HTTP server
@@ -206,92 +338,9 @@ sidebutton/
 ├── extension/             # Chrome extension
 ├── workflows/             # Public workflow library
 ├── actions/               # User-created workflows
-├── skills/                # Installed skill packs (per-domain)
+├── skills/                # Installed skill packs
 └── run_logs/              # Execution history
 ```
-
-## Browser Extension
-
-Install the Chrome extension to enable browser automation:
-
-**[Install from Chrome Web Store](https://chromewebstore.google.com/detail/sidebutton/odaefhmdmgijnhdbkfagnlnmobphgkij)**
-
-After installing:
-1. Navigate to any website
-2. Click the SideButton extension icon
-3. Click **"Connect This Tab"**
-
-## MCP Server (AI Agent Integration)
-
-SideButton supports both **stdio** and **SSE** transports for MCP, implementing protocol version 2025-11-25 with full resumability support.
-
-### Claude Desktop
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "sidebutton": {
-      "command": "npx",
-      "args": ["sidebutton", "--stdio"]
-    }
-  }
-}
-```
-
-The `--stdio` flag uses stdin/stdout for MCP communication. The HTTP server still runs in the background for browser extension connectivity.
-
-### Claude Code
-
-Add to `~/.claude/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "sidebutton": {
-      "type": "sse",
-      "url": "http://localhost:9876/mcp"
-    }
-  }
-}
-```
-
-### Cursor
-
-Add to `~/.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "sidebutton": {
-      "url": "http://localhost:9876/mcp"
-    }
-  }
-}
-```
-
-### Available MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `run_workflow` | Execute a workflow by ID |
-| `list_workflows` | List all available workflows |
-| `get_workflow` | Get workflow YAML definition |
-| `get_run_log` | Get execution log for a run |
-| `list_run_logs` | List recent workflow executions |
-| `get_browser_status` | Check browser extension connection |
-| `capture_page` | Capture selectors from current page |
-| `navigate` | Navigate browser to URL |
-| `snapshot` | Get page accessibility snapshot |
-| `click` | Click an element |
-| `type` | Type text into an element |
-| `scroll` | Scroll the page |
-| `screenshot` | Capture page screenshot |
-| `hover` | Hover over element |
-| `extract` | Extract text from element |
-| `select_option` | Select dropdown option |
-| `evaluate` | Execute JavaScript in browser |
 
 ## Environment Variables
 
@@ -303,38 +352,21 @@ Add to `~/.cursor/mcp.json`:
 ## Development
 
 ```bash
-# Install dependencies
-pnpm install
-
-# Build all packages
-pnpm build
-
-# Start server locally
-pnpm start
-
-# CLI commands
-pnpm cli list          # List workflows
-pnpm cli status        # Check status
-pnpm cli serve         # Start server
-
+pnpm install       # Install dependencies
+pnpm build         # Build all packages
+pnpm start         # Start server
+pnpm cli list      # List workflows
+pnpm cli status    # Check status
 ```
 
 ### Watch Mode
 
 ```bash
-# Full dev mode (all packages with watch rebuild)
-pnpm dev
-
-# Individual components
-pnpm dev:server        # Server with auto-restart on :9876
-pnpm dev:dashboard     # Dashboard watch build (outputs to server)
-pnpm dev:core          # Core library watch build
+pnpm dev              # Full dev mode (all packages)
+pnpm dev:server       # Server with auto-restart on :9876
+pnpm dev:dashboard    # Dashboard watch build
+pnpm dev:core         # Core library watch build
 ```
-
-In dev mode:
-- **Server** auto-restarts on code changes via tsx watch
-- **Dashboard** continuously rebuilds into the server package
-- Access everything at `http://localhost:9876`
 
 ## Platform Automation Disclaimer
 
