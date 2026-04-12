@@ -1,7 +1,14 @@
 ---
-layout: home
-
+layout: doc
 ---
+
+# SideButton
+
+Open source platform for AI agents with structured roles, skills, and domain knowledge.
+
+<a href="/sidebutton-agent-stack.png" target="_blank">
+  <img src="/sidebutton-agent-stack.png" alt="The AI Agent Stack — SideButton" style="max-width: 600px; width: 100%; border-radius: 8px; border: 1px solid var(--vp-c-divider); margin: 1.5rem 0;" />
+</a>
 
 ## What is SideButton?
 
@@ -10,9 +17,7 @@ SideButton is an **open-source platform that packages domain knowledge for AI ag
 - **Install knowledge packs** — pre-built bundles of domain knowledge, workflows, and role playbooks for specific web apps
 - **Define reusable workflows** in YAML with 45 step types (browser, shell, LLM, issues, git, control flow)
 - **Connect AI agents via MCP** — Claude Code, Cursor, or any MCP client gets real browser control
-- **Record actions** by clicking through a task and exporting as automation
 - **Extend with plugins** — add custom MCP tools in any language (bash, Node.js, Python)
-- **Embed buttons** directly into the pages you use (GitHub, Wikipedia, etc.)
 
 ## How It Works
 
@@ -37,27 +42,8 @@ Install a knowledge pack  →  AI agent gets domain knowledge  →  Agent works 
 
 ## Next Steps
 
-<div class="vp-doc">
-  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
-    <a href="/knowledge-packs/overview" style="padding: 1rem; border: 1px solid var(--vp-c-divider); border-radius: 8px; text-decoration: none;">
-      <strong>Knowledge Packs</strong><br/>
-      <span style="color: var(--vp-c-text-2);">Domain knowledge for AI agents</span>
-    </a>
-    <a href="/installation" style="padding: 1rem; border: 1px solid var(--vp-c-divider); border-radius: 8px; text-decoration: none;">
-      <strong>Installation</strong><br/>
-      <span style="color: var(--vp-c-text-2);">Set up the server</span>
-    </a>
-    <a href="/mcp-setup" style="padding: 1rem; border: 1px solid var(--vp-c-divider); border-radius: 8px; text-decoration: none;">
-      <strong>MCP Setup</strong><br/>
-      <span style="color: var(--vp-c-text-2);">Connect Claude/Cursor</span>
-    </a>
-    <a href="/first-workflow" style="padding: 1rem; border: 1px solid var(--vp-c-divider); border-radius: 8px; text-decoration: none;">
-      <strong>First Workflow</strong><br/>
-      <span style="color: var(--vp-c-text-2);">Run Hello World</span>
-    </a>
-    <a href="/community-roles" style="padding: 1rem; border: 1px solid var(--vp-c-divider); border-radius: 8px; text-decoration: none;">
-      <strong>Community Roles</strong><br/>
-      <span style="color: var(--vp-c-text-2);">AI agent role templates</span>
-    </a>
-  </div>
-</div>
+- [Installation](/installation) — Get SideButton running
+- [Knowledge Packs](/knowledge-packs/overview) — Domain knowledge for AI agents
+- [MCP Setup](/mcp-setup) — Connect Claude Code or Cursor
+- [First Workflow](/first-workflow) — Run your first automation
+- [Community Roles](/community-roles) — AI agent role templates
