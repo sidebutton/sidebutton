@@ -8,6 +8,12 @@
 
 > **[Website](https://sidebutton.com)** · **[Documentation](https://docs.sidebutton.com)** · **[GitHub](https://github.com/sidebutton/sidebutton)**
 
+<p align="center">
+  <a href="https://sidebutton.com/media/release-sidebutton-oss">
+    <img src="https://sidebutton.com/media/sidebutton-agent-stack.png" alt="The AI Agent Stack — SideButton" width="700" />
+  </a>
+</p>
+
 MCP server + Chrome extension + YAML workflow engine + skill packs. Connect to Claude Code, Cursor, ChatGPT, or any MCP client. Run locally or deploy on any server.
 
 ```bash
