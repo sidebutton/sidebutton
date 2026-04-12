@@ -20,7 +20,9 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -28,8 +30,8 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "js-yaml": "^4.1.0",
-    "zod": "^3.24.1"
+    "js-yaml": "^4.1.1",
+    "zod": "^4.3.6"
   },
   "license": "Apache-2.0",
   "repository": {
@@ -43,9 +45,9 @@
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^22.10.2",
-    "tsup": "^8.3.5",
-    "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "@types/node": "^25.6.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.4"
   }
 }
