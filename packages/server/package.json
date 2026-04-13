@@ -1,16 +1,20 @@
 {
   "name": "@sidebutton/server",
   "version": "1.1.0",
-  "description": "SideButton server with MCP integration, REST API, and web dashboard for workflow automation",
+  "description": "SideButton MCP server for AI agents — REST API, web dashboard, knowledge packs, and workflow engine",
   "keywords": [
     "mcp",
     "mcp-server",
+    "model-context-protocol",
+    "ai-agents",
+    "knowledge-packs",
     "workflow",
     "automation",
     "browser-automation",
     "chrome-extension",
-    "ai-agents",
-    "claude"
+    "claude-code",
+    "cursor",
+    "open-source"
   ],
   "type": "module",
   "main": "./dist/index.js",

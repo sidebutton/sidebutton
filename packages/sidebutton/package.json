@@ -1,16 +1,20 @@
 {
   "name": "sidebutton",
   "version": "1.1.0",
-  "description": "Workflow automation for AI agents - browser automation, MCP server, and CLI",
+  "description": "MCP server with knowledge packs for AI agents — browser automation, workflow engine, and CLI",
   "keywords": [
     "mcp",
     "mcp-server",
+    "model-context-protocol",
+    "ai-agents",
+    "knowledge-packs",
     "workflow",
     "automation",
     "browser-automation",
-    "ai-agents",
-    "claude",
-    "sidebutton"
+    "claude-code",
+    "cursor",
+    "sidebutton",
+    "open-source"
   ],
   "type": "module",
   "bin": {
