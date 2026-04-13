@@ -1,6 +1,7 @@
 {
   "name": "@sidebutton/server",
-  "version": "1.1.0",
+  "version": "1.1.1",
+  "mcpName": "io.github.sidebutton/sidebutton",
   "description": "SideButton MCP server for AI agents — REST API, web dashboard, knowledge packs, and workflow engine",
   "keywords": [
     "mcp",

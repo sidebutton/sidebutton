@@ -1,7 +1,7 @@
 {
   "name": "@sidebutton/core",
-  "version": "1.1.0",
-  "description": "Core workflow engine for SideButton — YAML-based automation for AI agents with 34+ step types",
+  "version": "1.1.1",
+  "description": "Core workflow automation engine for AI agents — agentic workflows in YAML",
   "keywords": [
     "workflow",
     "automation",

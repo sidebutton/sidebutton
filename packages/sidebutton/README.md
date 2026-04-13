@@ -1,6 +1,6 @@
 # SideButton
 
-Open source platform for AI agents — browser MCP server with knowledge packs, workflow automation, and real browser control.
+Open source AI agent platform — MCP server with knowledge packs (skill packs), AI agent tools, and workflow automation.
 
 [![npm version](https://img.shields.io/npm/v/sidebutton.svg)](https://www.npmjs.com/package/sidebutton)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/sidebutton/sidebutton/blob/main/LICENSE)
@@ -94,7 +94,7 @@ sidebutton publish                   # Publish to registry
 
 ## Knowledge Packs
 
-Knowledge packs teach AI agents how specific web apps work — selectors, data models, states, and workflows. Browse available packs at [sidebutton.com/skills](https://sidebutton.com/skills).
+Knowledge packs (skill packs) teach autonomous AI agents how specific web apps work — selectors, data models, states, and agentic workflows. Power AI code review, AI software engineer roles, and more. Browse available packs at [sidebutton.com/skills](https://sidebutton.com/skills).
 
 ## Documentation
 

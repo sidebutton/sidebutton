@@ -1,7 +1,7 @@
 {
   "name": "sidebutton",
-  "version": "1.1.0",
-  "description": "MCP server with knowledge packs for AI agents — browser automation, workflow engine, and CLI",
+  "version": "1.1.1",
+  "description": "AI agent platform and MCP server — knowledge packs, AI agent tools, workflow automation, and CLI",
   "keywords": [
     "mcp",
     "mcp-server",
