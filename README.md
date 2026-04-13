@@ -9,7 +9,7 @@
 > **[Website](https://sidebutton.com)** · **[Documentation](https://docs.sidebutton.com)** · **[GitHub](https://github.com/sidebutton/sidebutton)**
 
 <p align="center">
-  <a href="https://sidebutton.com/media/release-sidebutton-oss">
+  <a href="https://sidebutton.com/media/sidebutton-open-source-platform-release">
     <img src="https://sidebutton.com/media/sidebutton-agent-stack.png" alt="The AI Agent Stack — SideButton" width="700" />
   </a>
 </p>
