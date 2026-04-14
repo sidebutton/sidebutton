@@ -54,6 +54,12 @@ export class ExtensionClientImpl implements ExtensionClient {
    * Handle a new WebSocket connection
    */
   handleConnection(socket: WebSocket): void {
+    // Close stale connection if extension reconnects
+    const oldSocket = this.socket;
+    if (oldSocket && oldSocket.readyState <= 1) {
+      oldSocket.close();
+    }
+
     this.socket = socket;
     this.connected = true;
 
@@ -81,6 +87,10 @@ export class ExtensionClientImpl implements ExtensionClient {
     });
 
     socket.on('close', () => {
+      // Only mark disconnected if this is still the active socket
+      // (a newer connection may have already replaced us)
+      if (this.socket !== socket) return;
+
       this.connected = false;
       this.tabId = undefined;
       this.recording = false;
