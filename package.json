@@ -24,7 +24,7 @@
   "packageManager": "pnpm@9.15.1",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/maxsv0/sidebutton.git"
+    "url": "git+https://github.com/sidebutton/sidebutton.git"
   },
   "license": "Apache-2.0"
 }
