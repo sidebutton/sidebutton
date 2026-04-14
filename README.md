@@ -1,6 +1,6 @@
 # SideButton
 
-**Open-source orchestration and domain knowledge for AI agents.**
+**Open-source AI agent platform — MCP server, knowledge packs, and workflow automation tools.**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0%20%2B%20FSL--1.1-blue.svg)](LICENSING.md)
 [![Website](https://img.shields.io/badge/website-sidebutton.com-purple)](https://sidebutton.com)
@@ -14,7 +14,7 @@
   </a>
 </p>
 
-MCP server + Chrome extension + YAML workflow engine + skill packs. Connect to Claude Code, Cursor, ChatGPT, or any MCP client. Run locally or deploy on any server.
+AI agent platform with 40+ AI agent tools. Run autonomous AI agents with agentic workflows, knowledge packs, and real browser control. Connect Claude Code, Cursor, ChatGPT, or any MCP client.
 
 ```bash
 npx sidebutton@latest
@@ -25,10 +25,10 @@ npx sidebutton@latest
 
 | | |
 |---|---|
-| **MCP Server** | 40+ tools for browser control, workflow execution, skill pack access. Stdio and SSE transports. |
+| **MCP Server** | 40+ AI agent tools for browser control, workflow execution, knowledge pack access. Stdio and SSE transports. |
 | **REST API** | 60+ endpoints. Trigger workflows remotely from webhooks, cron jobs, mobile apps, or other agents. |
-| **Workflow Engine** | YAML DSL with 34+ step types — browser, shell, LLM, control flow. Deterministic execution. |
-| **Skill Packs** | Installable domain knowledge — CSS selectors, data models, state machines, role playbooks per web app. |
+| **Workflow Engine** | AI workflow automation with 34+ step types — browser, shell, LLM, control flow. Define agentic workflows in YAML. |
+| **Knowledge Packs** | Installable domain knowledge — CSS selectors, data models, state machines. Role playbooks turn coding agents into an AI software engineer, QA, or PM. |
 | **Chrome Extension** | 40+ browser commands. Real DOM access via WebSocket, not screenshots. Recording mode. |
 | **Dashboard** | Svelte UI — workflow browser, run logs, skill pack manager, system status. |
 
@@ -66,7 +66,7 @@ pnpm cli publish [source]          # Publish to a registry
 
 ## MCP Server
 
-SideButton is an MCP server. AI tools connect to it directly.
+SideButton is an AI agent platform and MCP server. AI coding agents connect to it directly for browser control, workflow automation, and domain knowledge.
 
 Works with **Claude Code**, **Cursor**, **Claude Desktop**, **VS Code**, **Windsurf**, **ChatGPT** — any MCP client.
 
@@ -239,9 +239,11 @@ steps:
     cmd: "echo 'Hello, {{user}}!'"
 ```
 
-## Skill Packs
+## Knowledge Packs
 
-Installable domain knowledge per web app or domain:
+Installable domain knowledge (skill packs) per web app or domain. Knowledge packs power AI code review, automated testing, and enterprise AI agent deployments.
+
+Also referred to as skill packs in code and CLI commands.
 
 - **Selectors** — CSS selectors for UI elements
 - **Data models** — entity types, fields, relationships, valid states
@@ -279,6 +281,8 @@ Svelte UI at `http://localhost:9876`:
 - Run logs — step-by-step execution traces with timing, variables, errors
 - Skill pack manager — install, browse, inspect
 - System status — extension connection, LLM config, server health
+
+SideButton handles AI agent orchestration — from workflow execution to knowledge injection.
 
 ## Architecture
 
