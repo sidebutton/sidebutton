@@ -18,7 +18,7 @@ This starts the SideButton server on `http://localhost:9876` with:
 
 ## Install the Chrome Extension
 
-Install [SideButton](https://chromewebstore.google.com/detail/sidebutton/jgjpbbfgnkeanpjfobmijahbbagbecep) from the Chrome Web Store to connect your browser.
+Install [SideButton](https://chromewebstore.google.com/detail/sidebutton/odaefhmdmgijnhdbkfagnlnmobphgkij) from the Chrome Web Store to connect your browser.
 
 ## Connect Your AI Agent
 
