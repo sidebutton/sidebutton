@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.sidebutton/sidebutton",
-  "description": "Open-source MCP server with knowledge packs for AI agents. 40+ browser tools, YAML workflow engine, and domain expertise that teaches any AI agent any web app.",
+  "description": "Open-source MCP server with browser automation and knowledge packs for AI agents",
   "repository": {
     "url": "https://github.com/sidebutton/sidebutton",
     "source": "github"
