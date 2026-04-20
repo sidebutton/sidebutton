@@ -1,7 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.sidebutton/sidebutton",
+  "title": "SideButton MCP Server",
   "description": "Open-source MCP server with browser automation and knowledge packs for AI agents",
+  "websiteUrl": "https://sidebutton.com",
   "repository": {
     "url": "https://github.com/sidebutton/sidebutton",
     "source": "github"
