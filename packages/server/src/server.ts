@@ -59,7 +59,7 @@ import type {
   AgentJob,
   SkillRegistry,
 } from '@sidebutton/core';
-import { ExecutionContext, executeWorkflow, JiraProvider, PROVIDER_DEFINITIONS, getProviderStatuses, getActiveUsageFile, detectCli, getContextSource } from '@sidebutton/core';
+import { ExecutionContext, executeWorkflow, JiraProvider, PROVIDER_DEFINITIONS, getProviderStatuses, getActiveUsageFile, detectCli, getContextSource, computeCost, lookupDefaultPrice } from '@sidebutton/core';
 import type { ConnectorType } from '@sidebutton/core';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1830,6 +1830,21 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
       // Save run log
       const durationMs = Date.now() - startTime;
+      // Attach LLM usage + computed cost when the workflow made at least one
+      // LLM call (SCRUM-510). Cost uses the bundled default price table —
+      // good enough for the local dashboard; the portal re-prices against its
+      // historical `model_pricing` table.
+      const usage = ctx.llmUsage;
+      const price = usage.turns > 0 ? lookupDefaultPrice(usage.model) : null;
+      const llmUsage = usage.turns > 0 ? {
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cache_read_tokens: usage.cache_read_tokens,
+        cache_create_tokens: usage.cache_create_tokens,
+        turns: usage.turns,
+        model: usage.model,
+        cost_usd: price ? computeCost(usage, price) : 0,
+      } : undefined;
       const runLog: RunLog = {
         metadata: {
           id: runId,
@@ -1840,6 +1855,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
           duration_ms: durationMs,
           event_count: ctx.capturedEvents.length,
           triggered_by: 'dashboard',
+          llm_usage: llmUsage,
         },
         events: ctx.capturedEvents,
         params,

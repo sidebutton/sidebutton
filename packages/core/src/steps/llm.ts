@@ -12,9 +12,28 @@ type LlmGenerate = Extract<Step, { type: 'llm.generate' }>;
 type LlmDecide = Extract<Step, { type: 'llm.decide' }>;
 
 /**
- * Generate text using the configured LLM provider
+ * Normalized LLM usage returned alongside generated text (SCRUM-510).
+ * Providers use different field names; this is the shape we pass up.
  */
-async function generateText(prompt: string, config: LlmConfig): Promise<string> {
+export interface LlmUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens?: number;
+  cache_create_tokens?: number;
+  model: string;
+}
+
+export interface LlmResult {
+  text: string;
+  usage: LlmUsage;
+}
+
+/**
+ * Generate text using the configured LLM provider.
+ * Returns both the generated text and the provider's reported usage so callers
+ * can roll cost/tokens up into the portal (SCRUM-510).
+ */
+async function generateText(prompt: string, config: LlmConfig): Promise<LlmResult> {
   const { provider, model, api_key, base_url } = config;
 
   if (provider === 'openai') {
@@ -46,8 +65,23 @@ async function generateText(prompt: string, config: LlmConfig): Promise<string> 
 
     const data = (await response.json()) as {
       choices: { message: { content: string } }[];
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        prompt_tokens_details?: { cached_tokens?: number };
+      };
+      model?: string;
     };
-    return data.choices[0]?.message?.content || '';
+    return {
+      text: data.choices[0]?.message?.content || '',
+      usage: {
+        input_tokens: data.usage?.prompt_tokens ?? 0,
+        output_tokens: data.usage?.completion_tokens ?? 0,
+        cache_read_tokens: data.usage?.prompt_tokens_details?.cached_tokens ?? 0,
+        cache_create_tokens: 0,
+        model: data.model || modelName,
+      },
+    };
   }
 
   if (provider === 'anthropic') {
@@ -80,9 +114,25 @@ async function generateText(prompt: string, config: LlmConfig): Promise<string> 
 
     const data = (await response.json()) as {
       content: { type: string; text: string }[];
+      usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+        cache_read_input_tokens?: number;
+        cache_creation_input_tokens?: number;
+      };
+      model?: string;
     };
     const textContent = data.content.find((c) => c.type === 'text');
-    return textContent?.text || '';
+    return {
+      text: textContent?.text || '',
+      usage: {
+        input_tokens: data.usage?.input_tokens ?? 0,
+        output_tokens: data.usage?.output_tokens ?? 0,
+        cache_read_tokens: data.usage?.cache_read_input_tokens ?? 0,
+        cache_create_tokens: data.usage?.cache_creation_input_tokens ?? 0,
+        model: data.model || modelName,
+      },
+    };
   }
 
   if (provider === 'ollama') {
@@ -104,11 +154,34 @@ async function generateText(prompt: string, config: LlmConfig): Promise<string> 
       throw new WorkflowError(`Ollama API error: ${error}`, 'LLM_ERROR');
     }
 
-    const data = (await response.json()) as { response: string };
-    return data.response || '';
+    const data = (await response.json()) as {
+      response: string;
+      prompt_eval_count?: number;
+      eval_count?: number;
+    };
+    return {
+      text: data.response || '',
+      usage: {
+        input_tokens: data.prompt_eval_count ?? 0,
+        output_tokens: data.eval_count ?? 0,
+        cache_read_tokens: 0,
+        cache_create_tokens: 0,
+        model: modelName,
+      },
+    };
   }
 
   throw new WorkflowError(`Unknown LLM provider: ${provider}`, 'LLM_ERROR');
+}
+
+/** Fold a single LLM call's usage into the workflow-level accumulator. */
+function accumulateUsage(ctx: ExecutionContext, usage: LlmUsage): void {
+  ctx.llmUsage.input_tokens        += usage.input_tokens;
+  ctx.llmUsage.output_tokens       += usage.output_tokens;
+  ctx.llmUsage.cache_read_tokens   += usage.cache_read_tokens ?? 0;
+  ctx.llmUsage.cache_create_tokens += usage.cache_create_tokens ?? 0;
+  ctx.llmUsage.turns               += 1;
+  if (usage.model) ctx.llmUsage.model = usage.model;
 }
 
 export async function executeLlmClassify(
@@ -134,8 +207,9 @@ Respond with ONLY the category name, nothing else.`;
   console.log(`\n[llm.classify] Full prompt (${fullPrompt.length} chars, ${ctx.userContexts.length} contexts):\n${fullPrompt}\n`);
   ctx.emitLog('info', `LLM classify prompt: ${fullPrompt.length} chars, ${ctx.userContexts.length} contexts, sample: "${fullPrompt.slice(0, 100)}..."`);
 
-  const result = await generateText(fullPrompt, ctx.llmConfig);
-  const cleaned = result.trim();
+  const { text, usage } = await generateText(fullPrompt, ctx.llmConfig);
+  accumulateUsage(ctx, usage);
+  const cleaned = text.trim();
 
   ctx.lastStepResult = cleaned;
   ctx.variables[step.as] = cleaned;
@@ -158,10 +232,11 @@ export async function executeLlmGenerate(
     `Generating with LLM (prompt: ${fullPrompt.length} chars, contexts: ${ctx.userContexts.length}, provider: ${ctx.llmConfig.provider}, sample: "${fullPrompt.slice(0, 100)}...")`
   );
 
-  const result = await generateText(fullPrompt, ctx.llmConfig);
+  const { text, usage } = await generateText(fullPrompt, ctx.llmConfig);
+  accumulateUsage(ctx, usage);
 
-  ctx.lastStepResult = result;
-  ctx.variables[step.as] = result;
+  ctx.lastStepResult = text;
+  ctx.variables[step.as] = text;
 }
 
 export async function executeLlmDecide(
@@ -196,8 +271,9 @@ Pick the single action that best fits your role and expertise. Respond with ONLY
   console.log(`\n[llm.decide] Full prompt (${fullPrompt.length} chars, ${ctx.userContexts.length} contexts):\n${fullPrompt}\n`);
   ctx.emitLog('info', `LLM decide prompt: ${fullPrompt.length} chars, ${ctx.userContexts.length} contexts, actions: [${actionIds.join(', ')}]`);
 
-  const result = await generateText(fullPrompt, ctx.llmConfig);
-  const cleaned = result.trim();
+  const { text, usage } = await generateText(fullPrompt, ctx.llmConfig);
+  accumulateUsage(ctx, usage);
+  const cleaned = text.trim();
 
   // Validate the result is one of the action IDs
   if (!actionIds.includes(cleaned)) {

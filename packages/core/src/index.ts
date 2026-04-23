@@ -118,6 +118,10 @@ export { getContextSource, getSkillDomain } from './context-utils.js';
 export type { DelayConstant, DelayValue } from './delay.js';
 export { resolveDelay, DELAY_BASE } from './delay.js';
 
+// Pricing
+export type { Usage, ModelPrice } from './pricing.js';
+export { DEFAULT_MODEL_PRICES, computeCost, lookupDefaultPrice } from './pricing.js';
+
 // Steps
 export { executeStep, hasBrowserSteps, hasOwnRetryLogic, getAllStepTypes } from './steps/index.js';
 

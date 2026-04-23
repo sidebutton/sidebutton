@@ -232,6 +232,16 @@ export interface RunLogMetadata {
   failure_selector?: string;
   is_agent?: boolean;
   agent_role?: string;
+  // Present when the workflow made at least one LLM call (SCRUM-510).
+  llm_usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_create_tokens: number;
+    turns: number;
+    model: string;
+    cost_usd: number;
+  };
 }
 
 // Complete run log

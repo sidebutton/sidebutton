@@ -1,11 +1,25 @@
 /**
- * MCP tool definitions
+ * MCP tool definitions — annotated for the Claude Connectors Directory.
+ *
+ * Each tool declares:
+ *   - title            (human-readable)
+ *   - readOnlyHint     (true for observe-only tools)
+ *   - destructiveHint  (true for tools that mutate page, input, or workflow state)
+ *   - openWorldHint    (true for all — every tool touches the browser or workflow engine)
  */
+
+export interface McpToolAnnotations {
+  title: string;
+  readOnlyHint?: true;
+  destructiveHint?: true;
+  openWorldHint?: true;
+}
 
 export interface McpTool {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  annotations?: McpToolAnnotations;
 }
 
 export const MCP_TOOLS: McpTool[] = [
@@ -28,6 +42,7 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['workflow_id'],
     },
+    annotations: { title: 'Run Workflow', destructiveHint: true, openWorldHint: true },
   },
   {
     name: 'get_run_log',
@@ -42,6 +57,7 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['run_id'],
     },
+    annotations: { title: 'Get Run Log', readOnlyHint: true, openWorldHint: true },
   },
   {
     name: 'list_workflows',
@@ -56,6 +72,7 @@ export const MCP_TOOLS: McpTool[] = [
         },
       },
     },
+    annotations: { title: 'List Workflows', readOnlyHint: true, openWorldHint: true },
   },
   {
     name: 'get_workflow',
@@ -70,6 +87,7 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['workflow_id'],
     },
+    annotations: { title: 'Get Workflow', readOnlyHint: true, openWorldHint: true },
   },
   {
     name: 'list_run_logs',
@@ -87,6 +105,7 @@ export const MCP_TOOLS: McpTool[] = [
         },
       },
     },
+    annotations: { title: 'List Run Logs', readOnlyHint: true, openWorldHint: true },
   },
   {
     name: 'get_browser_status',
@@ -95,6 +114,7 @@ export const MCP_TOOLS: McpTool[] = [
       type: 'object',
       properties: {},
     },
+    annotations: { title: 'Get Browser Status', readOnlyHint: true, openWorldHint: true },
   },
   {
     name: 'capture_page',
@@ -103,6 +123,7 @@ export const MCP_TOOLS: McpTool[] = [
       type: 'object',
       properties: {},
     },
+    annotations: { title: 'Capture Page Selectors', readOnlyHint: true, openWorldHint: true },
   },
   {
     name: 'navigate',
@@ -117,6 +138,7 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['url'],
     },
+    annotations: { title: 'Navigate Browser', destructiveHint: true, openWorldHint: true },
   },
   {
     name: 'snapshot',
@@ -130,6 +152,7 @@ export const MCP_TOOLS: McpTool[] = [
         },
       },
     },
+    annotations: { title: 'Accessibility Snapshot', readOnlyHint: true, openWorldHint: true },
   },
   {
     name: 'click',
@@ -151,6 +174,7 @@ export const MCP_TOOLS: McpTool[] = [
         },
       },
     },
+    annotations: { title: 'Click Element', destructiveHint: true, openWorldHint: true },
   },
   {
     name: 'type',
@@ -181,6 +205,7 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['text'],
     },
+    annotations: { title: 'Type Text', destructiveHint: true, openWorldHint: true },
   },
   {
     name: 'press_key',
@@ -203,6 +228,7 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['key'],
     },
+    annotations: { title: 'Press Key', destructiveHint: true, openWorldHint: true },
   },
   {
     name: 'scroll',
@@ -222,6 +248,7 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['direction'],
     },
+    annotations: { title: 'Scroll Page', destructiveHint: true, openWorldHint: true },
   },
   {
     name: 'extract',
@@ -236,6 +263,7 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['selector'],
     },
+    annotations: { title: 'Extract Element Text', readOnlyHint: true, openWorldHint: true },
   },
   {
     name: 'screenshot',
@@ -264,6 +292,7 @@ export const MCP_TOOLS: McpTool[] = [
         },
       },
     },
+    annotations: { title: 'Take Screenshot', readOnlyHint: true, openWorldHint: true },
   },
   {
     name: 'select_option',
@@ -293,6 +322,7 @@ export const MCP_TOOLS: McpTool[] = [
         },
       },
     },
+    annotations: { title: 'Select Dropdown Option', destructiveHint: true, openWorldHint: true },
   },
   {
     name: 'fill',
@@ -311,6 +341,7 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['selector', 'value'],
     },
+    annotations: { title: 'Fill Form Field', destructiveHint: true, openWorldHint: true },
   },
   {
     name: 'wait',
@@ -329,6 +360,7 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['selector'],
     },
+    annotations: { title: 'Wait for Element', readOnlyHint: true, openWorldHint: true },
   },
   {
     name: 'exists',
@@ -347,6 +379,7 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['selector'],
     },
+    annotations: { title: 'Check Element Exists', readOnlyHint: true, openWorldHint: true },
   },
   {
     name: 'extract_all',
@@ -369,6 +402,7 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['selector'],
     },
+    annotations: { title: 'Extract All Matching', readOnlyHint: true, openWorldHint: true },
   },
   {
     name: 'extract_map',
@@ -395,6 +429,7 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['selector', 'fields'],
     },
+    annotations: { title: 'Extract Structured Data', readOnlyHint: true, openWorldHint: true },
   },
   {
     name: 'scroll_into_view',
@@ -414,6 +449,7 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['selector'],
     },
+    annotations: { title: 'Scroll Element Into View', destructiveHint: true, openWorldHint: true },
   },
   {
     name: 'hover',
@@ -428,6 +464,7 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['selector'],
     },
+    annotations: { title: 'Hover Element', destructiveHint: true, openWorldHint: true },
   },
   {
     name: 'evaluate',
@@ -442,5 +479,6 @@ export const MCP_TOOLS: McpTool[] = [
       },
       required: ['js'],
     },
+    annotations: { title: 'Evaluate JavaScript', destructiveHint: true, openWorldHint: true },
   },
 ];

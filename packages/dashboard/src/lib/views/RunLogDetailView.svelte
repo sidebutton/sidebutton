@@ -44,6 +44,17 @@
     return `${mins}m ${secs}s`;
   }
 
+  function formatCost(cost: number): string {
+    if (cost === 0) return '$0';
+    if (cost < 0.01) return `$${cost.toFixed(4)}`;
+    if (cost < 1) return `$${cost.toFixed(3)}`;
+    return `$${cost.toFixed(2)}`;
+  }
+
+  function formatTokens(n: number): string {
+    return n.toLocaleString();
+  }
+
   function formatTimestamp(ts: string): string {
     const d = new Date(ts);
     return d.toLocaleString();
@@ -155,6 +166,34 @@
             <span class="label">Timestamp</span>
             <span class="value">{formatTimestamp(runLog.metadata.timestamp)}</span>
           </div>
+          {#if runLog.metadata.llm_usage && runLog.metadata.llm_usage.turns > 0}
+            <div class="meta-item">
+              <span class="label">LLM Cost</span>
+              <span class="value">{formatCost(runLog.metadata.llm_usage.cost_usd)}</span>
+            </div>
+            <div class="meta-item">
+              <span class="label">LLM Turns</span>
+              <span class="value">{runLog.metadata.llm_usage.turns}</span>
+            </div>
+            <div class="meta-item">
+              <span class="label">Model</span>
+              <span class="value mono">{runLog.metadata.llm_usage.model || 'unknown'}</span>
+            </div>
+            <div class="meta-item">
+              <span class="label">Input Tokens</span>
+              <span class="value">{formatTokens(runLog.metadata.llm_usage.input_tokens)}</span>
+            </div>
+            <div class="meta-item">
+              <span class="label">Output Tokens</span>
+              <span class="value">{formatTokens(runLog.metadata.llm_usage.output_tokens)}</span>
+            </div>
+            {#if runLog.metadata.llm_usage.cache_read_tokens > 0 || runLog.metadata.llm_usage.cache_create_tokens > 0}
+              <div class="meta-item">
+                <span class="label">Cache (read/write)</span>
+                <span class="value">{formatTokens(runLog.metadata.llm_usage.cache_read_tokens)} / {formatTokens(runLog.metadata.llm_usage.cache_create_tokens)}</span>
+              </div>
+            {/if}
+          {/if}
         </div>
 
         <!-- Parameters Section -->

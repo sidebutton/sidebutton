@@ -165,6 +165,21 @@
     const mins = Math.floor((ms % 3600000) / 60000);
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   }
+
+  function formatCost(cost: number): string {
+    if (cost === 0) return '$0';
+    if (cost < 0.01) return `$${cost.toFixed(4)}`;
+    if (cost < 1) return `$${cost.toFixed(3)}`;
+    return `$${cost.toFixed(2)}`;
+  }
+
+  function formatTokens(n: number): string {
+    if (n < 1_000) return `${n}`;
+    if (n < 1_000_000) return `${(n / 1_000).toFixed(1)}k`;
+    return `${(n / 1_000_000).toFixed(2)}M`;
+  }
+
+  let totalCost = $derived(runs.reduce((sum, r) => sum + (r.llm_usage?.cost_usd ?? 0), 0));
 </script>
 
 <div class="run-log-view">
@@ -225,6 +240,12 @@
           <div class="kpi-stat-value">{kpis.successRate}%</div>
           <div class="kpi-stat-label">Success Rate</div>
         </div>
+        {#if totalCost > 0}
+          <div class="kpi-stat">
+            <div class="kpi-stat-value">{formatCost(totalCost)}</div>
+            <div class="kpi-stat-label">LLM Spend</div>
+          </div>
+        {/if}
       </div>
     </div>
   {/if}
@@ -286,6 +307,14 @@
               <div class="run-meta">
                 <span class="run-id">{run.id}</span>
                 <span class="duration">{formatDuration(run.duration_ms)}</span>
+                {#if run.llm_usage && run.llm_usage.turns > 0}
+                  <span
+                    class="usage-chip"
+                    title={`${formatTokens(run.llm_usage.input_tokens)} in · ${formatTokens(run.llm_usage.output_tokens)} out · ${run.llm_usage.turns} turns · ${run.llm_usage.model || 'unknown model'}`}
+                  >
+                    {formatCost(run.llm_usage.cost_usd)} · {run.llm_usage.turns}t
+                  </span>
+                {/if}
                 <span class="timestamp">{formatTimestamp(run.timestamp)}</span>
               </div>
             </button>
@@ -603,6 +632,17 @@
     max-width: 300px;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .usage-chip {
+    font-family: monospace;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
   }
 
   .loading-state,

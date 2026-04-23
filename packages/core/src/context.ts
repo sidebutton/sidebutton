@@ -88,6 +88,25 @@ export class ExecutionContext {
   // LLM configuration
   llmConfig: LlmConfig = { provider: 'openai' };
 
+  // Accumulated LLM usage across all llm.* steps in this workflow (SCRUM-510).
+  // Callers (server/agent) read this after execution and forward it to
+  // /api/jobs/step-complete so the portal can price + roll up per-step.
+  llmUsage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_create_tokens: number;
+    turns: number;
+    model: string;
+  } = {
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_tokens: 0,
+    cache_create_tokens: 0,
+    turns: 0,
+    model: '',
+  };
+
   // Repo path mappings (org/repo -> local path)
   repos: Record<string, string> = {};
 
@@ -176,6 +195,13 @@ export class ExecutionContext {
    */
   mergeChildEvents(child: ExecutionContext): void {
     this.capturedEvents.push(...child.capturedEvents);
+    // Roll LLM usage from nested workflows up into the parent (SCRUM-510)
+    this.llmUsage.input_tokens        += child.llmUsage.input_tokens;
+    this.llmUsage.output_tokens       += child.llmUsage.output_tokens;
+    this.llmUsage.cache_read_tokens   += child.llmUsage.cache_read_tokens;
+    this.llmUsage.cache_create_tokens += child.llmUsage.cache_create_tokens;
+    this.llmUsage.turns               += child.llmUsage.turns;
+    if (child.llmUsage.model) this.llmUsage.model = child.llmUsage.model;
   }
 
   /**
