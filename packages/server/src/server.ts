@@ -59,7 +59,7 @@ import type {
   AgentJob,
   SkillRegistry,
 } from '@sidebutton/core';
-import { ExecutionContext, executeWorkflow, JiraProvider, PROVIDER_DEFINITIONS, getProviderStatuses, getActiveUsageFile, detectCli, getContextSource, computeCost, lookupDefaultPrice } from '@sidebutton/core';
+import { ExecutionContext, executeWorkflow, JiraProvider, PROVIDER_DEFINITIONS, getProviderStatuses, getActiveUsageFile, detectCli, getContextSource, buildRunLogUsage } from '@sidebutton/core';
 import type { ConnectorType } from '@sidebutton/core';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1835,16 +1835,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
       // good enough for the local dashboard; the portal re-prices against its
       // historical `model_pricing` table.
       const usage = ctx.llmUsage;
-      const price = usage.turns > 0 ? lookupDefaultPrice(usage.model) : null;
-      const llmUsage = usage.turns > 0 ? {
-        input_tokens: usage.input_tokens,
-        output_tokens: usage.output_tokens,
-        cache_read_tokens: usage.cache_read_tokens,
-        cache_create_tokens: usage.cache_create_tokens,
-        turns: usage.turns,
-        model: usage.model,
-        cost_usd: price ? computeCost(usage, price) : 0,
-      } : undefined;
+      const llmUsage = buildRunLogUsage(usage);
       const runLog: RunLog = {
         metadata: {
           id: runId,
@@ -1882,7 +1873,8 @@ export async function startServer(config: ServerConfig): Promise<void> {
       // Remove from running and notify
       runningWorkflows.remove(runId);
 
-      // Notify orchestrator via completion callback (fire-and-forget)
+      // Notify orchestrator via completion callback (fire-and-forget).
+      // Forward accumulated LLM usage so the portal can price + roll up per step (SCRUM-510).
       if (completionCallback) {
         const cbHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
         if (callbackAuth) cbHeaders['Authorization'] = callbackAuth;
@@ -1893,6 +1885,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
             sb_run_id: runId,
             status,
             output_message: ctx.outputMessage,
+            usage: llmUsage ? { ...llmUsage, duration_ms: durationMs } : undefined,
           }),
           signal: AbortSignal.timeout(10_000),
         }).catch(() => { /* best effort */ });

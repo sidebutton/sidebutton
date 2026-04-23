@@ -70,7 +70,6 @@ async function generateText(prompt: string, config: LlmConfig): Promise<LlmResul
         completion_tokens?: number;
         prompt_tokens_details?: { cached_tokens?: number };
       };
-      model?: string;
     };
     return {
       text: data.choices[0]?.message?.content || '',
@@ -79,7 +78,7 @@ async function generateText(prompt: string, config: LlmConfig): Promise<LlmResul
         output_tokens: data.usage?.completion_tokens ?? 0,
         cache_read_tokens: data.usage?.prompt_tokens_details?.cached_tokens ?? 0,
         cache_create_tokens: 0,
-        model: data.model || modelName,
+        model: modelName,
       },
     };
   }
@@ -120,7 +119,6 @@ async function generateText(prompt: string, config: LlmConfig): Promise<LlmResul
         cache_read_input_tokens?: number;
         cache_creation_input_tokens?: number;
       };
-      model?: string;
     };
     const textContent = data.content.find((c) => c.type === 'text');
     return {
@@ -130,7 +128,7 @@ async function generateText(prompt: string, config: LlmConfig): Promise<LlmResul
         output_tokens: data.usage?.output_tokens ?? 0,
         cache_read_tokens: data.usage?.cache_read_input_tokens ?? 0,
         cache_create_tokens: data.usage?.cache_creation_input_tokens ?? 0,
-        model: data.model || modelName,
+        model: modelName,
       },
     };
   }

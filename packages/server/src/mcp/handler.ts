@@ -31,6 +31,7 @@ import {
   executeWorkflow,
   loadWorkflowsFromDir,
   loadWorkflow,
+  buildRunLogUsage,
 } from '@sidebutton/core';
 import type { ExtensionClientImpl } from '../extension.js';
 import { MCP_TOOLS, type McpTool } from './tools.js';
@@ -597,6 +598,7 @@ export class McpHandler {
         duration_ms: durationMs,
         event_count: ctx.capturedEvents.length,
         triggered_by: 'mcp',
+        llm_usage: buildRunLogUsage(ctx.llmUsage),
       },
       events: ctx.capturedEvents,
       params,

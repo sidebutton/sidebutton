@@ -40,16 +40,41 @@ export function computeCost(usage: Usage, price: ModelPrice): number {
   );
 }
 
-/**
- * Find the best-matching bundled price for a model id. Falls back to a
- * prefix match so dated slugs like `claude-opus-4-7-20260315` still resolve.
- */
 export function lookupDefaultPrice(modelId: string): ModelPrice | null {
-  if (!modelId) return null;
-  const exact = DEFAULT_MODEL_PRICES[modelId];
-  if (exact) return exact;
-  for (const [key, price] of Object.entries(DEFAULT_MODEL_PRICES)) {
-    if (modelId.startsWith(key)) return price;
-  }
-  return null;
+  return DEFAULT_MODEL_PRICES[modelId] ?? null;
+}
+
+/**
+ * Per-workflow LLM usage accumulator (mirrors `ExecutionContext.llmUsage`).
+ */
+export interface AccumulatedUsage extends Usage {
+  turns: number;
+  model: string;
+}
+
+/**
+ * Build the run-log `llm_usage` block for a finished workflow.
+ * Returns `undefined` when no LLM call was made, so run logs from non-LLM
+ * workflows stay free of empty usage fields.
+ */
+export function buildRunLogUsage(usage: AccumulatedUsage): {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_create_tokens: number;
+  turns: number;
+  model: string;
+  cost_usd: number;
+} | undefined {
+  if (usage.turns === 0) return undefined;
+  const price = lookupDefaultPrice(usage.model);
+  return {
+    input_tokens: usage.input_tokens,
+    output_tokens: usage.output_tokens,
+    cache_read_tokens: usage.cache_read_tokens ?? 0,
+    cache_create_tokens: usage.cache_create_tokens ?? 0,
+    turns: usage.turns,
+    model: usage.model,
+    cost_usd: price ? computeCost(usage, price) : 0,
+  };
 }
