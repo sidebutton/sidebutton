@@ -268,6 +268,7 @@ export interface ExtensionStatus {
   browser_connected: boolean;
   tab_id?: number;
   recording: boolean;
+  connection_id?: string;
 }
 
 // ============================================================================

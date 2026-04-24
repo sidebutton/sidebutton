@@ -2,6 +2,7 @@
  * Chrome extension WebSocket client
  */
 
+import { randomUUID } from 'node:crypto';
 import type { WebSocket } from 'ws';
 import type { ExtensionClient, ExtensionStatus } from '@sidebutton/core';
 
@@ -31,6 +32,7 @@ export class ExtensionClientImpl implements ExtensionClient {
     resolve: (value: CommandResponse) => void;
     reject: (error: Error) => void;
   }>();
+  private connectionId?: string;
   private eventListeners: ((event: ExtensionEvent) => void)[] = [];
   private statusChangeCallback?: (connected: boolean) => void;
 
@@ -54,14 +56,16 @@ export class ExtensionClientImpl implements ExtensionClient {
    * Handle a new WebSocket connection
    */
   handleConnection(socket: WebSocket): void {
-    // Close stale connection if extension reconnects
-    const oldSocket = this.socket;
-    if (oldSocket && oldSocket.readyState <= 1) {
-      oldSocket.close();
+    // Reject if an active connection already exists (prevents MCP hijack by second Chrome profile)
+    if (this.socket && this.socket.readyState <= 1) {
+      process.stderr.write('[sidebutton] Rejected extension connection — another instance is already connected\n');
+      socket.close(4000, 'Another extension instance is already connected');
+      return;
     }
 
     this.socket = socket;
     this.connected = true;
+    this.connectionId = randomUUID();
 
     // Notify status change
     this.statusChangeCallback?.(true);
@@ -95,6 +99,7 @@ export class ExtensionClientImpl implements ExtensionClient {
       this.tabId = undefined;
       this.recording = false;
       this.socket = null;
+      this.connectionId = undefined;
 
       // Notify status change
       this.statusChangeCallback?.(false);
@@ -189,6 +194,7 @@ export class ExtensionClientImpl implements ExtensionClient {
       browser_connected: this.connected,
       tab_id: this.tabId,
       recording: this.recording,
+      connection_id: this.connectionId,
     };
   }
 

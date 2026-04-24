@@ -33,6 +33,8 @@ sidebutton install ./my-app.example.com --force
 3. Copies all pack files to `~/.sidebutton/skills/<domain>/`
 4. Records installation metadata
 
+> **Remote fallback:** When installing by domain name and the pack isn't found in any configured registry, the CLI falls back to `https://sidebutton.com/api/skill-packs/<domain>/download`. This means `sidebutton install <domain>` can resolve packs published to sidebutton.com without a local registry. In isolated or offline environments, only local paths, git URLs, and configured registries are available.
+
 ---
 
 ### sidebutton install --list
@@ -129,16 +131,18 @@ sidebutton registry list
 **Example output:**
 
 ```
-Configured registries:
+Skill Pack Registries
 
-  my-team (local)
-    URL:   /path/to/registry
+  my-team (local) — enabled
+    URL: /path/to/registry
     Packs: 3
 
-  community (git)
-    URL:   https://github.com/org/skill-packs
+  community (git) — enabled
+    URL: https://github.com/org/skill-packs
     Packs: 5
 ```
+
+> **Enabled / disabled:** Each registry has an `enabled` flag. Disabled registries are skipped during `install`, `search`, and `update`. Registries are always added as enabled. There is currently no CLI command to toggle this flag — to disable a registry, edit `~/.sidebutton/settings.json` and set `"enabled": false` on the registry entry.
 
 ---
 
@@ -157,7 +161,7 @@ sidebutton registry update my-team
 **What happens:**
 1. For git registries: pulls latest changes
 2. For local registries: re-reads directory
-3. Re-installs packs whose versions have changed
+3. Force-reinstalls all packs in the registry (regardless of version changes)
 
 ---
 
@@ -165,7 +169,9 @@ sidebutton registry update my-team
 
 ### sidebutton search
 
-Search available packs across all configured registries.
+Search available packs across all configured registries and sidebutton.com.
+
+Results merge local registry packs with packs published on `sidebutton.com`. Local registries take priority — if a pack exists in both a configured registry and sidebutton.com, only the local entry appears. Each result shows a `[registry]` tag indicating its source.
 
 ```bash
 # List all available packs
@@ -178,13 +184,16 @@ sidebutton search jira
 **Example output:**
 
 ```
-Available knowledge packs:
+Available Skill Packs
 
-  myorg/app — My App Automation (my-app.example.com)
-    v1.0.0 | browser | Installed
+  my-app.example.com — My App Automation
+    myorg/app v1.0.0 [my-team]
 
-  myorg/crm — CRM Workflows (crm.example.com)
-    v2.1.0 | browser, llm | Not installed
+  crm.example.com — CRM Workflows
+    myorg/crm v2.1.0 [my-team]
+
+  demo.example.com — Demo Pack
+    demo v0.1.0 [sidebutton.com]
 ```
 
 ## Creator Commands
@@ -346,7 +355,7 @@ sidebutton publish --registry /path/to/registry --dry-run
 | `sidebutton registry add <url>` | Add registry and install its packs |
 | `sidebutton registry remove <name>` | Remove registry and its packs |
 | `sidebutton registry list` | List configured registries |
-| `sidebutton registry update [name]` | Sync and re-install changed packs |
+| `sidebutton registry update [name]` | Sync and force-reinstall all packs |
 | `sidebutton search [query]` | Search packs across registries |
 | `sidebutton init <domain>` | Scaffold a new knowledge pack |
 | `sidebutton validate [path]` | Lint pack structure |

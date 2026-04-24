@@ -1,4 +1,4 @@
-# Knowledge Packs Overview
+# Skills and Knowledge Packs
 
 Knowledge packs are installable bundles of workflows, roles, and targets for a specific domain — like a plugin that teaches SideButton how to automate a web application.
 
@@ -87,6 +87,10 @@ Every knowledge pack requires a `skill-pack.json` at its root:
 | `requires.browser` | boolean | No | Needs browser extension |
 | `requires.llm` | boolean | No | Needs LLM provider configured |
 | `private` | boolean | No | Mark as private/internal |
+| `tagline` | string | No | Short one-line summary (used on sidebutton.com) |
+| `category` | string | No | Pack category (e.g., `"crm"`, `"support"`) |
+| `modules` | string[] | No | List of module names within the pack |
+| `roles` | string[] | No | Role identifiers bundled with the pack |
 
 ## Registry Schema
 
@@ -117,6 +121,7 @@ A registry is a directory (local or git) containing an `index.json` and one or m
 | `name` | string | Registry name |
 | `packs` | array | Available knowledge packs |
 | `packs[].path` | string | Relative path from registry root to pack directory |
+| `packs[].roles` | string[] | Role identifiers from the pack manifest |
 
 ## How Knowledge Packs Improve Over Time
 

@@ -2,7 +2,7 @@
 layout: doc
 ---
 
-# SideButton
+# SideButton MCP Server
 
 Open source platform for AI agents with structured roles, skills, and domain knowledge.
 

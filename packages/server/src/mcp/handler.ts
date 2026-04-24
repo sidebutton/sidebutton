@@ -775,7 +775,8 @@ export class McpHandler {
       `- **Server Running:** ${status.server_running}\n` +
       `- **Browser Connected:** ${status.browser_connected}\n` +
       `- **Tab ID:** ${status.tab_id ?? 'None'}\n` +
-      `- **Recording:** ${status.recording}`;
+      `- **Recording:** ${status.recording}\n` +
+      `- **Connection ID:** ${status.connection_id ?? 'None'}`;
 
     return { content: [{ type: 'text', text: output }] };
   }
