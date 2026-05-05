@@ -18,8 +18,8 @@
     "desktop:build": "pnpm --filter @sidebutton/desktop make"
   },
   "devDependencies": {
-    "turbo": "^2.3.0",
-    "typescript": "^5.7.2"
+    "turbo": "^2.9.9",
+    "typescript": "^6.0.3"
   },
   "packageManager": "pnpm@9.15.1",
   "repository": {
