@@ -1663,15 +1663,35 @@ export async function startServer(config: ServerConfig): Promise<void> {
     });
   }
 
-  /** GET /api/screenshot — capture browser screenshot, return base64 PNG */
-  fastify.get('/api/screenshot', async (request, reply) => {
-    if (!(await extensionClient.isConnected())) {
-      return reply.code(503).send({ error: 'Browser not connected' });
-    }
+  /** GET /api/screenshot — capture full-screen X11 screenshot, return base64 PNG */
+  fastify.get('/api/screenshot', async (_request, reply) => {
     try {
-      const imageData = await extensionClient.screenshot({});
-      const base64 = imageData.replace(/^data:image\/png;base64,/, '');
-      return { screenshot_b64: base64 };
+      const { spawn } = await import('node:child_process');
+      const display = process.env.DISPLAY || ':10';
+      const proc = spawn('import', ['-window', 'root', 'png:-'], {
+        env: { ...process.env, DISPLAY: display },
+      });
+      const chunks: Buffer[] = [];
+      let stderr = '';
+      let spawnError: NodeJS.ErrnoException | null = null;
+      proc.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
+      proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+      proc.on('error', (err: NodeJS.ErrnoException) => { spawnError = err; });
+      const code: number = await new Promise((resolve) => proc.on('close', resolve));
+      if (spawnError) {
+        const err = spawnError as NodeJS.ErrnoException;
+        if (err.code === 'ENOENT') {
+          return reply.code(503).send({ error: "'import' (ImageMagick) not installed" });
+        }
+        return reply.code(500).send({ error: err.message });
+      }
+      if (code !== 0) {
+        if (/unable to open X server|cannot open display/i.test(stderr)) {
+          return reply.code(503).send({ error: `X server not available on DISPLAY=${display}` });
+        }
+        return reply.code(500).send({ error: `screenshot failed (exit ${code}): ${stderr.trim()}` });
+      }
+      return { screenshot_b64: Buffer.concat(chunks).toString('base64') };
     } catch (err: any) {
       return reply.code(500).send({ error: err.message || 'Screenshot failed' });
     }

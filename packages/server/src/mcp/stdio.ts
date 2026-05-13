@@ -33,9 +33,23 @@ export async function startStdioTransport(handler: McpHandler): Promise<void> {
     }
   );
 
-  // Handle tools/list
+  // Handle tools/list — delegate to the JSON-RPC handler so plugin tools
+  // (loaded via configDir/plugins/*) are included alongside MCP_TOOLS.
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return { tools: MCP_TOOLS };
+    const response = await handler.handleRequest(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/list',
+      })
+    );
+    const parsed = JSON.parse(response);
+    if (parsed.error) {
+      // Fall back to core tools if the handler errored — keeps stdio usable.
+      process.stderr.write(`[sidebutton] tools/list handler error: ${parsed.error.message}\n`);
+      return { tools: MCP_TOOLS };
+    }
+    return parsed.result;
   });
 
   // Handle tools/call
