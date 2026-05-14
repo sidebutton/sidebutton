@@ -527,6 +527,7 @@ export interface HealthResponse {
   cooldown?: { until_ms: number; workflow_id: string } | null;
   claude_running?: boolean;
   claude_sessions?: { pid: number; cmd: string }[];
+  compactions?: { count: number; last_at?: string } | null;
   dependency_versions?: {
     claude_code?: string;
     node?: string;
