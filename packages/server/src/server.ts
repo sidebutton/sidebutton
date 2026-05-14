@@ -1474,6 +1474,16 @@ export async function startServer(config: ServerConfig): Promise<void> {
       if (lastTool) response.last_tool_use = lastTool;
     } catch { /* no last tool use marker */ }
 
+    // Claude Code auto-compaction counter (SCRUM-812). Written by the PreCompact
+    // hook so operators can see when a job's context overflowed (quality signal).
+    try {
+      const compactData = fs.readFileSync(path.join(sidebuttonDir, 'compact-marker.json'), 'utf8');
+      const parsed = JSON.parse(compactData);
+      if (typeof parsed?.count === 'number' && parsed.count > 0) {
+        response.compactions = { count: parsed.count, last_at: parsed.last_at };
+      }
+    } catch { /* no compact marker */ }
+
     // Enumerate Claude Code processes with PIDs and command lines.
     // This lets the orchestrator track individual sessions, distinguish dispatched
     // jobs from operator debugging sessions, and detect zombie/stalled PIDs.
@@ -1559,7 +1569,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
   // Clear file-based markers (called by Temporal before dispatching a new job)
   fastify.post('/api/clear-markers', async () => {
-    const markers = ['idle-marker', 'result-marker.json', 'last-tool-use'];
+    const markers = ['idle-marker', 'result-marker.json', 'last-tool-use', 'compact-marker.json'];
     for (const marker of markers) {
       try { fs.unlinkSync(path.join(sidebuttonDir, marker)); } catch { /* doesn't exist */ }
     }
