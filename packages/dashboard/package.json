@@ -14,7 +14,7 @@
     "@sentry/svelte": "^10.48.0",
     "@sidebutton/core": "workspace:*",
     "navaid": "^1.2.0",
-    "svelte": "^5.55.3"
+    "svelte": "^5.55.7"
   },
   "devDependencies": {
     "@sentry/vite-plugin": "^5.2.0",
