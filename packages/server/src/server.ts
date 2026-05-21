@@ -34,6 +34,7 @@ import {
 import { matchTarget } from './matching.js';
 import { listInstalledPacks, installSkillPack, uninstallSkillPack } from './skill-pack.js';
 import { listRegistries, addRegistry, removeRegistry, getRegistryDir, readRegistryIndex } from './registry.js';
+import { applyProjects, statusProjects, resetProject, type ApplyProject, type StatusProject } from './projects.js';
 import * as yaml from 'js-yaml';
 import type { WebSocket } from 'ws';
 import type {
@@ -1474,6 +1475,16 @@ export async function startServer(config: ServerConfig): Promise<void> {
       if (lastTool) response.last_tool_use = lastTool;
     } catch { /* no last tool use marker */ }
 
+    // Claude Code auto-compaction counter (SCRUM-812). Written by the PreCompact
+    // hook so operators can see when a job's context overflowed (quality signal).
+    try {
+      const compactData = fs.readFileSync(path.join(sidebuttonDir, 'compact-marker.json'), 'utf8');
+      const parsed = JSON.parse(compactData);
+      if (typeof parsed?.count === 'number' && parsed.count > 0) {
+        response.compactions = { count: parsed.count, last_at: parsed.last_at };
+      }
+    } catch { /* no compact marker */ }
+
     // Enumerate Claude Code processes with PIDs and command lines.
     // This lets the orchestrator track individual sessions, distinguish dispatched
     // jobs from operator debugging sessions, and detect zombie/stalled PIDs.
@@ -1559,7 +1570,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
   // Clear file-based markers (called by Temporal before dispatching a new job)
   fastify.post('/api/clear-markers', async () => {
-    const markers = ['idle-marker', 'result-marker.json', 'last-tool-use'];
+    const markers = ['idle-marker', 'result-marker.json', 'last-tool-use', 'compact-marker.json'];
     for (const marker of markers) {
       try { fs.unlinkSync(path.join(sidebuttonDir, marker)); } catch { /* doesn't exist */ }
     }
@@ -1647,6 +1658,59 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
 
     return { ok: true, results };
+  });
+
+  // Git projects — clone/fast-forward each project from the portal payload.
+  fastify.post('/api/projects/apply', async (request, reply) => {
+    const body = request.body as { workspace_path?: unknown; projects?: unknown } | undefined;
+    if (!body || typeof body !== 'object') {
+      return reply.code(400).send({ error: 'request body is required' });
+    }
+    if (typeof body.workspace_path !== 'string' || !body.workspace_path) {
+      return reply.code(400).send({ error: 'workspace_path is required' });
+    }
+    if (!Array.isArray(body.projects)) {
+      return reply.code(400).send({ error: 'projects must be an array' });
+    }
+    const results = await applyProjects(body.workspace_path, body.projects as ApplyProject[]);
+    return { results };
+  });
+
+  // Git projects — local-only status for one or more projects.
+  fastify.get('/api/projects/status', async (request, reply) => {
+    const q = request.query as { workspace_path?: unknown; projects?: unknown } | undefined;
+    if (!q || typeof q.workspace_path !== 'string' || !q.workspace_path) {
+      return reply.code(400).send({ error: 'workspace_path is required' });
+    }
+    if (typeof q.projects !== 'string' || !q.projects) {
+      return reply.code(400).send({ error: 'projects query parameter is required (JSON-encoded array)' });
+    }
+    let projects: StatusProject[];
+    try {
+      const parsed = JSON.parse(q.projects);
+      if (!Array.isArray(parsed)) throw new Error('projects must be an array');
+      projects = parsed;
+    } catch (err: any) {
+      return reply.code(400).send({ error: `invalid projects JSON: ${err.message}` });
+    }
+    const results = await statusProjects(q.workspace_path, projects);
+    return { results };
+  });
+
+  // Git projects — hard reset a single checkout to origin/{branch} HEAD.
+  fastify.post('/api/projects/reset', async (request, reply) => {
+    const body = request.body as { workspace_path?: unknown; subpath?: unknown; branch?: unknown } | undefined;
+    if (!body || typeof body !== 'object') {
+      return reply.code(400).send({ error: 'request body is required' });
+    }
+    if (typeof body.workspace_path !== 'string' || !body.workspace_path) {
+      return reply.code(400).send({ error: 'workspace_path is required' });
+    }
+    if (typeof body.branch !== 'string' || !body.branch) {
+      return reply.code(400).send({ error: 'branch is required' });
+    }
+    const subpath = typeof body.subpath === 'string' ? body.subpath : '';
+    return resetProject(body.workspace_path, subpath, body.branch);
   });
 
   // System reboot endpoint — only available on agent VMs (where SIDEBUTTON_AGENT_TOKEN is set)
