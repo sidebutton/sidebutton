@@ -147,6 +147,57 @@ function isRepo(dir: string): boolean {
   }
 }
 
+// Files that the workspace config/apply step writes into workspace.path. When
+// these are the ONLY contents of a clone target, we stash them aside so git
+// clone can have an empty dir, then restore them on top of the cloned tree
+// (workspace config wins over any same-named files in the repo).
+const WORKSPACE_METADATA_FILES = new Set(['CLAUDE.md', '.mcp.json']);
+
+/**
+ * Prepare a target directory so `git clone` can succeed:
+ *  - target does not exist  → nothing to do
+ *  - target exists and empty → remove it (clone re-creates)
+ *  - target exists and contains ONLY known workspace metadata files →
+ *      move them to a sibling stash dir; remove the now-empty target
+ *  - target exists with anything else → return an error
+ * Returns the stash dir path so the caller can restore files post-clone.
+ */
+function prepareCloneTarget(target: string): { ok: true; stashDir: string | null } | { ok: false; error: string } {
+  if (!fs.existsSync(target)) return { ok: true, stashDir: null };
+  const entries = fs.readdirSync(target);
+  if (entries.length === 0) {
+    fs.rmdirSync(target);
+    return { ok: true, stashDir: null };
+  }
+  const unknown = entries.filter((e) => !WORKSPACE_METADATA_FILES.has(e));
+  if (unknown.length > 0) {
+    return { ok: false, error: `target dir is not empty and contains unexpected files: ${unknown.slice(0, 3).join(', ')}` };
+  }
+  const stashDir = `${target}.sb-stash-${Date.now()}`;
+  fs.mkdirSync(stashDir);
+  for (const f of entries) {
+    fs.renameSync(path.join(target, f), path.join(stashDir, f));
+  }
+  fs.rmdirSync(target);
+  return { ok: true, stashDir };
+}
+
+function restoreStashedFiles(target: string, stashDir: string | null): void {
+  if (!stashDir) return;
+  try {
+    for (const f of fs.readdirSync(stashDir)) {
+      const src = path.join(stashDir, f);
+      const dst = path.join(target, f);
+      // Workspace config wins over any same-named file in the cloned repo.
+      try { fs.unlinkSync(dst); } catch { /* not present in repo */ }
+      fs.renameSync(src, dst);
+    }
+    fs.rmdirSync(stashDir);
+  } catch {
+    // Best-effort: a leftover stash dir is harmless; better than failing apply.
+  }
+}
+
 async function checkoutAndFastForward(repoDir: string, branch: string): Promise<void> {
   await runGit(repoDir, ['fetch', 'origin']);
   await runGit(repoDir, ['checkout', branch]);
@@ -187,7 +238,12 @@ export async function applyProject(workspace_path: string, project: ApplyProject
 
     if (!isRepo(target)) {
       fs.mkdirSync(path.dirname(target), { recursive: true });
+      const prep = prepareCloneTarget(target);
+      if (!prep.ok) {
+        return { subpath: sub, ok: false, error: prep.error };
+      }
       await gitClone(project.repo_url, target);
+      restoreStashedFiles(target, prep.stashDir);
       try {
         await checkoutAndFastForward(target, project.branch);
       } catch (err) {

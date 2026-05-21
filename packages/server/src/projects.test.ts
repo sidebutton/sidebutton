@@ -147,6 +147,39 @@ describe('git roundtrip', () => {
     expect(config).not.toContain('x-access-token');
   });
 
+  it('applyProject clones into a workspace dir that already holds CLAUDE.md and .mcp.json', async () => {
+    // Reproduces the "fatal: destination path already exists and is not an empty
+    // directory" failure that happened when subpath='' and workspace.path holds
+    // workspace metadata written by config/apply before projects/apply runs.
+    const ws = path.join(workdir, 'ws-meta');
+    fs.mkdirSync(ws, { recursive: true });
+    fs.writeFileSync(path.join(ws, 'CLAUDE.md'), '# from workspace config\n');
+    fs.writeFileSync(path.join(ws, '.mcp.json'), '{"workspace":"yes"}');
+
+    const r = await applyProject(ws, { repo_url: bareCloneUrl, branch: 'main', subpath: '' });
+    expect(r).toEqual({ subpath: '', ok: true });
+    expect(fs.existsSync(path.join(ws, '.git'))).toBe(true);
+    expect(fs.existsSync(path.join(ws, 'README.md'))).toBe(true);
+    // Workspace metadata wins over anything from the cloned repo.
+    expect(fs.readFileSync(path.join(ws, 'CLAUDE.md'), 'utf8')).toBe('# from workspace config\n');
+    expect(fs.readFileSync(path.join(ws, '.mcp.json'), 'utf8')).toBe('{"workspace":"yes"}');
+    // No stash dir left behind alongside the target.
+    const sib = fs.readdirSync(workdir).filter((e) => e.startsWith('ws-meta.sb-stash-'));
+    expect(sib).toEqual([]);
+  });
+
+  it('applyProject refuses to clone into a non-empty dir with unknown files', async () => {
+    const ws = path.join(workdir, 'ws-unknown');
+    fs.mkdirSync(ws, { recursive: true });
+    fs.writeFileSync(path.join(ws, 'random.txt'), 'not a workspace file');
+
+    const r = await applyProject(ws, { repo_url: bareCloneUrl, branch: 'main', subpath: '' });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/unexpected files.*random\.txt/);
+    // Pre-existing file untouched.
+    expect(fs.readFileSync(path.join(ws, 'random.txt'), 'utf8')).toBe('not a workspace file');
+  });
+
   it('applyProject fast-forwards an existing checkout when remote moves ahead', async () => {
     const ws = path.join(workdir, 'ws-ff');
     await applyProject(ws, {
