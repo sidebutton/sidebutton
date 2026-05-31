@@ -481,4 +481,73 @@ export const MCP_TOOLS: McpTool[] = [
     },
     annotations: { title: 'Evaluate JavaScript', destructiveHint: true, openWorldHint: true },
   },
+  {
+    name: 'browser_batch',
+    description:
+      'Run a SEQUENCE of browser actions in ONE call instead of one round trip per action. ' +
+      'Each step is the same shape you would pass to the individual tool, plus a "cmd" field naming which tool to run.\n\n' +
+      'A batch is a DETERMINISTIC run: actions you already know the selectors for, executed top to bottom, halting at the first ' +
+      'failure (unless on_error:"continue"). By default it ends by returning a fresh accessibility snapshot of the resulting page, ' +
+      'so you can decide the next move in the same turn. The moment you need to SEE something before choosing an action, end the ' +
+      'batch and read the returned snapshot.\n\n' +
+      'Guidance:\n' +
+      '- Prefer CSS selectors over refs inside a batch. Refs come from a prior snapshot and go stale the instant a step re-renders ' +
+      'the page; selectors survive.\n' +
+      '- After a navigate (or an action that loads new content), add a { "cmd": "wait", "selector": "..." } step before interacting ' +
+      'with the new content.\n' +
+      '- Add "optional": true to a step whose failure should not halt the batch.\n' +
+      '- Add "return": "drop" to a side-effect-only step you do not need echoed back (e.g. a screenshot taken only to trigger lazy-load).\n\n' +
+      'Batchable cmds: navigate, wait, exists, click, type, fill, press_key, select_option, scroll, scroll_into_view, hover, ' +
+      'extract, extract_all, extract_map, snapshot, screenshot, evaluate.\n\n' +
+      'Example — log in then land on the dashboard in one call:\n' +
+      '{ "steps": [ { "cmd": "navigate", "url": "https://app.example.com/login" }, ' +
+      '{ "cmd": "wait", "selector": "#user" }, { "cmd": "fill", "selector": "#user", "value": "alice" }, ' +
+      '{ "cmd": "fill", "selector": "#pw", "value": "secret" }, { "cmd": "click", "selector": "button[type=submit]" }, ' +
+      '{ "cmd": "wait", "selector": ".dashboard" } ] }',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        steps: {
+          type: 'array',
+          description:
+            'Ordered list of actions. Each item is { "cmd": "<tool name>", ...that tool\'s arguments }. ' +
+            'Optional per-step keys: "optional" (boolean — failure never halts the batch) and ' +
+            '"return": "drop" (omit this step\'s output from the response).',
+          items: {
+            type: 'object',
+            properties: {
+              cmd: {
+                type: 'string',
+                description: 'Which browser tool to run for this step (e.g. "navigate", "fill", "click", "snapshot").',
+              },
+              optional: {
+                type: 'boolean',
+                description: 'If true, this step failing does not halt the batch (default: false).',
+              },
+              return: {
+                type: 'string',
+                enum: ['drop'],
+                description: 'Set to "drop" to omit this step\'s output from the response.',
+              },
+            },
+            required: ['cmd'],
+          },
+        },
+        on_error: {
+          type: 'string',
+          enum: ['stop', 'continue'],
+          description:
+            '"stop" (default): halt at the first failed step, marking the rest skipped. "continue": run every step regardless.',
+        },
+        snapshot_tail: {
+          type: 'boolean',
+          description:
+            'Append a fresh accessibility snapshot of the final page to the response so you can decide the next action ' +
+            '(default: true). Skipped automatically when the last step is already a snapshot or screenshot. Set false to opt out.',
+        },
+      },
+      required: ['steps'],
+    },
+    annotations: { title: 'Batch Browser Actions', destructiveHint: true, openWorldHint: true },
+  },
 ];

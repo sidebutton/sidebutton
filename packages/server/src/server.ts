@@ -1508,6 +1508,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
 
     response.dependency_versions = getDependencyVersions();
+    response.plugins = mcpHandler.getLoadedPluginSummaries();
 
     // Collect live system metrics (Linux only — agents run on Ubuntu VMs)
     // All /proc reads are near-instant; single execSync keeps latency under ~200ms

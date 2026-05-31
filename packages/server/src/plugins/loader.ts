@@ -135,6 +135,21 @@ export function loadPlugins(pluginsDir: string): LoadedPlugin[] {
 }
 
 /**
+ * Map loaded plugins to the lightweight summary the /health endpoint returns
+ * (and the portal renders): name, version, description, and tool names.
+ */
+export function summarizePlugins(
+  plugins: LoadedPlugin[],
+): { name: string; version: string; description?: string; tools: string[] }[] {
+  return plugins.map((p) => ({
+    name: p.manifest.name,
+    version: p.manifest.version,
+    description: p.manifest.description,
+    tools: p.manifest.tools.map((t) => t.name),
+  }));
+}
+
+/**
  * Read and validate a plugin manifest from a directory.
  * Throws on invalid manifest (used by CLI install to give clear errors).
  */

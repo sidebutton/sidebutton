@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { loadPlugins } from './loader.js';
+import { loadPlugins, summarizePlugins } from './loader.js';
 
 function writePlugin(dir: string, manifest: Record<string, unknown>) {
   fs.mkdirSync(dir, { recursive: true });
@@ -149,5 +149,43 @@ describe('loadPlugins', () => {
     expect(plugins).toHaveLength(2);
     const names = plugins.map((p) => p.manifest.name).sort();
     expect(names).toEqual(['plugin-a', 'plugin-b']);
+  });
+});
+
+describe('summarizePlugins (/health contract)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-plugin-summary-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('maps loaded plugins to {name, version, description, tools[]} for /health', () => {
+    writePlugin(path.join(tmpDir, 'screen-record'), {
+      name: 'screen-record',
+      version: '1.0.0',
+      description: 'ffmpeg x11grab screen recording',
+      tools: [
+        { name: 'start_recording', description: 'start', inputSchema: { type: 'object' }, handler: 'bash start.sh' },
+        { name: 'stop_recording', description: 'stop', inputSchema: { type: 'object' }, handler: 'bash stop.sh' },
+      ],
+    });
+
+    const summary = summarizePlugins(loadPlugins(tmpDir));
+    expect(summary).toEqual([
+      {
+        name: 'screen-record',
+        version: '1.0.0',
+        description: 'ffmpeg x11grab screen recording',
+        tools: ['start_recording', 'stop_recording'],
+      },
+    ]);
+  });
+
+  it('returns an empty array when no plugins are loaded', () => {
+    expect(summarizePlugins(loadPlugins(path.join(tmpDir, 'nope')))).toEqual([]);
   });
 });

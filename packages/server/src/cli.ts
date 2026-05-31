@@ -1116,8 +1116,9 @@ program
       if (query) {
         console.log(`  No packs matching "${query}".`);
       } else {
-        console.log('  No packs found. Add a registry first:');
-        console.log(`  ${chalk.bold('sidebutton registry add <url>')}`);
+        console.log('  No packs found. Install one directly from the catalog:');
+        console.log(`  ${chalk.bold('sidebutton install <domain>')}`);
+        console.log(`  or add a registry: ${chalk.bold('sidebutton registry add <url>')}`);
       }
       console.log();
       return;

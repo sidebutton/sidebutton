@@ -534,6 +534,12 @@ export interface HealthResponse {
     npm?: string;
     sidebutton?: string;
   };
+  /**
+   * Plugins installed under ~/.sidebutton/plugins/ and loaded into the MCP
+   * tool list. Lets the portal reveal which plugins a given agent ships
+   * without inspecting the VM. `tools` lists the MCP tool names each exposes.
+   */
+  plugins?: { name: string; version: string; description?: string; tools: string[] }[];
   system_metrics?: {
     cpu_pct: number;
     mem_used_mb: number;

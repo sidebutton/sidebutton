@@ -35,7 +35,7 @@ import {
 } from '@sidebutton/core';
 import type { ExtensionClientImpl } from '../extension.js';
 import { MCP_TOOLS, type McpTool } from './tools.js';
-import { loadPlugins, executePluginTool } from '../plugins/index.js';
+import { loadPlugins, executePluginTool, summarizePlugins } from '../plugins/index.js';
 import type { LoadedPlugin, PluginToolDefinition } from '../plugins/types.js';
 import { reportRunLog } from '../services/report.js';
 import { loadContextAll, loadTargets, loadRoles } from '../context.js';
@@ -441,6 +441,8 @@ export class McpHandler {
         return this.toolHover(args);
       case 'evaluate':
         return this.toolEvaluate(args);
+      case 'browser_batch':
+        return this.toolBrowserBatch(args);
       default: {
         // Check plugin tools before throwing
         const pluginMatch = this.findPluginTool(name);
@@ -450,6 +452,15 @@ export class McpHandler {
         throw new Error(`Tool not found: ${name}`);
       }
     }
+  }
+
+  /**
+   * Lightweight summary of the loaded plugins for the /health endpoint.
+   * Surfaces exactly what the portal renders (name, version, tool names) so
+   * the fleet list + agent detail can reveal each agent's deployed plugins.
+   */
+  getLoadedPluginSummaries(): { name: string; version: string; description?: string; tools: string[] }[] {
+    return summarizePlugins(this.plugins);
   }
 
   /**
@@ -1066,6 +1077,153 @@ export class McpHandler {
     const result = response.result;
     const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
     return { content: [{ type: 'text', text: text ?? 'undefined' }] };
+  }
+
+  /**
+   * Browser tools that may appear as steps inside a browser_batch.
+   * Excludes status/dev tools (get_browser_status, capture_page) and all
+   * non-browser tools (run_workflow, etc.) — those are not browser actions.
+   */
+  private static readonly BATCHABLE_CMDS = new Set([
+    'navigate', 'snapshot', 'click', 'type', 'press_key', 'scroll',
+    'select_option', 'extract', 'screenshot', 'fill', 'wait', 'exists',
+    'extract_all', 'extract_map', 'scroll_into_view', 'hover', 'evaluate',
+  ]);
+
+  /**
+   * Execute a sequence of browser actions in one MCP call (server-side fan-out).
+   *
+   * Each step is dispatched through the existing per-tool handler via
+   * handleToolsCall, so command-name translation, ref/selector handling, image
+   * results, validation, and the per-step 30s timeout all come for free. The
+   * extension is unchanged — every step is a normal single WS command.
+   *
+   * See docs/plans/PLAN-actions-batching.md.
+   */
+  private async toolBrowserBatch(args: Record<string, unknown>): Promise<unknown> {
+    const steps = Array.isArray(args.steps)
+      ? (args.steps as Array<Record<string, unknown>>)
+      : [];
+    if (steps.length === 0) {
+      throw new Error('browser_batch requires a non-empty "steps" array');
+    }
+    const onError = (args.on_error as string) === 'continue' ? 'continue' : 'stop';
+    const snapshotTail = toBool(args.snapshot_tail) ?? true;
+
+    if (!(await this.extensionClient.isConnected())) {
+      throw new Error('Browser not connected');
+    }
+
+    interface StepOutcome {
+      cmd: string;
+      ok: boolean | null; // true = ran, false = failed, null = skipped
+      error?: string;
+      skipped?: string;
+      duration_ms?: number;
+      summary?: string;
+    }
+
+    const outcomes: StepOutcome[] = [];
+    const content: Array<Record<string, unknown>> = [];
+    let stoppedAt: number | null = null;
+
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      const cmd = String(step.cmd ?? '');
+
+      if (stoppedAt !== null) {
+        outcomes.push({ cmd, ok: null, skipped: 'stopped_after_error' });
+        continue;
+      }
+
+      if (!McpHandler.BATCHABLE_CMDS.has(cmd)) {
+        outcomes.push({ cmd, ok: false, error: `not a batchable browser action: "${cmd}"` });
+        if (onError === 'stop' && step.optional !== true) stoppedAt = i;
+        continue;
+      }
+
+      const t0 = Date.now();
+      try {
+        // Reuse the existing per-tool dispatch. Extra keys on `step`
+        // (cmd/optional/return) are ignored by the individual handlers.
+        const out = (await this.handleToolsCall({ name: cmd, arguments: step })) as {
+          content?: Array<Record<string, unknown>>;
+        };
+        const durationMs = Date.now() - t0;
+        const blocks = out.content ?? [];
+        const textBlock = blocks.find((b) => b.type === 'text');
+        outcomes.push({
+          cmd,
+          ok: true,
+          duration_ms: durationMs,
+          summary: textBlock ? String(textBlock.text).replace(/\s+/g, ' ').slice(0, 160) : undefined,
+        });
+        if (step.return !== 'drop') {
+          for (const b of blocks) {
+            if (b.type === 'text') {
+              content.push({ type: 'text', text: `[step ${i + 1} · ${cmd}] ${b.text}` });
+            } else {
+              content.push({ type: 'text', text: `[step ${i + 1} · ${cmd}]` });
+              content.push(b);
+            }
+          }
+        }
+      } catch (e) {
+        const durationMs = Date.now() - t0;
+        outcomes.push({
+          cmd,
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+          duration_ms: durationMs,
+        });
+        if (onError === 'stop' && step.optional !== true) stoppedAt = i;
+      }
+    }
+
+    // Auto-snapshot tail: return fresh page state so the LLM can decide the
+    // next move without a separate call. Skip when the last step already
+    // produced a snapshot/screenshot, or when the browser dropped.
+    const lastCmd = String(steps[steps.length - 1]?.cmd ?? '');
+    const tailRedundant = lastCmd === 'snapshot' || lastCmd === 'screenshot';
+    if (snapshotTail && !tailRedundant && (await this.extensionClient.isConnected())) {
+      try {
+        const snap = await this.extensionClient.ariaSnapshot({ includeContent: false });
+        if (snap) content.push({ type: 'text', text: `[final snapshot]\n${snap}` });
+      } catch {
+        // best-effort; omit on failure
+      }
+    }
+
+    const succeeded = outcomes.filter((o) => o.ok === true).length;
+    const failed = outcomes.filter((o) => o.ok === false).length;
+    const skipped = outcomes.filter((o) => o.ok === null).length;
+
+    // TODO(actions-batching): emit a batch_executed count into the local
+    // run-log pipeline (and wrap solo tool calls as 1) so actions-per-MCP-call
+    // can be aggregated. Stays local to the agent — see PLAN-actions-batching.md.
+    process.stderr.write(
+      `[MCP] browser_batch: ${succeeded}/${steps.length} ok, ${failed} failed, ${skipped} skipped\n`,
+    );
+
+    const header =
+      `# Browser batch — ${succeeded}/${steps.length} succeeded` +
+      (failed ? `, ${failed} failed` : '') +
+      (skipped ? `, ${skipped} skipped` : '') +
+      (stoppedAt !== null ? ` (stopped at step ${stoppedAt + 1})` : '') +
+      '\n\n' +
+      outcomes
+        .map((o, i) => {
+          const mark = o.ok === true ? '✓' : o.ok === false ? '✗' : '∅';
+          const ms = o.duration_ms !== undefined ? ` (${o.duration_ms}ms)` : '';
+          const detail =
+            o.ok === false ? ` — ${o.error}` :
+            o.ok === null ? ` — ${o.skipped}` :
+            o.summary ? ` — ${o.summary}` : '';
+          return `${mark} ${i + 1}. ${o.cmd}${ms}${detail}`;
+        })
+        .join('\n');
+
+    return { content: [{ type: 'text', text: header }, ...content] };
   }
 
   /**
