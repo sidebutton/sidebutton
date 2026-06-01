@@ -11,6 +11,7 @@ import fastifyFormbody from '@fastify/formbody';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as crypto from 'node:crypto';
+import * as net from 'node:net';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ExtensionClientImpl } from './extension.js';
@@ -651,6 +652,44 @@ export async function startServer(config: ServerConfig): Promise<void> {
         // Client might disconnect immediately, ignore
       }
     }
+  });
+
+  // WebSocket endpoint for live desktop view (noVNC) — bridges the browser, via
+  // the sidebutton.com relay, to the local x11vnc RFB socket on :5910 (the same
+  // shared display :10 that RDP serves). Unlike /api/* this path is NOT covered
+  // by the bearer onRequest hook above, so it authenticates itself against
+  // SIDEBUTTON_AGENT_TOKEN (the relay sets it; firewall-gated otherwise). The
+  // pipe is bidirectional — RFB needs client→server control frames (SetEncodings,
+  // FramebufferUpdateRequest); input is suppressed client-side via noVNC viewOnly.
+  fastify.get('/ws/vnc', { websocket: true }, (socket, req) => {
+    const agentToken = process.env.SIDEBUTTON_AGENT_TOKEN;
+    if (agentToken && req.headers.authorization !== `Bearer ${agentToken}`) {
+      socket.close(1008, 'unauthorized');
+      return;
+    }
+
+    const VNC_PORT = 5910;
+    const tcp = net.connect(VNC_PORT, '127.0.0.1');
+    let closed = false;
+    const shutdown = (code?: number, reason?: string) => {
+      if (closed) return;
+      closed = true;
+      try { tcp.destroy(); } catch { /* noop */ }
+      try { socket.close(code, reason); } catch { /* noop */ }
+    };
+
+    tcp.on('data', (chunk: Buffer) => {
+      if (socket.readyState === 1 /* WebSocket.OPEN */) socket.send(chunk);
+    });
+    tcp.on('close', () => shutdown());
+    tcp.on('error', () => shutdown(1011, 'vnc unavailable'));
+
+    socket.on('message', (data) => {
+      if (closed || tcp.destroyed) return;
+      tcp.write(data as Buffer);
+    });
+    socket.on('close', () => shutdown());
+    socket.on('error', () => shutdown());
   });
 
   // MCP Streamable HTTP Transport
