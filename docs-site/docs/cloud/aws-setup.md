@@ -85,18 +85,18 @@ SideButton provisions EC2 instances on your behalf using a dedicated IAM user wi
 
 ## Step 4: Connect in SideButton
 
-1. Open the SideButton portal → **Settings** → **Infrastructure**
-2. Click **Connect AWS** and fill in the form:
-   - **Connection Name** (e.g., "Production AWS")
+1. Open the SideButton portal → **Integrations** → **Cloud**
+2. On the **AWS** card click **Connect** and fill in the form:
+   - **Display name** (e.g., "Production AWS")
    - **Access Key ID** and **Secret Access Key** from Step 3
-   - Optionally set a **Default Region** (e.g., `us-east-1`)
-3. Click **Connect & Validate** — SideButton verifies credentials and checks permissions
+   - Optionally pick a **Default Region** (e.g., `us-east-1`)
+3. Click **Connect & Validate** — SideButton verifies the credentials against the AWS API and stores them encrypted
 
-### Permission Checker
+### Required permissions
 
-The **Connect & Validate** button uses `iam:SimulatePrincipalPolicy` to dry-run every required action against your credentials without making any real AWS API calls. If any permissions are missing, they are displayed in a checklist so you can patch your IAM policy quickly.
+The IAM policy in [Step 1](#step-1-create-an-iam-policy) **is** the required permission set — attach it in full and `Connect & Validate` will succeed.
 
-If your IAM user does not have `iam:SimulatePrincipalPolicy` itself, a warning is shown and you will need to verify permissions manually.
+> The portal no longer runs an in-page permission simulator. (Earlier versions had a separate "Check Permissions" button backed by `iam:SimulatePrincipalPolicy`.) If a required action is missing, the failing AWS call surfaces the specific permission at connect or provisioning time — add it to the policy above and retry. The [Troubleshooting](#troubleshooting) table below maps common errors to the action to add.
 
 ---
 

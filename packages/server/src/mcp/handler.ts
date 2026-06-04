@@ -443,6 +443,10 @@ export class McpHandler {
         return this.toolEvaluate(args);
       case 'browser_batch':
         return this.toolBrowserBatch(args);
+      case 'set_basic_auth':
+        return this.toolSetBasicAuth(args);
+      case 'clear_basic_auth':
+        return this.toolClearBasicAuth(args);
       default: {
         // Check plugin tools before throwing
         const pluginMatch = this.findPluginTool(name);
@@ -979,6 +983,36 @@ export class McpHandler {
 
     await this.extensionClient.fill(selector, value);
     return { content: [{ type: 'text', text: `Filled "${selector}" with "${value}"` }] };
+  }
+
+  private async toolSetBasicAuth(args: Record<string, unknown>): Promise<unknown> {
+    if (!(await this.extensionClient.isConnected())) {
+      throw new Error('Browser not connected');
+    }
+
+    const username = args.username as string;
+    const password = args.password as string;
+    const origin = args.origin as string | undefined;
+    if (!username) throw new Error('username parameter is required');
+    if (password === undefined) throw new Error('password parameter is required');
+
+    await this.extensionClient.setBasicAuth(origin, username, password);
+    const scope = origin ? `for ${origin}` : 'for any challenged site';
+    return { content: [{ type: 'text', text: `Stored HTTP Basic Auth ${scope} (user "${username}")` }] };
+  }
+
+  private async toolClearBasicAuth(args: Record<string, unknown>): Promise<unknown> {
+    if (!(await this.extensionClient.isConnected())) {
+      throw new Error('Browser not connected');
+    }
+
+    const origin = args.origin as string | undefined;
+    await this.extensionClient.clearBasicAuth(origin);
+    return {
+      content: [
+        { type: 'text', text: origin ? `Cleared HTTP Basic Auth for ${origin}` : 'Cleared all HTTP Basic Auth credentials' },
+      ],
+    };
   }
 
   private async toolWait(args: Record<string, unknown>): Promise<unknown> {

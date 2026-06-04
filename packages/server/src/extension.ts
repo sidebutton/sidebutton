@@ -543,6 +543,24 @@ export class ExtensionClientImpl implements ExtensionClient {
     return response as any;
   }
 
+  async setBasicAuth(origin: string | undefined, username: string, password: string): Promise<void> {
+    const params: Record<string, unknown> = { username, password };
+    if (origin) params.origin = origin;
+    const response = await this.sendCommand('setBasicAuth', params);
+    if (!response.ok) {
+      throw new Error(response.error ?? 'SetBasicAuth failed');
+    }
+  }
+
+  async clearBasicAuth(origin?: string): Promise<void> {
+    const params: Record<string, unknown> = {};
+    if (origin) params.origin = origin;
+    const response = await this.sendCommand('clearBasicAuth', params);
+    if (!response.ok) {
+      throw new Error(response.error ?? 'ClearBasicAuth failed');
+    }
+  }
+
   /**
    * Broadcast a message to the extension (no response expected)
    * Used for one-way notifications like workflow-installed

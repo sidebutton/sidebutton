@@ -39,13 +39,13 @@ SideButton provisions Hetzner servers on your behalf using a project-scoped API 
 
 ## Step 3: Connect in SideButton
 
-1. Open the SideButton portal → **Settings** → **Infrastructure**
-2. Click **Connect Hetzner account** to open the connection form
+1. Open the SideButton portal → **Integrations** → **Cloud**
+2. On the **Hetzner** card click **Connect** to open the connection form
 3. Paste the API token from Step 2
 4. Optionally pick a **Default Location** (e.g., `nbg1` for Nuremberg, `fsn1` for Falkenstein, `hel1` for Helsinki, `ash` for Ashburn US)
 5. Click **Connect** — SideButton validates the token by calling `GET /v1/locations` against the Hetzner API
 
-Once connected, the button row shows a green **Connected** badge.
+Once connected, the **Hetzner** card shows a green **Connected** badge.
 
 ---
 
@@ -122,4 +122,4 @@ You can inspect all created resources directly in the Hetzner Console under your
 - SideButton stores your API token encrypted with AES-256-GCM
 - Tokens are never logged or exposed in API responses
 - You can delete the connection at any time — SideButton will refuse deletion if agents are still attached
-- Rotate your API token in Hetzner Console → Security → API Tokens and reconnect in SideButton Settings
+- Rotate your API token in Hetzner Console → Security → API Tokens and reconnect via **Integrations → Cloud → Hetzner → Rotate credentials**

@@ -550,4 +550,41 @@ export const MCP_TOOLS: McpTool[] = [
     },
     annotations: { title: 'Batch Browser Actions', destructiveHint: true, openWorldHint: true },
   },
+  {
+    name: 'set_basic_auth',
+    description:
+      'Provide HTTP Basic Auth credentials so the browser logs in silently instead of showing the native ' +
+      'username/password modal, which would otherwise block the page and hang automation. Applies to the connected tab. ' +
+      'Omit "origin" to use the credentials for any site that challenges; pass "origin" (e.g. "https://staging.example.com") ' +
+      'to scope them to one site. When a challenge has no matching credentials it is dismissed so the page never hangs.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        username: { type: 'string', description: 'Basic Auth username.' },
+        password: { type: 'string', description: 'Basic Auth password.' },
+        origin: {
+          type: 'string',
+          description:
+            'Optional origin to scope the credentials to (e.g. "https://staging.example.com"). Omit to apply to any challenged site.',
+        },
+      },
+      required: ['username', 'password'],
+    },
+    annotations: { title: 'Set HTTP Basic Auth', destructiveHint: true, openWorldHint: true },
+  },
+  {
+    name: 'clear_basic_auth',
+    description:
+      'Remove stored HTTP Basic Auth credentials. Omit "origin" to clear all stored credentials; pass "origin" to clear just that site.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        origin: {
+          type: 'string',
+          description: 'Optional origin to clear (e.g. "https://staging.example.com"). Omit to clear all stored credentials.',
+        },
+      },
+    },
+    annotations: { title: 'Clear HTTP Basic Auth', destructiveHint: true, openWorldHint: true },
+  },
 ];

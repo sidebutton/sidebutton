@@ -36,6 +36,8 @@ export interface ExtensionClient {
   ariaSnapshot(options?: { includeContent?: boolean }): Promise<string>;
   injectCSS(css: string, id?: string): Promise<void>;
   injectJS(js: string, id?: string): Promise<{ executed: boolean; result?: unknown; error?: string }>;
+  setBasicAuth(origin: string | undefined, username: string, password: string): Promise<void>;
+  clearBasicAuth(origin?: string): Promise<void>;
 }
 
 /**
