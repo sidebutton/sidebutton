@@ -23,7 +23,8 @@ export interface ModelPrice {
 }
 
 export const DEFAULT_MODEL_PRICES: Record<string, ModelPrice> = {
-  'claude-opus-4-7':   { input_per_1m_usd: 15,   output_per_1m_usd: 75, cache_read_per_1m_usd: 1.5,   cache_create_per_1m_usd: 18.75 },
+  'claude-opus-4-8':   { input_per_1m_usd: 5,    output_per_1m_usd: 25, cache_read_per_1m_usd: 0.5,   cache_create_per_1m_usd: 6.25  },
+  'claude-opus-4-7':   { input_per_1m_usd: 5,    output_per_1m_usd: 25, cache_read_per_1m_usd: 0.5,   cache_create_per_1m_usd: 6.25  },
   'claude-sonnet-4-6': { input_per_1m_usd: 3,    output_per_1m_usd: 15, cache_read_per_1m_usd: 0.3,   cache_create_per_1m_usd: 3.75  },
   'claude-haiku-4-5':  { input_per_1m_usd: 1,    output_per_1m_usd: 5,  cache_read_per_1m_usd: 0.1,   cache_create_per_1m_usd: 1.25  },
   'gpt-5.4':           { input_per_1m_usd: 1.25, output_per_1m_usd: 10, cache_read_per_1m_usd: 0.125, cache_create_per_1m_usd: 0     },
