@@ -55,33 +55,6 @@ export const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
     ],
   },
   {
-    id: 'slack',
-    name: 'Slack',
-    type: 'chat',
-    connectors: [
-      {
-        id: 'api',
-        name: 'Bot Token API',
-        featureLevel: 'full',
-        requiredEnvVars: ['SLACK_BOT_TOKEN'],
-        optionalEnvVars: [],
-        stepTypes: ['chat.listChannels', 'chat.readChannel', 'chat.readThread'],
-        setupInstructions: 'Create a Slack app and add a bot token (xoxb-...) in Settings → Environment Variables as SLACK_BOT_TOKEN.',
-        usageFile: '_provider-slack-api.md',
-      },
-      {
-        id: 'browser',
-        name: 'Browser',
-        featureLevel: 'basic',
-        requiredEnvVars: ['SLACK_BROWSER_URL'],
-        optionalEnvVars: [],
-        stepTypes: [],
-        setupInstructions: 'Set SLACK_BROWSER_URL to your Slack workspace URL (e.g. https://yourworkspace.slack.com). Make sure you are logged in to Slack in the browser.',
-        usageFile: '_provider-slack-browser.md',
-      },
-    ],
-  },
-  {
     id: 'github',
     name: 'GitHub',
     type: ['git', 'issues'],
@@ -109,33 +82,11 @@ export const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
       },
     ],
   },
-  {
-    id: 'bitbucket',
-    name: 'Bitbucket',
-    type: 'git',
-    connectors: [
-      {
-        id: 'api',
-        name: 'REST API 2.0',
-        featureLevel: 'full',
-        requiredEnvVars: ['BITBUCKET_USERNAME', 'BITBUCKET_APP_PASSWORD'],
-        optionalEnvVars: [],
-        stepTypes: ['git.listPRs', 'git.getPR', 'git.createPR'],
-        setupInstructions: 'Add BITBUCKET_USERNAME and BITBUCKET_APP_PASSWORD in Settings → Environment Variables. Create an app password at https://bitbucket.org/account/settings/app-passwords/.',
-        usageFile: '_provider-bitbucket-api.md',
-      },
-      {
-        id: 'browser',
-        name: 'Browser',
-        featureLevel: 'basic',
-        requiredEnvVars: ['BITBUCKET_BROWSER_URL'],
-        optionalEnvVars: [],
-        stepTypes: [],
-        setupInstructions: 'Set BITBUCKET_BROWSER_URL to your Bitbucket URL (e.g. https://bitbucket.org). Make sure you are logged in to Bitbucket in the browser.',
-        usageFile: '_provider-bitbucket-browser.md',
-      },
-    ],
-  },
+  // NOTE (SCRUM-1189): Slack (chat) and Bitbucket (git) are intentionally NOT advertised here.
+  // No SlackProvider/BitbucketProvider is wired, so getChatProvider/getGitProvider would throw at
+  // runtime. Re-add an entry only once its concrete class is implemented AND wired into the
+  // matching factory below, with its step types handled in executeStep and listed in
+  // getAllStepTypes(). Until then, advertising them is a capability the engine cannot deliver.
 ];
 
 // ============================================================================
@@ -285,12 +236,13 @@ export function getChatProvider(
   const name = override?.toLowerCase() ?? detectChatProvider(envVars);
 
   switch (name) {
-    // SlackProvider will be added here when implemented
+    // No chat provider is wired in this build. When a SlackProvider (or other) is implemented,
+    // add its `case` here and re-advertise it in PROVIDER_DEFINITIONS. See SCRUM-1189.
     default:
       throw new Error(
         override
-          ? `Unknown chat provider: "${override}". Supported: (none yet — Slack coming soon)`
-          : 'No chat provider detected. Slack support coming soon.',
+          ? `Unknown chat provider: "${override}". Chat providers are not implemented in this build.`
+          : 'Chat providers are not implemented in this build.',
       );
   }
 }

@@ -99,6 +99,35 @@ export async function executeTerminalOpen(
   }
 }
 
+/**
+ * Inject dispatch-scoped flags into a Claude CLI command. Exported for unit
+ * tests. Each rewrite targets the FIRST `claude ` occurrence — later mentions
+ * belong to the prompt text.
+ *
+ * `--session-id` (PID-TRACKING plan) pre-assigns the Claude Code session
+ * UUID, making the job ↔ session binding deterministic: the orchestrator
+ * locates the session by this UUID in the process command line, and the
+ * Stop/PostToolUse hooks' native session_id matches the job's record exactly.
+ * Strict UUID validation keeps the interpolation shell-safe.
+ */
+export function injectClaudeCliFlags(
+  cmd: string,
+  opts: { effortLevel?: string; modelOverride?: string; sessionId?: string },
+): string {
+  if (!cmd.includes('claude ')) return cmd;
+  if (opts.effortLevel && opts.effortLevel !== 'medium') {
+    cmd = cmd.replace('claude ', `claude --effort ${opts.effortLevel} `);
+  }
+  if (opts.modelOverride) {
+    cmd = cmd.replace('claude ', `claude --model ${opts.modelOverride} `);
+  }
+  if (opts.sessionId
+      && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(opts.sessionId)) {
+    cmd = cmd.replace('claude ', `claude --session-id ${opts.sessionId} `);
+  }
+  return cmd;
+}
+
 export async function executeTerminalRun(
   step: TerminalRun,
   ctx: ExecutionContext
@@ -110,17 +139,12 @@ export async function executeTerminalRun(
     );
   }
 
-  let cmd = ctx.interpolate(step.cmd);
-
-  // Inject --effort and --model flags into Claude CLI commands.
-  if (cmd.includes('claude ')) {
-    if (ctx.effortLevel && ctx.effortLevel !== 'medium') {
-      cmd = cmd.replace('claude ', `claude --effort ${ctx.effortLevel} `);
-    }
-    if (ctx.llmModelOverride) {
-      cmd = cmd.replace('claude ', `claude --model ${ctx.llmModelOverride} `);
-    }
-  }
+  // Inject --effort, --model, and --session-id flags into Claude CLI commands.
+  const cmd = injectClaudeCliFlags(ctx.interpolate(step.cmd), {
+    effortLevel: ctx.effortLevel,
+    modelOverride: ctx.llmModelOverride,
+    sessionId: ctx.claudeSessionId,
+  });
 
 
   ctx.emitLog('info', `Running in terminal: ${cmd}`);

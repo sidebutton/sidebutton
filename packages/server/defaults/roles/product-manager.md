@@ -45,9 +45,8 @@ SideButton gives you browser automation and provider integrations. Check `_syste
 - If no provider: navigate to your sprint board in browser, use `snapshot` to capture current state
 
 **Status communication:**
-- If chat provider connected: `chat.readChannel` for team updates, `chat.readThread` for ongoing discussions
 - Use `issues.comment` for async status updates on specific work items
-- If no provider: navigate to your chat tool in browser, use `snapshot` to read and `type` to post
+- For team chat, navigate to your chat tool in browser, use `snapshot` to read and `type` to post
 
 **Release tracking:**
 - If git provider connected: `git.listPRs` to see merged and in-review work, `git.listIssues` to check scope

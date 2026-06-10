@@ -7,6 +7,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Workflow } from './types.js';
 import { WorkflowError } from './types.js';
+import { getAllStepTypes, UNIMPLEMENTED_STEP_TYPES } from './steps/index.js';
 
 /**
  * Parse a workflow from YAML string
@@ -26,11 +27,54 @@ export function parseWorkflow(content: string): Workflow {
     if (!Array.isArray(data.steps)) {
       throw new WorkflowError('Invalid workflow: steps must be an array', 'PARSE_ERROR');
     }
+    validateStepTypes(data.steps as unknown[], 'steps');
     return data;
   } catch (e) {
     if (e instanceof WorkflowError) throw e;
     throw new WorkflowError(`Failed to parse YAML: ${e}`, 'PARSE_ERROR');
   }
+}
+
+/**
+ * Recursively assert every step (including nested control bodies) uses a step type the engine
+ * actually implements. Rejecting at parse/registration time — rather than letting the run reach an
+ * unimplemented step and throw mid-run — is the "fail fast" half of SCRUM-1189. Types that are part
+ * of the DSL conceptually but unwired in this build (see UNIMPLEMENTED_STEP_TYPES) get a clear
+ * "not supported in this build" reason; anything else is reported as an unknown step type.
+ */
+function validateStepTypes(steps: unknown[], path: string): void {
+  const supported = new Set(getAllStepTypes());
+
+  const walk = (items: unknown[], at: string): void => {
+    items.forEach((raw, i) => {
+      const here = `${at}[${i}]`;
+      if (!raw || typeof raw !== 'object') {
+        throw new WorkflowError(`Invalid workflow: ${here} is not a step object`, 'PARSE_ERROR');
+      }
+      const step = raw as { type?: unknown; then?: unknown; else_steps?: unknown; steps?: unknown };
+      if (typeof step.type !== 'string') {
+        throw new WorkflowError(`Invalid workflow: ${here} is missing a string "type"`, 'PARSE_ERROR');
+      }
+      if (!supported.has(step.type)) {
+        const reason = UNIMPLEMENTED_STEP_TYPES[step.type];
+        throw new WorkflowError(
+          reason
+            ? `Unsupported step type "${step.type}" at ${here}: ${reason}`
+            : `Unknown step type "${step.type}" at ${here}`,
+          'PARSE_ERROR',
+        );
+      }
+      // Recurse into nested step blocks (control.if / control.retry / control.foreach)
+      if (step.type === 'control.if') {
+        if (Array.isArray(step.then)) walk(step.then, `${here}.then`);
+        if (Array.isArray(step.else_steps)) walk(step.else_steps, `${here}.else_steps`);
+      } else if (step.type === 'control.retry' || step.type === 'control.foreach') {
+        if (Array.isArray(step.steps)) walk(step.steps, `${here}.steps`);
+      }
+    });
+  };
+
+  walk(steps, path);
 }
 
 /**

@@ -163,13 +163,6 @@ export async function executeStep(
       return executeGitListIssues(step, ctx);
     case 'git.getIssue':
       return executeGitGetIssue(step, ctx);
-    case 'chat.listChannels':
-    case 'chat.readChannel':
-    case 'chat.readThread':
-      throw new WorkflowError(
-        `${step.type} requires a chat provider (Slack). Coming soon.`,
-        'NOT_IMPLEMENTED',
-      );
     default:
       throw new WorkflowError(
         `Unknown step type: ${(step as { type: string }).type}`,
@@ -210,6 +203,18 @@ export function hasOwnRetryLogic(step: Step): boolean {
 }
 
 /**
+ * Step types that belong to the DSL surface conceptually but are NOT wired in this build
+ * (no concrete provider/executor). They are intentionally excluded from getAllStepTypes() and the
+ * `Step` union; `parseWorkflow` rejects them up front (PARSE_ERROR) with the reason below, so a
+ * workflow fails fast at parse/registration rather than mid-run. See SCRUM-1189.
+ */
+export const UNIMPLEMENTED_STEP_TYPES: Record<string, string> = {
+  'chat.listChannels': 'chat steps require a chat provider (e.g. Slack), which is not implemented in this build',
+  'chat.readChannel': 'chat steps require a chat provider (e.g. Slack), which is not implemented in this build',
+  'chat.readThread': 'chat steps require a chat provider (e.g. Slack), which is not implemented in this build',
+};
+
+/**
  * Return every step type the engine supports (for dynamic _system.md).
  */
 export function getAllStepTypes(): string[] {
@@ -226,7 +231,6 @@ export function getAllStepTypes(): string[] {
     'data.first', 'data.get', 'variable.set',
     'issues.create', 'issues.get', 'issues.search', 'issues.attach',
     'issues.transition', 'issues.comment',
-    'chat.listChannels', 'chat.readChannel', 'chat.readThread',
     'git.listPRs', 'git.getPR', 'git.createPR', 'git.listIssues', 'git.getIssue',
   ];
 }

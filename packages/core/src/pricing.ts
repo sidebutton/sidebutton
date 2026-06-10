@@ -6,6 +6,12 @@
  *
  * Keep `DEFAULT_MODEL_PRICES` in sync with the seed in
  * `website/scripts/seed.ts`.
+ *
+ * SCRUM-1228: the portal's `model_pricing` table is now maintained automatically by
+ * the daily price-sync cron (`website/src/lib/pricing-sync.ts`). This map is OUT OF
+ * that scope — it is the local-dashboard OFFLINE fallback only (no portal DB to
+ * query), so it stays a small hand-maintained list. Update it by hand when a model
+ * you run locally changes price.
  */
 
 export interface Usage {
@@ -23,6 +29,7 @@ export interface ModelPrice {
 }
 
 export const DEFAULT_MODEL_PRICES: Record<string, ModelPrice> = {
+  'claude-fable-5':    { input_per_1m_usd: 10,   output_per_1m_usd: 50, cache_read_per_1m_usd: 1,     cache_create_per_1m_usd: 12.5  },
   'claude-opus-4-8':   { input_per_1m_usd: 5,    output_per_1m_usd: 25, cache_read_per_1m_usd: 0.5,   cache_create_per_1m_usd: 6.25  },
   'claude-opus-4-7':   { input_per_1m_usd: 5,    output_per_1m_usd: 25, cache_read_per_1m_usd: 0.5,   cache_create_per_1m_usd: 6.25  },
   'claude-sonnet-4-6': { input_per_1m_usd: 3,    output_per_1m_usd: 15, cache_read_per_1m_usd: 0.3,   cache_create_per_1m_usd: 3.75  },

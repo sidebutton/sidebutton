@@ -1,6 +1,6 @@
 {
   "name": "@sidebutton/core",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Core workflow automation engine for AI agents — agentic workflows in YAML",
   "keywords": [
     "workflow",

@@ -43,10 +43,12 @@ async function executeSteps(steps: Step[], ctx: ExecutionContext): Promise<void>
     // Execute step with automatic retry
     let success = true;
     let message: string | undefined;
+    let caughtError: unknown;
 
     try {
       await executeStepWithRetry(step, ctx, index);
     } catch (error) {
+      caughtError = error;
       if (error instanceof WorkflowError && error.code === 'STOPPED') {
         // control.stop is a successful completion
         success = true;
@@ -69,7 +71,13 @@ async function executeSteps(steps: Step[], ctx: ExecutionContext): Promise<void>
     });
 
     if (!success) {
-      throw new WorkflowError(message ?? 'Step failed', 'SHELL_ERROR');
+      // Preserve the originating WorkflowError.code (CANCELLED, LLM_ERROR,
+      // EXTENSION_ERROR, WORKFLOW_NOT_FOUND, …) so callers can branch on it;
+      // only a genuinely-unknown error collapses to the generic SHELL_ERROR
+      // (SCRUM-1188).
+      throw caughtError instanceof WorkflowError
+        ? caughtError
+        : new WorkflowError(message ?? 'Step failed', 'SHELL_ERROR');
     }
 
     // Check for stop
@@ -172,10 +180,12 @@ async function executeWorkflow(
 
   let success = true;
   let message: string | undefined;
+  let caughtError: unknown;
 
   try {
     await executeSteps(workflow.steps, ctx);
   } catch (error) {
+    caughtError = error;
     if (error instanceof WorkflowError) {
       if (error.code === 'STOPPED') {
         // control.stop is a successful completion
@@ -204,7 +214,12 @@ async function executeWorkflow(
   });
 
   if (!success) {
-    throw new WorkflowError(message ?? 'Workflow failed', 'SHELL_ERROR');
+    // Preserve the originating WorkflowError.code so callers (server, dashboard
+    // run-log UI) can branch on err.code instead of parsing err.message; only a
+    // genuinely-unknown error collapses to the generic SHELL_ERROR (SCRUM-1188).
+    throw caughtError instanceof WorkflowError
+      ? caughtError
+      : new WorkflowError(message ?? 'Workflow failed', 'SHELL_ERROR');
   }
 }
 

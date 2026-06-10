@@ -35,7 +35,7 @@ import {
 import { matchTarget } from './matching.js';
 import { listInstalledPacks, installSkillPack, uninstallSkillPack } from './skill-pack.js';
 import { listRegistries, addRegistry, removeRegistry, getRegistryDir, readRegistryIndex } from './registry.js';
-import { applyProjects, statusProjects, resetProject, type ApplyProject, type StatusProject } from './projects.js';
+import { applyProjects, statusProjects, statConfigFiles, resetProject, type ApplyProject, type StatusProject } from './projects.js';
 import * as yaml from 'js-yaml';
 import type { WebSocket } from 'ws';
 import type {
@@ -1734,7 +1734,8 @@ export async function startServer(config: ServerConfig): Promise<void> {
       return reply.code(400).send({ error: `invalid projects JSON: ${err.message}` });
     }
     const results = await statusProjects(q.workspace_path, projects);
-    return { results };
+    const config_files = await statConfigFiles(q.workspace_path);
+    return { results, config_files };
   });
 
   // Git projects — hard reset a single checkout to origin/{branch} HEAD.
@@ -1827,7 +1828,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
   fastify.post<{
     Params: { id: string };
     Querystring: { sync?: string };
-    Body: { params?: Record<string, string>; completion_callback?: string; llm?: { model: string; effort: string } };
+    Body: { params?: Record<string, string>; completion_callback?: string; llm?: { model: string; effort: string }; claude_session_id?: string };
   }>('/api/workflows/:id/run', async (request, reply) => {
     const workflowId = request.params.id;
     const params = request.body.params ?? {};
@@ -1879,6 +1880,17 @@ export async function startServer(config: ServerConfig): Promise<void> {
       ctx.llmModelOverride = llmOverride.model;
     }
     ctx.effortLevel = llmOverride?.effort || settings.default_effort || 'medium';
+
+    // Pre-assigned Claude session id from the dispatcher (PID-TRACKING plan):
+    // terminal.run injects it as `--session-id`, making the job ↔ Claude
+    // session binding deterministic — the orchestrator finds the session by
+    // this UUID in the process list, and the Stop hook's session_id matches
+    // the job's record exactly. Strict UUID check keeps the value shell-safe.
+    const claudeSessionId = request.body.claude_session_id;
+    if (typeof claudeSessionId === 'string'
+        && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(claudeSessionId)) {
+      ctx.claudeSessionId = claudeSessionId;
+    }
 
     // Inject env-type user contexts as envVars (for platform providers)
     for (const uc of settings.user_contexts ?? []) {

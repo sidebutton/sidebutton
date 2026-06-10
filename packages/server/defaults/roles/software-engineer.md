@@ -65,9 +65,8 @@ SideButton gives you browser automation, workflow execution, and provider integr
 3. Leave review comments via provider or browser tools
 
 **Extract context from chat:**
-1. If chat provider connected: `chat.readChannel` or `chat.readThread` — faster and more complete than scrolling
-2. If no provider: navigate to the thread in browser, use `snapshot` to capture the discussion
-3. Summarize and use as input for tickets or documentation
+1. Navigate to the thread in browser, use `snapshot` to capture the discussion
+2. Summarize and use as input for tickets or documentation
 
 **Check sprint board / backlog:**
 1. If issues provider connected: `issues.search` with status or sprint filters
@@ -94,7 +93,6 @@ Platform-specific workflow implementations (named workflows, status values, fiel
 **Available step types for SE work:**
 - `issues.*` — `search`, `get`, `create`, `transition`, `comment`, `attach`
 - `git.*` — `listPRs`, `getPR`, `createPR`, `listIssues`, `getIssue`
-- `chat.*` — `readChannel`, `readThread`, `listChannels`
 - `terminal.*` — `open`, `run` — shell commands for builds, tests, git operations
 - `llm.*` — `generate`, `decide`, `classify` — AI-driven decisions and content generation
 - `browser.*` — `navigate`, `snapshot`, `click`, `type`, `scroll`, `extract` — universal fallback

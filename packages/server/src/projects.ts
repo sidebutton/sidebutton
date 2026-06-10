@@ -52,6 +52,16 @@ export interface ResetResult {
   error?: string;
 }
 
+export interface ConfigFileStat {
+  size: number;
+  mtime: string;
+}
+
+export interface ConfigFiles {
+  claude_md: ConfigFileStat | null;
+  mcp_json: ConfigFileStat | null;
+}
+
 export interface ResolvedTarget {
   ok: true;
   workspaceAbs: string;
@@ -275,6 +285,37 @@ export async function statusProjects(workspace_path: string, projects: StatusPro
     out.push(await statusProject(workspace_path, project));
   }
   return out;
+}
+
+async function statOne(filePath: string): Promise<ConfigFileStat | null> {
+  try {
+    const st = await fs.promises.stat(filePath);
+    return { size: st.size, mtime: st.mtime.toISOString() };
+  } catch {
+    // ENOENT (or any stat failure) → treat the file as absent.
+    return null;
+  }
+}
+
+/**
+ * Stat the agent's per-workspace config files (`CLAUDE.md`, `.mcp.json`) so the
+ * portal's workspace matrix can show their on-disk size + last-modified time.
+ * The agent is the only honest source of this state — `/api/config/apply`
+ * writes these files but nothing reported them back.
+ *
+ * Two `fs.stat` calls, no content reads, so it stays well within the portal's
+ * 5s status budget. A missing file resolves to `null` (not an error).
+ */
+export async function statConfigFiles(workspace_path: string): Promise<ConfigFiles> {
+  const resolved = resolveSubpath(workspace_path, '');
+  if (!resolved.ok) {
+    return { claude_md: null, mcp_json: null };
+  }
+  const [claude_md, mcp_json] = await Promise.all([
+    statOne(path.join(resolved.target, 'CLAUDE.md')),
+    statOne(path.join(resolved.target, '.mcp.json')),
+  ]);
+  return { claude_md, mcp_json };
 }
 
 export async function resetProject(workspace_path: string, subpath: string | null | undefined, branch: string): Promise<ResetResult> {

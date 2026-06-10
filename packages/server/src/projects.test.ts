@@ -11,6 +11,7 @@ import {
   applyProject,
   applyProjects,
   statusProject,
+  statConfigFiles,
   resetProject,
 } from './projects.js';
 
@@ -265,5 +266,74 @@ describe('git roundtrip', () => {
     const out = await resetProject(ws, '../escape', 'main');
     expect(out.ok).toBe(false);
     expect(out.error).toMatch(/escapes/);
+  });
+});
+
+describe('statConfigFiles', () => {
+  let tmp: string;
+
+  beforeAll(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-config-test-'));
+  });
+
+  afterAll(() => {
+    if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('reports size + mtime for present CLAUDE.md and .mcp.json', async () => {
+    const ws = path.join(tmp, 'present');
+    fs.mkdirSync(ws, { recursive: true });
+    const claudeBody = '# CLAUDE.md\nhello world\n';
+    const mcpBody = '{\n  "mcpServers": {}\n}\n';
+    fs.writeFileSync(path.join(ws, 'CLAUDE.md'), claudeBody);
+    fs.writeFileSync(path.join(ws, '.mcp.json'), mcpBody);
+
+    const out = await statConfigFiles(ws);
+    expect(out.claude_md).not.toBeNull();
+    expect(out.mcp_json).not.toBeNull();
+    expect(out.claude_md!.size).toBe(Buffer.byteLength(claudeBody));
+    expect(out.mcp_json!.size).toBe(Buffer.byteLength(mcpBody));
+    // mtime is a valid ISO-8601 timestamp.
+    expect(out.claude_md!.mtime).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
+    expect(Number.isNaN(Date.parse(out.claude_md!.mtime))).toBe(false);
+    expect(Number.isNaN(Date.parse(out.mcp_json!.mtime))).toBe(false);
+  });
+
+  it('returns null for absent files', async () => {
+    const ws = path.join(tmp, 'empty');
+    fs.mkdirSync(ws, { recursive: true });
+    const out = await statConfigFiles(ws);
+    expect(out).toEqual({ claude_md: null, mcp_json: null });
+  });
+
+  it('reports one file present and the other absent independently', async () => {
+    const ws = path.join(tmp, 'partial');
+    fs.mkdirSync(ws, { recursive: true });
+    fs.writeFileSync(path.join(ws, 'CLAUDE.md'), 'only claude\n');
+
+    const out = await statConfigFiles(ws);
+    expect(out.claude_md).not.toBeNull();
+    expect(out.claude_md!.size).toBe(Buffer.byteLength('only claude\n'));
+    expect(out.mcp_json).toBeNull();
+  });
+
+  it('respects ~ expansion in workspace_path', async () => {
+    const home = process.env.HOME || '/home/agent';
+    // Create the workspace directly under HOME so "~/<rel>" addresses it.
+    const homeWs = fs.mkdtempSync(path.join(home, '.sb-config-expand-'));
+    try {
+      fs.writeFileSync(path.join(homeWs, '.mcp.json'), '{}\n');
+      const rel = path.relative(home, homeWs);
+      const out = await statConfigFiles('~/' + rel);
+      expect(out.mcp_json).not.toBeNull();
+      expect(out.mcp_json!.size).toBe(Buffer.byteLength('{}\n'));
+    } finally {
+      fs.rmSync(homeWs, { recursive: true, force: true });
+    }
+  });
+
+  it('returns nulls (not an error) for an empty workspace_path', async () => {
+    const out = await statConfigFiles('');
+    expect(out).toEqual({ claude_md: null, mcp_json: null });
   });
 });

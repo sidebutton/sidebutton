@@ -119,9 +119,8 @@ export type Step =
   | { type: 'issues.attach'; issue_key: string; files: Array<{ filename: string; data: string; content_type?: string }>; provider?: string; site?: string; as?: string }
   | { type: 'issues.transition'; issue_key: string; status: string; provider?: string; site?: string; as?: string }
   | { type: 'issues.comment'; issue_key: string; body: string; provider?: string; site?: string; as?: string }
-  | { type: 'chat.listChannels'; types?: string; limit?: number; provider?: string; as?: string }
-  | { type: 'chat.readChannel'; channel: string; limit?: number; max_days?: number; provider?: string; as?: string }
-  | { type: 'chat.readThread'; channel: string; thread_ts: string; max_days?: number; provider?: string; as?: string }
+  // chat.* step types removed (SCRUM-1189): no chat provider is implemented in this build.
+  // Re-add them together with the executeStep arm, getAllStepTypes(), and a wired provider class.
   // Abstract git step types — provider auto-detected from active connector
   | { type: 'git.listPRs'; repo?: string; state?: string; limit?: number; provider?: string; as?: string }
   | { type: 'git.getPR'; repo?: string; number: number; provider?: string; as?: string }

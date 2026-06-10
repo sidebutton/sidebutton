@@ -124,6 +124,12 @@ export class ExecutionContext {
   // LLM model override from dispatch (set when effort-based selection provides a specific model)
   llmModelOverride?: string;
 
+  // Pre-assigned Claude Code session UUID from the dispatcher (injected as
+  // --session-id in terminal.run). Makes the job ↔ Claude session binding
+  // deterministic: the orchestrator finds the session by this UUID in the
+  // process list, and hook posts carry the same id (PID-TRACKING plan).
+  claudeSessionId?: string;
+
   // Event emitter callback
   private eventCallback?: (event: WorkflowEvent) => void;
 
@@ -179,6 +185,7 @@ export class ExecutionContext {
     child.envVars = { ...this.envVars };
     child.effortLevel = this.effortLevel;
     child.llmModelOverride = this.llmModelOverride;
+    child.claudeSessionId = this.claudeSessionId;
     child.eventCallback = this.eventCallback;
 
     return child;
