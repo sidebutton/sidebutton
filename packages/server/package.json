@@ -59,7 +59,7 @@
   "dependencies": {
     "@fastify/cors": "^11.2.0",
     "@fastify/formbody": "^8.0.2",
-    "@fastify/static": "^9.1.0",
+    "@fastify/static": "^9.1.1",
     "@fastify/websocket": "^11.2.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@sentry/node": "^10.48.0",
