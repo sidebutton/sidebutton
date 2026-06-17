@@ -36,6 +36,7 @@ import { matchTarget } from './matching.js';
 import { listInstalledPacks, installSkillPack, uninstallSkillPack } from './skill-pack.js';
 import { listRegistries, addRegistry, removeRegistry, getRegistryDir, readRegistryIndex } from './registry.js';
 import { applyProjects, statusProjects, statConfigFiles, resetProject, type ApplyProject, type StatusProject } from './projects.js';
+import { applySkills, type ApplySkill } from './skills.js';
 import * as yaml from 'js-yaml';
 import type { WebSocket } from 'ws';
 import type {
@@ -1713,6 +1714,22 @@ export async function startServer(config: ServerConfig): Promise<void> {
       return reply.code(400).send({ error: 'projects must be an array' });
     }
     const results = await applyProjects(body.workspace_path, body.projects as ApplyProject[]);
+    return { results };
+  });
+
+  // Skills — unpack + reconcile skill zips into WORKSPACE/.claude/skills/.
+  fastify.post('/api/skills/apply', async (request, reply) => {
+    const body = request.body as { workspace_path?: unknown; skills?: unknown } | undefined;
+    if (!body || typeof body !== 'object') {
+      return reply.code(400).send({ error: 'request body is required' });
+    }
+    if (typeof body.workspace_path !== 'string' || !body.workspace_path) {
+      return reply.code(400).send({ error: 'workspace_path is required' });
+    }
+    if (!Array.isArray(body.skills)) {
+      return reply.code(400).send({ error: 'skills must be an array' });
+    }
+    const results = await applySkills(body.workspace_path, body.skills as ApplySkill[]);
     return { results };
   });
 

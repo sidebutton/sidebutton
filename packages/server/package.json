@@ -1,6 +1,6 @@
 {
   "name": "@sidebutton/server",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "mcpName": "io.github.sidebutton/sidebutton",
   "description": "SideButton MCP server for AI agents — REST API, web dashboard, knowledge packs, and workflow engine",
   "keywords": [
@@ -69,10 +69,12 @@
     "commander": "^14.0.3",
     "dotenv": "^17.4.1",
     "fastify": "^5.8.4",
+    "adm-zip": "^0.5.16",
     "js-yaml": "^4.1.1",
     "ws": "^8.20.0"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.6.0",
     "@types/ws": "^8.18.1",

@@ -43,12 +43,23 @@ import { matchTarget } from '../matching.js';
 import { VERSION } from '../version.js';
 
 /**
+ * The bundled default skill pack's domain directory under skills/. On duplicate workflow ids,
+ * any other (account) pack deterministically overrides this one — mirroring the portal's
+ * account-over-default name shadowing in getPipelinesForAccount (SCRUM-1268).
+ */
+const DEFAULT_SKILL_PACK_DOMAIN = 'agents';
+
+/**
  * Recursively load all YAML workflows from a directory tree (for skill packs).
+ * Entries are visited in sorted name order so duplicate-id resolution never
+ * depends on filesystem enumeration order.
  */
 function loadWorkflowsRecursive(dir: string): Workflow[] {
   const workflows: Workflow[] = [];
   try {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
       if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue;
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
@@ -162,14 +173,35 @@ export class McpHandler {
       : [];
 
     // Load workflows from installed skill packs: skills/<domain>/**/*.yaml
+    // Duplicate workflow ids resolve deterministically (SCRUM-1268): domains load in sorted
+    // order with the default pack first, and a later (account) pack's copy replaces the default
+    // pack's — so which YAML executes matches the portal's account-over-default precedence
+    // instead of readdir enumeration order. Shadowing is logged for operators.
     const skillsDir = path.join(this.configDir, 'skills');
     if (fs.existsSync(skillsDir)) {
       try {
-        for (const domain of fs.readdirSync(skillsDir)) {
-          const domainDir = path.join(skillsDir, domain);
-          if (!fs.statSync(domainDir).isDirectory()) continue;
-          const skillWorkflows = loadWorkflowsRecursive(domainDir);
-          this.workflows.push(...skillWorkflows);
+        const domains = fs.readdirSync(skillsDir)
+          .filter((domain) => {
+            try { return fs.statSync(path.join(skillsDir, domain)).isDirectory(); } catch { return false; }
+          })
+          .sort((a, b) =>
+            a === DEFAULT_SKILL_PACK_DOMAIN ? -1
+            : b === DEFAULT_SKILL_PACK_DOMAIN ? 1
+            : a.localeCompare(b));
+        const byId = new Map<string, { workflow: Workflow; domain: string }>();
+        for (const domain of domains) {
+          for (const workflow of loadWorkflowsRecursive(path.join(skillsDir, domain))) {
+            const existing = byId.get(workflow.id);
+            if (existing) {
+              console.warn(
+                `Skill workflow "${workflow.id}" from "${domain}" shadows the copy from "${existing.domain}"`,
+              );
+            }
+            byId.set(workflow.id, { workflow, domain });
+          }
+        }
+        for (const { workflow } of byId.values()) {
+          this.workflows.push(workflow);
         }
       } catch {
         // skip if skills dir unreadable

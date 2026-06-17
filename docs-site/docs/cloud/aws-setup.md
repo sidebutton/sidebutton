@@ -38,6 +38,7 @@ SideButton provisions EC2 instances on your behalf using a dedicated IAM user wi
         "ec2:StopInstances",
         "ec2:CreateSecurityGroup",
         "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:RevokeSecurityGroupIngress",
         "ec2:DeleteSecurityGroup",
         "ec2:DescribeSecurityGroups",
         "ec2:CreateKeyPair",
@@ -108,6 +109,7 @@ The IAM policy in [Step 1](#step-1-create-an-iam-policy) **is** the required per
 | `SignatureDoesNotMatch` | Secret Access Key is wrong | Copy it again from the AWS console |
 | `AuthFailure` | Credentials are inactive or expired | Check IAM user status in IAM → Users |
 | Permission denied on `ec2:RunInstances` | IAM policy is missing the action | Attach the full policy from Step 1 |
+| Firewall allowlist update fails with `UnauthorizedOperation` | Connection was created before `ec2:RevokeSecurityGroupIngress` joined the required set | Add the action to the policy (it is in the Step 1 policy above) |
 | `Cannot simulate permissions` | IAM user lacks `iam:SimulatePrincipalPolicy` | Add the action to the policy or verify manually |
 
 ---
