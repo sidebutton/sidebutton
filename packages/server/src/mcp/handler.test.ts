@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { McpHandler } from './handler.js';
 import type { ExtensionClientImpl } from '../extension.js';
 
@@ -86,4 +87,84 @@ describe('skill workflow duplicate-id precedence (SCRUM-1268)', () => {
       warn.mockRestore();
     }
   });
+});
+
+// SCRUM-1406 — a `runtime: "service"` plugin installed under configDir/plugins/ should be
+// spawned as a persistent child, its tools aggregated (slug-namespaced) into tools/list, and
+// tools/call forwarded to it with state surviving across calls.
+
+const SERVICE_FIXTURE = fileURLToPath(new URL('../plugins/__fixtures__/counter-service.mjs', import.meta.url));
+
+async function until(predicate: () => Promise<boolean> | boolean, timeoutMs = 8000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error('until timed out');
+}
+
+describe('service-plugin aggregation via McpHandler (SCRUM-1406)', () => {
+  let handler: McpHandler;
+  let tmp: string;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function call(method: string, params?: Record<string, unknown>): Promise<any> {
+    const res = await handler.handleRequest(JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }));
+    const parsed = JSON.parse(res);
+    if (parsed.error) throw new Error(parsed.error.message);
+    return parsed.result;
+  }
+  const listToolNames = async (): Promise<string[]> =>
+    (await call('tools/list')).tools.map((t: { name: string }) => t.name);
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-svc-handler-'));
+    const pluginDir = path.join(tmp, 'plugins', 'counter');
+    fs.mkdirSync(pluginDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        name: 'counter',
+        version: '1.0.0',
+        description: 'counter service',
+        runtime: 'service',
+        service: { command: `node ${SERVICE_FIXTURE}` },
+      }),
+    );
+    const empty = (name: string): string => {
+      const d = path.join(tmp, name);
+      fs.mkdirSync(d);
+      return d;
+    };
+    handler = new McpHandler(empty('actions'), empty('workflows'), empty('templates'), empty('run-logs'), ext, tmp);
+  });
+
+  afterEach(async () => {
+    await handler.shutdownServicePlugins();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('lists, round-trips, persists state, and summarizes a service plugin', async () => {
+    await until(async () => (await listToolNames()).includes('counter_increment'));
+
+    // AC1: slug-namespaced tool appears in tools/list
+    expect(await listToolNames()).toContain('counter_increment');
+
+    // AC1 round-trip + AC2 state persists across calls (one long-lived child)
+    const inc1 = await call('tools/call', { name: 'counter_increment', arguments: { by: 1 } });
+    expect(inc1.content[0].text).toBe('1');
+    const inc2 = await call('tools/call', { name: 'counter_increment', arguments: {} });
+    expect(inc2.content[0].text).toBe('2');
+
+    // /health summary includes the service plugin with runtime + namespaced tools
+    const svc = handler.getLoadedPluginSummaries().find((s) => s.name === 'counter');
+    expect(svc?.runtime).toBe('service');
+    expect(svc?.tools).toContain('counter_increment');
+  }, 15000);
+
+  it('still throws "Tool not found" for an unknown tool', async () => {
+    await until(async () => (await listToolNames()).includes('counter_increment'));
+    await expect(call('tools/call', { name: 'does_not_exist', arguments: {} })).rejects.toThrow(/Tool not found/);
+  }, 15000);
 });

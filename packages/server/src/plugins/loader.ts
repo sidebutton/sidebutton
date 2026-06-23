@@ -6,9 +6,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { MCP_TOOLS } from '../mcp/tools.js';
 import { copyDirRecursive } from '../skill-pack.js';
-import type { PluginManifest, PluginToolDefinition, LoadedPlugin } from './types.js';
+import type {
+  PluginManifest,
+  PluginToolDefinition,
+  PluginRuntime,
+  PluginServiceSpec,
+  PluginServiceToolConfig,
+  LoadedPlugin,
+} from './types.js';
 
-const REQUIRED_MANIFEST_FIELDS = ['name', 'version', 'description', 'tools'] as const;
+// Fields every manifest needs regardless of runtime. `tools` is required only for the
+// `process` tier (service plugins discover their tools live from the child), so it is
+// validated separately below.
+const BASE_REQUIRED_FIELDS = ['name', 'version', 'description'] as const;
 const REQUIRED_TOOL_FIELDS = ['name', 'description', 'inputSchema', 'handler'] as const;
 
 function isValidInputSchema(schema: unknown): schema is Record<string, unknown> {
@@ -43,13 +53,83 @@ function validateTool(tool: unknown, pluginName: string): tool is PluginToolDefi
   return true;
 }
 
+/**
+ * Normalize the manifest `runtime` field. Defaults to `process`; `exec` is accepted as a
+ * back-compat alias (the design-of-record doc spells the default tier `exec`). Returns null
+ * for an unrecognized value so the caller can reject the manifest with a clear warning.
+ */
+function normalizeRuntime(value: unknown): PluginRuntime | null {
+  if (value === undefined || value === null) return 'process';
+  if (value === 'process' || value === 'exec') return 'process';
+  if (value === 'service') return 'service';
+  return null;
+}
+
+function isPositiveNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0;
+}
+
+/** Validate the `service` spawn spec of a `runtime: "service"` manifest. */
+function validateServiceSpec(value: unknown, pluginName: string): PluginServiceSpec | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    console.warn(`[plugin:${pluginName}] runtime "service" requires a "service" object`);
+    return null;
+  }
+  const s = value as Record<string, unknown>;
+  if (typeof s.command !== 'string' || s.command.trim() === '') {
+    console.warn(`[plugin:${pluginName}] service plugin missing required field "service.command"`);
+    return null;
+  }
+  const spec: PluginServiceSpec = { command: s.command };
+
+  if (s.timeoutMs !== undefined) {
+    if (!isPositiveNumber(s.timeoutMs)) {
+      console.warn(`[plugin:${pluginName}] service.timeoutMs must be a positive number`);
+      return null;
+    }
+    spec.timeoutMs = s.timeoutMs;
+  }
+  if (s.toolNamespace !== undefined) {
+    if (typeof s.toolNamespace !== 'string' || s.toolNamespace.trim() === '') {
+      console.warn(`[plugin:${pluginName}] service.toolNamespace must be a non-empty string`);
+      return null;
+    }
+    spec.toolNamespace = s.toolNamespace;
+  }
+  if (s.tools !== undefined) {
+    if (typeof s.tools !== 'object' || s.tools === null || Array.isArray(s.tools)) {
+      console.warn(`[plugin:${pluginName}] service.tools must be an object map of tool name → config`);
+      return null;
+    }
+    const tools: Record<string, PluginServiceToolConfig> = {};
+    for (const [toolName, cfg] of Object.entries(s.tools as Record<string, unknown>)) {
+      if (typeof cfg !== 'object' || cfg === null || Array.isArray(cfg)) {
+        console.warn(`[plugin:${pluginName}] service.tools["${toolName}"] must be an object`);
+        return null;
+      }
+      const c = cfg as Record<string, unknown>;
+      const toolCfg: PluginServiceToolConfig = {};
+      if (c.timeoutMs !== undefined) {
+        if (!isPositiveNumber(c.timeoutMs)) {
+          console.warn(`[plugin:${pluginName}] service.tools["${toolName}"].timeoutMs must be a positive number`);
+          return null;
+        }
+        toolCfg.timeoutMs = c.timeoutMs;
+      }
+      tools[toolName] = toolCfg;
+    }
+    spec.tools = tools;
+  }
+  return spec;
+}
+
 function validateManifest(data: unknown, pluginDir: string): PluginManifest | null {
   if (typeof data !== 'object' || data === null) {
     console.warn(`[plugin:${pluginDir}] manifest is not an object`);
     return null;
   }
   const obj = data as Record<string, unknown>;
-  for (const field of REQUIRED_MANIFEST_FIELDS) {
+  for (const field of BASE_REQUIRED_FIELDS) {
     if (obj[field] === undefined || obj[field] === null) {
       console.warn(`[plugin:${pluginDir}] manifest missing required field "${field}"`);
       return null;
@@ -57,6 +137,33 @@ function validateManifest(data: unknown, pluginDir: string): PluginManifest | nu
   }
   if (typeof obj.name !== 'string' || typeof obj.version !== 'string' || typeof obj.description !== 'string') {
     console.warn(`[plugin:${pluginDir}] manifest has invalid field types`);
+    return null;
+  }
+
+  const runtime = normalizeRuntime(obj.runtime);
+  if (runtime === null) {
+    console.warn(`[plugin:${obj.name}] invalid runtime "${String(obj.runtime)}" (expected "process" or "service")`);
+    return null;
+  }
+
+  // Service tier: require a valid spawn spec; tools are discovered live (any declared
+  // static tools are ignored), so the loaded manifest carries an empty tools array.
+  if (runtime === 'service') {
+    const service = validateServiceSpec(obj.service, obj.name);
+    if (!service) return null;
+    return {
+      name: obj.name,
+      version: obj.version,
+      description: obj.description,
+      runtime: 'service',
+      service,
+      tools: [],
+    };
+  }
+
+  // Process tier (default): tools required and validated as before.
+  if (obj.tools === undefined || obj.tools === null) {
+    console.warn(`[plugin:${pluginDir}] manifest missing required field "tools"`);
     return null;
   }
   if (!Array.isArray(obj.tools)) {
@@ -77,6 +184,7 @@ function validateManifest(data: unknown, pluginDir: string): PluginManifest | nu
     name: obj.name,
     version: obj.version,
     description: obj.description,
+    runtime: 'process',
     tools: validTools,
   };
 }

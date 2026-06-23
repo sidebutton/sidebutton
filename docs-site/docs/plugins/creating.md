@@ -159,8 +159,52 @@ my-plugin/
 ```
 
 ::: warning
-Never rely on in-memory state between tool calls. Each call spawns a fresh handler process.
+`process` plugins (the default) are stateless — each call spawns a fresh handler, so never rely on in-memory state between calls. If you need state that survives across calls, use a [service plugin](#service-plugins-persistent-runtime) instead.
 :::
+
+## Service Plugins (persistent runtime)
+
+A `process` plugin is stateless — every call spawns a fresh handler. When a capability must **hold state across calls** (a session, an open connection, a held mouse button) or run **longer than the 30s process cap**, declare `"runtime": "service"`.
+
+A service plugin is a **persistent child stdio MCP server**: the SideButton server starts it once, discovers its tools, forwards `tools/call` to it, restarts it if it crashes, and stops it on shutdown.
+
+```json
+{
+  "name": "my-service",
+  "version": "1.0.0",
+  "description": "A stateful capability",
+  "runtime": "service",
+  "service": {
+    "command": "node server.js",
+    "timeoutMs": 60000,
+    "tools": { "long_task": { "timeoutMs": 120000 } }
+  }
+}
+```
+
+How it differs from a `process` plugin:
+
+- **No `tools[]`** — the child advertises its own tools via MCP `tools/list`; the server discovers them live.
+- **Namespaced** — each tool is exposed as `<name>_<tool>` (override the prefix with `service.toolNamespace`), so service tools never collide with core tools.
+- **Serialized** — calls to one service run one at a time (a held key / open session can't be raced).
+- **Timeouts** — set a service-wide `service.timeoutMs` plus per-tool overrides under `service.tools`.
+
+The `command` is your own MCP server — anything that speaks MCP over stdio (the [MCP SDK](https://modelcontextprotocol.io) makes this a few lines in Node or Python). It must write **only MCP protocol frames to stdout**; send logs to stderr.
+
+```mermaid
+sequenceDiagram
+  participant A as AI Assistant
+  participant S as SideButton server
+  participant P as service plugin (persistent child)
+  S->>P: spawn once (on reload)
+  S->>P: tools/list
+  P-->>S: [ my_service_long_task, … ]
+  A->>S: tools/call my_service_long_task
+  S->>P: forward (state preserved)
+  P-->>S: result
+  A->>S: tools/call my_service_long_task
+  S->>P: forward (same child — state intact)
+```
 
 ## Error Handling
 

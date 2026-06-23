@@ -61,5 +61,10 @@ export async function startStdioMode(config: StdioModeConfig): Promise<void> {
   process.stderr.write('[sidebutton] ready for MCP connections via stdio\n');
 
   // Start stdio transport (this blocks until disconnected)
-  await startStdioTransport(mcpHandler);
+  try {
+    await startStdioTransport(mcpHandler);
+  } finally {
+    // Stop any persistent service-plugin children so they don't outlive the session.
+    await mcpHandler.shutdownServicePlugins();
+  }
 }

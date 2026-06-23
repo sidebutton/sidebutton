@@ -15,6 +15,12 @@ import { WorkflowError } from '../types.js';
 const execAsync = promisify(exec);
 const IS_MAC = platform() === 'darwin';
 
+/**
+ * Strict Claude Code session UUID (v4-shaped). Guards every interpolation of a
+ * session id into a shell command or tmux target name, keeping it injection-safe.
+ */
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
 function expandHome(p: string | undefined): string | undefined {
   if (!p) return p;
   if (p.startsWith('~/')) return homedir() + p.slice(1);
@@ -121,11 +127,70 @@ export function injectClaudeCliFlags(
   if (opts.modelOverride) {
     cmd = cmd.replace('claude ', `claude --model ${opts.modelOverride} `);
   }
-  if (opts.sessionId
-      && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(opts.sessionId)) {
+  if (opts.sessionId && UUID_RE.test(opts.sessionId)) {
     cmd = cmd.replace('claude ', `claude --session-id ${opts.sessionId} `);
   }
   return cmd;
+}
+
+/**
+ * tmux session name a dispatched Claude runs under. Keyed by the `--session-id`
+ * UUID the portal pre-assigns (`ctx.claudeSessionId`) so the server's
+ * `POST /api/session/input` can resolve `sbjob-<session_id>` and inject a native
+ * user turn (SCRUM-1384). Falls back to a timestamp suffix for manual/operator
+ * runs that carry no portal-assigned id — those are never targeted by the
+ * endpoint. The UUID guard keeps the name shell/tmux-target-safe.
+ */
+export function tmuxJobSessionName(
+  sessionId: string | undefined,
+  fallbackSuffix: string | number,
+): string {
+  const keyed = sessionId && UUID_RE.test(sessionId);
+  return `sbjob-${keyed ? sessionId : fallbackSuffix}`;
+}
+
+/** Spawn descriptor (executable + argv) for launching a terminal-run command. */
+export interface TerminalLaunch {
+  /** tmux session name (`sbjob-<id>`) the input endpoint resolves. */
+  sessionName: string;
+  /** executable to spawn (no intermediate shell). */
+  file: string;
+  /** argv passed to the executable. */
+  args: string[];
+}
+
+/**
+ * Build the spawn descriptor that runs `scriptPath` inside a tmux session named
+ * `sessionName`. With an X display, xfce4-terminal renders the tmux pane so the
+ * live desktop / noVNC operator can still type into it; headless creates a
+ * detached tmux session. Either way Claude runs under tmux, which is what lets
+ * `POST /api/session/input` paste a native turn into the live session.
+ *
+ * argv is spawned directly (no shell), so `scriptPath` and `title` are never
+ * shell-interpolated. `-x` makes xfce4-terminal exec the remaining argv as the
+ * command (robust quoting vs the literal `-e "<string>"`); `--disable-server`
+ * stops it delegating to an existing instance and returning immediately.
+ */
+export function buildTerminalLaunch(opts: {
+  hasX: boolean;
+  sessionName: string;
+  scriptPath: string;
+  title?: string;
+}): TerminalLaunch {
+  const { hasX, sessionName, scriptPath, title } = opts;
+  if (hasX) {
+    const titleArg = title ? [`--title=${title}`] : [];
+    return {
+      sessionName,
+      file: 'xfce4-terminal',
+      args: ['--disable-server', ...titleArg, '-x', 'tmux', 'new-session', '-A', '-s', sessionName, scriptPath],
+    };
+  }
+  return {
+    sessionName,
+    file: 'tmux',
+    args: ['new-session', '-d', '-s', sessionName, scriptPath],
+  };
 }
 
 export async function executeTerminalRun(
@@ -162,7 +227,12 @@ export async function executeTerminalRun(
       );
     }
   } else {
-    // Linux: write command to temp script, launch in GUI terminal or tmux fallback
+    // Linux: write command to a temp script, then launch it inside a tmux
+    // session named sbjob-<session_id>. Under X, xfce4-terminal renders the
+    // tmux pane (live desktop / noVNC operator typing unchanged); headless
+    // creates it detached. Running under tmux is what lets the server's
+    // POST /api/session/input paste a native user turn into the live session
+    // (SCRUM-1384). Detached + unref keeps the launcher non-blocking.
     const resolvedCwd = ctx.terminalCwd || homedir();
 
     try {
@@ -171,29 +241,24 @@ export async function executeTerminalRun(
       chmodSync(scriptPath, 0o755);
 
       const hasX = await probeX11Display();
+      const launch = buildTerminalLaunch({
+        hasX,
+        sessionName: tmuxJobSessionName(ctx.claudeSessionId, Date.now()),
+        scriptPath,
+        title: ctx.terminalTitle,
+      });
 
-      if (hasX) {
-        // GUI path: xfce4-terminal with X display
-        const display = process.env.DISPLAY || ':10';
-        const titleArg = ctx.terminalTitle
-          ? ` --title="${ctx.terminalTitle.replace(/"/g, '\\"')}"`
-          : '';
-        // --disable-server prevents xfce4-terminal from delegating to an
-        // existing instance and returning immediately
-        const termCmd = `DISPLAY=${display} xfce4-terminal --disable-server${titleArg} -e "${scriptPath}"`;
+      // xfce4-terminal needs DISPLAY; headless tmux does not.
+      const env = hasX
+        ? { ...process.env, DISPLAY: process.env.DISPLAY || ':10' }
+        : process.env;
+      const child = spawn(launch.file, launch.args, { stdio: 'ignore', detached: true, env });
+      child.unref();
 
-        const child = spawn('sh', ['-c', termCmd], { stdio: 'ignore', detached: true });
-        child.unref();
-      } else {
-        // Headless fallback: tmux session
-        const sessionName = `sb-${Date.now()}`;
-        const child = spawn('tmux', ['new-session', '-d', '-s', sessionName, scriptPath], {
-          stdio: 'ignore',
-          detached: true,
-        });
-        child.unref();
-        ctx.emitLog('info', `Launched in tmux session "${sessionName}" (headless)`);
-      }
+      ctx.emitLog(
+        'info',
+        `Launched in tmux session "${launch.sessionName}" (${hasX ? 'xfce4-terminal pane' : 'headless'})`,
+      );
     } catch (error) {
       if (error instanceof WorkflowError) throw error;
       throw new WorkflowError(

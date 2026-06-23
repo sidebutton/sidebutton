@@ -189,3 +189,86 @@ describe('summarizePlugins (/health contract)', () => {
     expect(summarizePlugins(loadPlugins(path.join(tmpDir, 'nope')))).toEqual([]);
   });
 });
+
+describe('service runtime manifests (SCRUM-1406)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-svc-loader-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const serviceManifest = {
+    name: 'svc-plugin',
+    version: '1.0.0',
+    description: 'A service plugin',
+    runtime: 'service',
+    service: {
+      command: 'node server.js',
+      timeoutMs: 120000,
+      tools: { hold_key: { timeoutMs: 100000 } },
+    },
+  };
+
+  it('loads a service plugin (runtime + service.command, no per-tool handler)', () => {
+    writePlugin(path.join(tmpDir, 'svc-plugin'), serviceManifest);
+
+    const plugins = loadPlugins(tmpDir);
+
+    expect(plugins).toHaveLength(1);
+    expect(plugins[0].manifest.runtime).toBe('service');
+    expect(plugins[0].manifest.service?.command).toBe('node server.js');
+    expect(plugins[0].manifest.service?.timeoutMs).toBe(120000);
+    expect(plugins[0].manifest.service?.tools?.hold_key?.timeoutMs).toBe(100000);
+    // Service tools are discovered live from the child, not declared in the manifest.
+    expect(plugins[0].manifest.tools).toEqual([]);
+  });
+
+  it('rejects a service plugin missing service.command', () => {
+    writePlugin(path.join(tmpDir, 'bad-svc'), {
+      name: 'bad-svc',
+      version: '1.0.0',
+      description: 'no command',
+      runtime: 'service',
+      service: {},
+    });
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(loadPlugins(tmpDir)).toEqual([]);
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('service.command'));
+    spy.mockRestore();
+  });
+
+  it('defaults runtime to "process" when omitted', () => {
+    writePlugin(path.join(tmpDir, 'test-plugin'), validManifest);
+    expect(loadPlugins(tmpDir)[0].manifest.runtime).toBe('process');
+  });
+
+  it('accepts "exec" as a back-compat alias for the process tier', () => {
+    writePlugin(path.join(tmpDir, 'exec-plugin'), { ...validManifest, name: 'exec-plugin', runtime: 'exec' });
+
+    const plugins = loadPlugins(tmpDir);
+
+    expect(plugins).toHaveLength(1);
+    expect(plugins[0].manifest.runtime).toBe('process');
+  });
+
+  it('rejects an unknown runtime', () => {
+    writePlugin(path.join(tmpDir, 'weird'), { ...validManifest, name: 'weird', runtime: 'bogus' });
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(loadPlugins(tmpDir)).toEqual([]);
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('invalid runtime'));
+    spy.mockRestore();
+  });
+
+  it('does not subject a service plugin to the whole-plugin core-collision check', () => {
+    // A service plugin carries no manifest tools[], so the process-tier collision guard
+    // can never reject it — namespacing handles per-tool collisions at aggregation time.
+    writePlugin(path.join(tmpDir, 'svc-plugin'), serviceManifest);
+    expect(loadPlugins(tmpDir)).toHaveLength(1);
+  });
+});

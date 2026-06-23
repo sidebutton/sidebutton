@@ -35,7 +35,7 @@ import {
 } from '@sidebutton/core';
 import type { ExtensionClientImpl } from '../extension.js';
 import { MCP_TOOLS, type McpTool } from './tools.js';
-import { loadPlugins, executePluginTool, summarizePlugins } from '../plugins/index.js';
+import { loadPlugins, executePluginTool, summarizePlugins, PluginServiceManager } from '../plugins/index.js';
 import type { LoadedPlugin, PluginToolDefinition } from '../plugins/types.js';
 import { reportRunLog } from '../services/report.js';
 import { loadContextAll, loadTargets, loadRoles } from '../context.js';
@@ -128,6 +128,7 @@ export class McpHandler {
   private workflows: Workflow[] = [];
   private templates: Workflow[] = [];
   private plugins: LoadedPlugin[] = [];
+  private serviceManager = new PluginServiceManager();
   private broadcaster: DashboardBroadcaster | null = null;
   private runningWorkflowsTracker: RunningWorkflowsTracker | null = null;
 
@@ -211,6 +212,11 @@ export class McpHandler {
     // Load agent plugins from plugins/ directory
     const pluginsDir = path.join(this.configDir, 'plugins');
     this.plugins = loadPlugins(pluginsDir);
+
+    // Reconcile persistent service plugins (runtime: "service"). Diff-based + idempotent, so the
+    // frequent reload() calls don't restart healthy children; child spawn/tools-list are async and
+    // run in the background (reload() stays synchronous/void).
+    this.serviceManager.sync(this.plugins);
   }
 
   /**
@@ -375,8 +381,14 @@ export class McpHandler {
       case 'notifications/cancelled':
         // Notifications don't need a response
         return {};
-      case 'tools/list':
-        return { tools: [...MCP_TOOLS, ...this.getPluginMcpTools()] };
+      case 'tools/list': {
+        // Core + process-plugin tools, then aggregated service-plugin tools (slug-namespaced;
+        // a service tool whose namespaced name collides with anything already listed is dropped).
+        const processTools = this.getPluginMcpTools();
+        const reserved = new Set<string>([...MCP_TOOLS, ...processTools].map((t) => t.name));
+        const serviceTools = this.serviceManager.getAggregatedTools(reserved);
+        return { tools: [...MCP_TOOLS, ...processTools, ...serviceTools] };
+      }
       case 'tools/call':
         return this.handleToolsCall(params);
       case 'resources/list':
@@ -480,10 +492,15 @@ export class McpHandler {
       case 'clear_basic_auth':
         return this.toolClearBasicAuth(args);
       default: {
-        // Check plugin tools before throwing
+        // Process-plugin tools (spawn-per-call) first…
         const pluginMatch = this.findPluginTool(name);
         if (pluginMatch) {
           return executePluginTool(pluginMatch.plugin, pluginMatch.tool, args);
+        }
+        // …then forward to a persistent service plugin if it owns this (namespaced) tool.
+        const serviceCall = this.serviceManager.routeCall(name, args);
+        if (serviceCall) {
+          return serviceCall;
         }
         throw new Error(`Tool not found: ${name}`);
       }
@@ -495,8 +512,16 @@ export class McpHandler {
    * Surfaces exactly what the portal renders (name, version, tool names) so
    * the fleet list + agent detail can reveal each agent's deployed plugins.
    */
-  getLoadedPluginSummaries(): { name: string; version: string; description?: string; tools: string[] }[] {
-    return summarizePlugins(this.plugins);
+  getLoadedPluginSummaries(): { name: string; version: string; description?: string; tools: string[]; runtime?: 'process' | 'service' }[] {
+    // Process plugins from their static manifest; service plugins from the manager's live,
+    // namespaced tool list (with runtime: "service" so /health + the portal can flag them).
+    const processSummaries = summarizePlugins(this.plugins.filter((p) => p.manifest.runtime !== 'service'));
+    return [...processSummaries, ...this.serviceManager.getSummaries()];
+  }
+
+  /** Stop all persistent service-plugin children (server shutdown). */
+  async shutdownServicePlugins(): Promise<void> {
+    await this.serviceManager.shutdownAll();
   }
 
   /**
@@ -506,6 +531,7 @@ export class McpHandler {
   private getPluginMcpTools(): McpTool[] {
     const tools: McpTool[] = [];
     for (const plugin of this.plugins) {
+      if (plugin.manifest.runtime === 'service') continue; // service tools come from the manager
       for (const tool of plugin.manifest.tools) {
         tools.push({
           name: tool.name,

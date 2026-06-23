@@ -12,7 +12,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as crypto from 'node:crypto';
 import * as net from 'node:net';
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ExtensionClientImpl } from './extension.js';
 import { McpHandler } from './mcp/handler.js';
@@ -37,6 +37,15 @@ import { listInstalledPacks, installSkillPack, uninstallSkillPack } from './skil
 import { listRegistries, addRegistry, removeRegistry, getRegistryDir, readRegistryIndex } from './registry.js';
 import { applyProjects, statusProjects, statConfigFiles, resetProject, type ApplyProject, type StatusProject } from './projects.js';
 import { applySkills, type ApplySkill } from './skills.js';
+import { applyFiles, FILES_APPLY_BODY_LIMIT, type ApplyFile } from './files.js';
+import {
+  isUuid,
+  tmuxSessionName,
+  findClaudeSessionPid,
+  buildInputCommands,
+  SESSION_INPUT_BODY_LIMIT,
+  type ClaudeSession,
+} from './session-input.js';
 import * as yaml from 'js-yaml';
 import type { WebSocket } from 'ws';
 import type {
@@ -532,6 +541,24 @@ function getAllWorkflowStats(runLogsDir: string): Record<string, WorkflowStats> 
   return allStats;
 }
 
+/**
+ * Enumerate live Claude Code processes (pid + full command line) via
+ * `pgrep -a claude`. Shared by /health (`claude_sessions`) and the
+ * POST /api/session/input liveness gate. Returns [] on any failure (no matches,
+ * pgrep missing, timeout).
+ */
+function listClaudeSessions(): ClaudeSession[] {
+  try {
+    const pgrepOut = execSync('pgrep -a claude', { encoding: 'utf8', timeout: 3000 }).trim();
+    return pgrepOut.split('\n').filter(Boolean).map((line) => {
+      const spaceIdx = line.indexOf(' ');
+      return { pid: parseInt(line.substring(0, spaceIdx), 10), cmd: line.substring(spaceIdx + 1) };
+    });
+  } catch {
+    return [];
+  }
+}
+
 export interface ServerConfig {
   port: number;
   actionsDir: string;
@@ -899,6 +926,9 @@ export async function startServer(config: ServerConfig): Promise<void> {
   // Clean up interval on server shutdown
   fastify.addHook('onClose', async () => {
     clearInterval(cleanupInterval);
+    // Stop persistent service-plugin children so they don't outlive the server (e.g. on a
+    // systemd restart) and leak desktop-automation subprocesses.
+    await mcpHandler.shutdownServicePlugins();
   });
 
   // Old HTTP+SSE transport endpoint (for backwards compatibility)
@@ -1483,6 +1513,80 @@ export async function startServer(config: ServerConfig): Promise<void> {
     return { ok: true };
   });
 
+  // Append one JSON line per injection to ~/.sidebutton/session-input.log (AC5 audit).
+  // Best-effort: an audit-write failure must never block or fail delivery.
+  const appendSessionInputAudit = (entry: Record<string, unknown>): void => {
+    try {
+      fs.mkdirSync(sidebuttonDir, { recursive: true });
+      fs.appendFileSync(
+        path.join(sidebuttonDir, 'session-input.log'),
+        JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n',
+      );
+    } catch { /* audit is best-effort */ }
+  };
+
+  /**
+   * POST /api/session/input — inject a native user turn into a live Claude
+   * session (SCRUM-1384). Resolves the dispatched session's tmux session
+   * (sbjob-<session_id>), pastes `text` as a bracketed (literal) paste, then
+   * submits exactly one turn iff `submit`. Server-side foundation the portal
+   * Overview composer consumes (SCRUM-1385).
+   *
+   * Body: { session_id: <uuid>, text: string, submit?: boolean }
+   * Auth: the /api/* Bearer hook (SIDEBUTTON_AGENT_TOKEN; localhost-exempt).
+   * 200 { ok, submitted, pid } · 400 invalid body · 410 session gone · 500 delivery failed.
+   */
+  fastify.post('/api/session/input', { bodyLimit: SESSION_INPUT_BODY_LIMIT }, async (request, reply) => {
+    const body = request.body as { session_id?: unknown; text?: unknown; submit?: unknown } | undefined;
+    if (!body || typeof body !== 'object') {
+      return reply.code(400).send({ error: 'request body is required' });
+    }
+    if (!isUuid(body.session_id)) {
+      return reply.code(400).send({ error: 'session_id must be a UUID' });
+    }
+    if (typeof body.text !== 'string') {
+      return reply.code(400).send({ error: 'text must be a string' });
+    }
+    if (body.submit !== undefined && typeof body.submit !== 'boolean') {
+      return reply.code(400).send({ error: 'submit must be a boolean' });
+    }
+    const sessionId = body.session_id;
+    const text = body.text;
+    const submit = body.submit === true;
+
+    // Liveness gate (AC4): the session must have a live `claude --session-id <id>`
+    // process. No match ⇒ pane/session gone ⇒ 410 (stable contract for SCRUM-1385).
+    const pid = findClaudeSessionPid(listClaudeSessions(), sessionId);
+    if (pid === undefined) {
+      return reply.code(410).send({ error: 'session not live', session_id: sessionId });
+    }
+
+    const sessionName = tmuxSessionName(sessionId);
+    // Secondary guard: the tmux session itself must exist before we paste.
+    const hasSession = spawnSync('tmux', ['has-session', '-t', sessionName], { timeout: 3000 });
+    if (hasSession.status !== 0) {
+      return reply.code(410).send({ error: 'tmux session gone', session_id: sessionId });
+    }
+
+    // Unique buffer name avoids races between concurrent injections.
+    const bufferName = `sb-input-${process.pid}-${Date.now()}`;
+    const bytes = Buffer.byteLength(text);
+
+    for (const args of buildInputCommands(sessionName, bufferName, submit)) {
+      // Pipe the turn text via stdin to `load-buffer -` (trailing '-'), never as an argv token.
+      const stdin = args[args.length - 1] === '-' ? text : undefined;
+      const res = spawnSync('tmux', args, { input: stdin, timeout: 5000 });
+      if (res.status !== 0) {
+        const detail = res.stderr?.toString().trim() || res.error?.message || `tmux exited ${res.status}`;
+        appendSessionInputAudit({ session_id: sessionId, pid, bytes, submit, ok: false, error: detail });
+        return reply.code(500).send({ error: `tmux ${args[0]} failed: ${detail}` });
+      }
+    }
+
+    appendSessionInputAudit({ session_id: sessionId, pid, bytes, submit, ok: true });
+    return { ok: true, submitted: submit, pid };
+  });
+
   fastify.get('/health', async (): Promise<HealthResponse> => {
     const status = extensionClient.getStatus();
 
@@ -1528,18 +1632,9 @@ export async function startServer(config: ServerConfig): Promise<void> {
     // Enumerate Claude Code processes with PIDs and command lines.
     // This lets the orchestrator track individual sessions, distinguish dispatched
     // jobs from operator debugging sessions, and detect zombie/stalled PIDs.
-    try {
-      const pgrepOut = execSync('pgrep -a claude', { encoding: 'utf8', timeout: 3000 }).trim();
-      const sessions = pgrepOut.split('\n').filter(Boolean).map(line => {
-        const spaceIdx = line.indexOf(' ');
-        return { pid: parseInt(line.substring(0, spaceIdx), 10), cmd: line.substring(spaceIdx + 1) };
-      });
-      response.claude_sessions = sessions;
-      response.claude_running = sessions.length > 0;
-    } catch {
-      response.claude_sessions = [];
-      response.claude_running = false;
-    }
+    const sessions = listClaudeSessions();
+    response.claude_sessions = sessions;
+    response.claude_running = sessions.length > 0;
 
     if (cooldownState && cooldownState.until_ms > Date.now()) {
       response.cooldown = { until_ms: cooldownState.until_ms, workflow_id: cooldownState.workflow_id };
@@ -1730,6 +1825,24 @@ export async function startServer(config: ServerConfig): Promise<void> {
       return reply.code(400).send({ error: 'skills must be an array' });
     }
     const results = await applySkills(body.workspace_path, body.skills as ApplySkill[]);
+    return { results };
+  });
+
+  // Shared files — write + reconcile raw file bytes into WORKSPACE/shared/ (SCRUM-1369). The base64
+  // payload carries the full per-workspace set, so this route raises bodyLimit well above Fastify's
+  // 1 MB default to fit the portal's per-workspace shared-files cap once base64-inflated.
+  fastify.post('/api/files/apply', { bodyLimit: FILES_APPLY_BODY_LIMIT }, async (request, reply) => {
+    const body = request.body as { workspace_path?: unknown; files?: unknown } | undefined;
+    if (!body || typeof body !== 'object') {
+      return reply.code(400).send({ error: 'request body is required' });
+    }
+    if (typeof body.workspace_path !== 'string' || !body.workspace_path) {
+      return reply.code(400).send({ error: 'workspace_path is required' });
+    }
+    if (!Array.isArray(body.files)) {
+      return reply.code(400).send({ error: 'files must be an array' });
+    }
+    const results = await applyFiles(body.workspace_path, body.files as ApplyFile[]);
     return { results };
   });
 
@@ -3770,6 +3883,23 @@ steps:
       reply.code(404).send({ error: 'Not found' });
     });
   }
+
+  // Graceful shutdown on systemd stop / Ctrl+C — fastify.close() runs the onClose hooks
+  // (including service-plugin teardown) so children aren't orphaned across restarts.
+  let shuttingDown = false;
+  const shutdown = async (signal: string): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`\n[sidebutton] received ${signal}, shutting down…`);
+    try {
+      await fastify.close();
+    } catch (err) {
+      console.error('Error during shutdown:', err);
+    }
+    process.exit(0);
+  };
+  process.once('SIGTERM', () => void shutdown('SIGTERM'));
+  process.once('SIGINT', () => void shutdown('SIGINT'));
 
   // Start server
   try {
