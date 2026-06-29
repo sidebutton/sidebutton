@@ -11,6 +11,18 @@ updates:
         dependency-type: "development"
     open-pull-requests-limit: 10
 
+  # docs-site is a standalone npm project (outside the pnpm workspace; built via `npm ci`)
+  - package-ecosystem: "npm"
+    directory: "/docs-site"
+    schedule:
+      interval: "weekly"
+    groups:
+      production:
+        dependency-type: "production"
+      development:
+        dependency-type: "development"
+    open-pull-requests-limit: 10
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
