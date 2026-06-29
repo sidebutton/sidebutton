@@ -71,6 +71,10 @@ export type {
   Publisher,
 } from '@sidebutton/core';
 
+// Runtime value: sentinel the server returns in place of stored secrets
+// (e.g. llm.api_key) on GET /api/settings (SCRUM-1490).
+export { REDACTED_SECRET } from '@sidebutton/core';
+
 // ============================================================================
 // Dashboard-specific types (UI display info, view state, etc.)
 // ============================================================================

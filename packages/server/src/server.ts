@@ -73,6 +73,17 @@ import type {
 } from '@sidebutton/core';
 import { ExecutionContext, executeWorkflow, JiraProvider, PROVIDER_DEFINITIONS, getProviderStatuses, getActiveUsageFile, detectCli, getContextSource, buildRunLogUsage } from '@sidebutton/core';
 import type { ConnectorType } from '@sidebutton/core';
+import {
+  isLoopbackHost,
+  isLoopbackAddress,
+  redactSettings,
+  preserveLlmSecret,
+  assessCallbackUrl,
+  getTrustedCallbackOrigins,
+  isTrustedCallbackOrigin,
+  makeCorsOriginDelegate,
+  resolveApplyPath,
+} from './security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -561,6 +572,8 @@ function listClaudeSessions(): ClaudeSession[] {
 
 export interface ServerConfig {
   port: number;
+  /** Bind address. Defaults to loopback; a wide bind is opt-in and requires a token. */
+  host: string;
   actionsDir: string;
   workflowsDir: string;
   templatesDir: string;
@@ -621,32 +634,38 @@ export async function startServer(config: ServerConfig): Promise<void> {
   mcpHandler.setBroadcaster(broadcaster);
   mcpHandler.setRunningWorkflowsTracker(runningWorkflows);
 
-  // Register plugins
+  // Register plugins. CORS is locked to same-origin / loopback / configured
+  // origins (SCRUM-1490) — `origin: true` used to reflect any attacker Origin.
   await fastify.register(fastifyCors, {
-    origin: true,
+    origin: makeCorsOriginDelegate(),
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   });
 
   await fastify.register(fastifyFormbody);
   await fastify.register(fastifyWebsocket);
 
-  // Bearer token auth for remote API requests
+  // Bearer token auth for /api/* — deny-by-default (SCRUM-1490). The hook is
+  // registered unconditionally; previously it was skipped entirely when no
+  // token was set, leaving the whole API open. The loopback exemption is
+  // scoped to loopback binds only: on a wide bind (fleet) even same-host
+  // callers (e.g. the VM's own browser) must present the token, which blocks
+  // browser-driven CSRF to 127.0.0.1. fix #1's start-guard guarantees a wide
+  // bind always has a token, so the !agentToken branch only matters on a
+  // loopback bind (where the exemption has already returned).
   const agentToken = process.env.SIDEBUTTON_AGENT_TOKEN;
-  if (agentToken) {
-    fastify.addHook('onRequest', async (request, reply) => {
-      // Only protect /api/* routes
-      if (!request.url.startsWith('/api/')) return;
+  const boundLoopback = isLoopbackHost(config.host);
+  fastify.addHook('onRequest', async (request, reply) => {
+    // Only protect /api/* routes
+    if (!request.url.startsWith('/api/')) return;
 
-      // Allow localhost without auth
-      const ip = request.ip;
-      if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') return;
+    // Loopback callers are exempt only when the server is loopback-bound.
+    if (boundLoopback && isLoopbackAddress(request.ip)) return;
 
-      const authHeader = request.headers.authorization;
-      if (!authHeader?.startsWith('Bearer ') || authHeader.slice(7) !== agentToken) {
-        reply.code(401).send({ error: 'Unauthorized' });
-      }
-    });
-  }
+    const authHeader = request.headers.authorization;
+    if (!agentToken || !authHeader?.startsWith('Bearer ') || authHeader.slice(7) !== agentToken) {
+      reply.code(401).send({ error: 'Unauthorized' });
+    }
+  });
 
   // Serve dashboard if available
   const dashboardPath = config.dashboardDir ?? path.join(__dirname, '..', 'dashboard');
@@ -1749,11 +1768,9 @@ export async function startServer(config: ServerConfig): Promise<void> {
     const results: { path: string; ok: boolean; error?: string }[] = [];
     const homeDir = process.env.HOME || process.env.USERPROFILE || '/home/agent';
 
-    const resolvePath = (p: string): string | null => {
-      const resolved = p.replace(/^~/, homeDir);
-      if (resolved.includes('..')) return null;
-      return resolved;
-    };
+    // Contain writes to the home dir (SCRUM-1490): expand ~ and reject any path
+    // that escapes home — absolute dirs elsewhere or `..` traversal.
+    const resolvePath = (p: string): string | null => resolveApplyPath(p, homeDir);
 
     // Write ~/.agent-env
     if (body.agent_env !== undefined) {
@@ -1772,7 +1789,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
         if (!ep.path) continue;
         const resolved = resolvePath(ep.path);
         if (!resolved) {
-          results.push({ path: ep.path, ok: false, error: 'Path contains ".." — rejected' });
+          results.push({ path: ep.path, ok: false, error: 'Path escapes home directory — rejected' });
           continue;
         }
         try {
@@ -1962,8 +1979,19 @@ export async function startServer(config: ServerConfig): Promise<void> {
   }>('/api/workflows/:id/run', async (request, reply) => {
     const workflowId = request.params.id;
     const params = request.body.params ?? {};
-    const completionCallback = request.body.completion_callback;
-    const callbackAuth = request.headers.authorization; // forward auth to callback
+    // Validate the caller-supplied completion_callback against SSRF (block
+    // loopback/private/link-local/metadata + non-http schemes) and only forward
+    // the inbound bearer to a trusted origin — the portal — so it can't be
+    // exfiltrated to an attacker host (SCRUM-1490).
+    const callbackAssessment = assessCallbackUrl(request.body.completion_callback);
+    const completionCallback = callbackAssessment.allowed ? callbackAssessment.url! : undefined;
+    if (request.body.completion_callback && !completionCallback) {
+      console.warn(`[run] completion_callback rejected: ${callbackAssessment.reason}`);
+    }
+    const forwardAuth =
+      completionCallback && isTrustedCallbackOrigin(completionCallback, getTrustedCallbackOrigins())
+        ? request.headers.authorization
+        : undefined;
     const syncMode = request.query.sync === 'true';
 
     mcpHandler.reload();
@@ -2143,7 +2171,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
       // Forward accumulated LLM usage so the portal can price + roll up per step (SCRUM-510).
       if (completionCallback) {
         const cbHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (callbackAuth) cbHeaders['Authorization'] = callbackAuth;
+        if (forwardAuth) cbHeaders['Authorization'] = forwardAuth;
         fetch(completionCallback, {
           method: 'POST',
           headers: cbHeaders,
@@ -2241,13 +2269,17 @@ export async function startServer(config: ServerConfig): Promise<void> {
   // ============================================================================
 
   fastify.get('/api/settings', async () => {
-    return { settings: loadSettings(config.configDir) };
+    // Mask stored secrets (llm.api_key) so cleartext never leaves the server
+    // (SCRUM-1490). The dashboard round-trips the sentinel; POST restores it.
+    return { settings: redactSettings(loadSettings(config.configDir)) };
   });
 
   fastify.post<{ Body: Partial<Settings> }>('/api/settings', async (request) => {
     const current = loadSettings(config.configDir);
+    // If the client echoes back the redaction sentinel, keep the stored key.
+    const incomingLlm = preserveLlmSecret(request.body.llm, current.llm);
     const updated: Settings = {
-      llm: request.body.llm ?? current.llm,
+      llm: incomingLlm ?? current.llm,
       last_used_params: request.body.last_used_params ?? current.last_used_params,
       dashboard_shortcuts: request.body.dashboard_shortcuts ?? current.dashboard_shortcuts,
       user_contexts: request.body.user_contexts ?? current.user_contexts,
@@ -3901,14 +3933,31 @@ steps:
   process.once('SIGTERM', () => void shutdown('SIGTERM'));
   process.once('SIGINT', () => void shutdown('SIGINT'));
 
-  // Start server
+  // Start server. Refuse to start a wide (non-loopback) bind without a token —
+  // a tokenless wide bind exposes the whole API to the network (SCRUM-1490).
+  if (!boundLoopback && !agentToken) {
+    console.error(
+      `\n[sidebutton] Refusing to start: binding ${config.host} (non-loopback) without SIDEBUTTON_AGENT_TOKEN ` +
+        `would expose the API unauthenticated on the network.\n` +
+        `  • Set SIDEBUTTON_AGENT_TOKEN to enable a wide bind, or\n` +
+        `  • bind loopback (omit --host / set SIDEBUTTON_HOST=127.0.0.1).\n`,
+    );
+    process.exit(1);
+  }
+  if (!boundLoopback) {
+    console.warn(
+      `[sidebutton] WARNING: binding ${config.host} exposes the server beyond localhost. ` +
+        `Ensure the network path is firewalled; /api/* requires a bearer token.`,
+    );
+  }
+  const displayHost = boundLoopback ? 'localhost' : config.host;
   try {
-    await fastify.listen({ port: config.port, host: '0.0.0.0' });
-    console.log(`\nSideButton server started on http://localhost:${config.port}`);
-    console.log(`  - Dashboard:  http://localhost:${config.port}`);
-    console.log(`  - WebSocket:  ws://localhost:${config.port}/ws`);
-    console.log(`  - MCP:        http://localhost:${config.port}/mcp`);
-    console.log(`  - API:        http://localhost:${config.port}/api`);
+    await fastify.listen({ port: config.port, host: config.host });
+    console.log(`\nSideButton server started on http://${displayHost}:${config.port}`);
+    console.log(`  - Dashboard:  http://${displayHost}:${config.port}`);
+    console.log(`  - WebSocket:  ws://${displayHost}:${config.port}/ws`);
+    console.log(`  - MCP:        http://${displayHost}:${config.port}/mcp`);
+    console.log(`  - API:        http://${displayHost}:${config.port}/api`);
     console.log(`\nPress Ctrl+C to stop\n`);
   } catch (err) {
     console.error('Failed to start server:', err);
@@ -3962,9 +4011,9 @@ export async function startSilentServer(config: SilentServerConfig): Promise<voi
 
   const { extensionClient, mcpHandler } = config;
 
-  // Register plugins
+  // Register plugins. Lock CORS like serve mode (SCRUM-1490).
   await fastify.register(fastifyCors, {
-    origin: true,
+    origin: makeCorsOriginDelegate(),
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   });
 
@@ -3996,6 +4045,8 @@ export async function startSilentServer(config: SilentServerConfig): Promise<voi
     });
   });
 
-  // Start server (no console output - use stderr)
-  await fastify.listen({ port: config.port, host: '0.0.0.0' });
+  // Start server (no console output - use stderr). stdio mode's HTTP side only
+  // serves the same-machine browser extension + health, so bind loopback —
+  // never expose it to the network (SCRUM-1490).
+  await fastify.listen({ port: config.port, host: '127.0.0.1' });
 }

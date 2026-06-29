@@ -384,6 +384,16 @@ export interface FullLlmConfig {
   model: string;
 }
 
+/**
+ * Placeholder returned in place of a stored secret (e.g. llm.api_key) by read
+ * endpoints such as GET /api/settings, so the cleartext secret never leaves the
+ * server (SCRUM-1490). The write path (POST /api/settings) treats an incoming
+ * value equal to this sentinel as "keep the currently stored secret", so the
+ * dashboard can round-trip the masked value without wiping the real key.
+ * Distinctive enough that it can never collide with a real credential.
+ */
+export const REDACTED_SECRET = '__sidebutton_redacted__';
+
 // External MCP transport configuration
 export type ExternalMcpTransport =
   | { type: 'claude-code' }

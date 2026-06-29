@@ -4,7 +4,7 @@
   import { settings as settingsStore } from "../stores";
   import { navigateBack } from "../router";
   import type { Settings, FullLlmConfig, UserContext, RoleContext, TargetContext, PersonaContext, ProviderStatus, ConnectorType } from "../types";
-  import { isLlmContext, isEnvContext } from "../types";
+  import { isLlmContext, isEnvContext, REDACTED_SECRET } from "../types";
   import ContextModal from "../components/ContextModal.svelte";
   import ContextTabs from "../components/ContextTabs.svelte";
   import PersonaEditor from "../components/PersonaEditor.svelte";
@@ -26,6 +26,9 @@
   let baseUrl = $state<string>('');
   let apiKey = $state<string>('');
   let model = $state<string>('');
+  // True when the server reports a stored api_key (returned masked, not in cleartext).
+  // Lets the user keep the saved key by leaving the field blank (SCRUM-1490).
+  let apiKeySaved = $state<boolean>(false);
 
   // User contexts state (inline tab)
   let userContexts = $state<UserContext[]>([]);
@@ -104,7 +107,10 @@
       if (settings.llm) {
         provider = settings.llm.provider || 'openai';
         baseUrl = settings.llm.base_url || '';
-        apiKey = settings.llm.api_key || '';
+        // api_key comes back masked when set; show it as blank with a "saved"
+        // hint so we never display the sentinel and don't wipe the key on save.
+        apiKeySaved = settings.llm.api_key === REDACTED_SECRET;
+        apiKey = apiKeySaved ? '' : (settings.llm.api_key || '');
         model = settings.llm.model || '';
       }
       userContexts = settings.user_contexts || [];
@@ -133,12 +139,13 @@
     testResult = null;
 
     try {
-      if (!apiKey.trim()) {
+      // A blank field with a previously-saved key is fine (key is kept on save).
+      if (!apiKey.trim() && !apiKeySaved) {
         testResult = { success: false, message: 'API key is required' };
         return;
       }
 
-      if (provider === 'openai' && !apiKey.startsWith('sk-')) {
+      if (apiKey.trim() && provider === 'openai' && !apiKey.startsWith('sk-')) {
         testResult = { success: false, message: 'OpenAI API keys should start with "sk-"' };
         return;
       }
@@ -158,7 +165,9 @@
     const llmConfig: FullLlmConfig = {
       provider: provider as 'openai' | 'anthropic' | 'ollama',
       base_url: baseUrl,
-      api_key: apiKey,
+      // Blank field + a previously-saved key → send the sentinel so the server
+      // keeps the stored key instead of clearing it (SCRUM-1490).
+      api_key: apiKey === '' && apiKeySaved ? REDACTED_SECRET : apiKey,
       model: model,
     };
 
@@ -741,7 +750,7 @@
                       id="api-key"
                       type={showApiKey ? 'text' : 'password'}
                       bind:value={apiKey}
-                      placeholder="sk-..."
+                      placeholder={apiKeySaved ? '•••••••• (saved — leave blank to keep)' : 'sk-...'}
                     />
                   </div>
 
@@ -770,8 +779,8 @@
                 <div class="status-section">
                   <div class="status-row">
                     <span class="status-label">LLM Configured</span>
-                    <span class="status-value" class:yes={apiKey} class:no={!apiKey}>
-                      {apiKey ? 'Yes' : 'No'}
+                    <span class="status-value" class:yes={apiKey || apiKeySaved} class:no={!apiKey && !apiKeySaved}>
+                      {apiKey || apiKeySaved ? 'Yes' : 'No'}
                     </span>
                   </div>
                   <div class="status-row">

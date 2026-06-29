@@ -247,14 +247,18 @@ program
   .command('serve')
   .description('Start the server with dashboard')
   .option('-p, --port <port>', 'Port to listen on', String(DEFAULT_PORT))
+  .option('--host <host>', 'Bind address (default: 127.0.0.1; a wide bind requires SIDEBUTTON_AGENT_TOKEN)')
   .option('--headless', 'Run without dashboard')
   .option('--stdio', 'Use stdio transport for MCP (for Claude Desktop)')
   .action(async (options) => {
     const configDir = getConfigDir();
     const port = Number(options.port);
+    // Bind loopback by default; widen only via --host / SIDEBUTTON_HOST (SCRUM-1490).
+    const host = options.host ?? process.env.SIDEBUTTON_HOST ?? '127.0.0.1';
 
     const dirs = {
       port,
+      host,
       actionsDir: path.join(configDir, 'actions'),
       workflowsDir: path.join(configDir, 'workflows'),
       templatesDir: path.join(configDir, 'templates'),

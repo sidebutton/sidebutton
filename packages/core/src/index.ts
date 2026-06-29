@@ -79,6 +79,7 @@ export type {
 } from './types.js';
 
 export { WorkflowError } from './types.js';
+export { REDACTED_SECRET } from './types.js';
 
 // Parser
 export {
