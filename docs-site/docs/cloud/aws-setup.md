@@ -36,12 +36,15 @@ SideButton provisions EC2 instances on your behalf using a dedicated IAM user wi
         "ec2:RebootInstances",
         "ec2:StartInstances",
         "ec2:StopInstances",
+        "ec2:DescribeSpotInstanceRequests",
+        "ec2:CancelSpotInstanceRequests",
         "ec2:CreateSecurityGroup",
         "ec2:AuthorizeSecurityGroupIngress",
         "ec2:RevokeSecurityGroupIngress",
         "ec2:DeleteSecurityGroup",
         "ec2:DescribeSecurityGroups",
         "ec2:CreateKeyPair",
+        "ec2:ImportKeyPair",
         "ec2:DeleteKeyPair",
         "ec2:DescribeKeyPairs",
         "ec2:CreateTags",
@@ -93,11 +96,24 @@ SideButton provisions EC2 instances on your behalf using a dedicated IAM user wi
    - Optionally pick a **Default Region** (e.g., `us-east-1`)
 3. Click **Connect & Validate** — SideButton verifies the credentials against the AWS API and stores them encrypted
 
+Connecting also performs one-time infrastructure setup: SideButton ensures the shared per-account security group (`sidebutton-acct-<account>`) exists and adds the IP you connected from to its SSH/RDP allowlist. This step is best-effort — a failure is returned as a warning and the setup is retried at the first provision. The allowlist is editable later under **Settings → Cloud Operations → Firewall allowlist**.
+
 ### Required permissions
 
 The IAM policy in [Step 1](#step-1-create-an-iam-policy) **is** the required permission set — attach it in full and `Connect & Validate` will succeed.
 
-> The portal no longer runs an in-page permission simulator. (Earlier versions had a separate "Check Permissions" button backed by `iam:SimulatePrincipalPolicy`.) If a required action is missing, the failing AWS call surfaces the specific permission at connect or provisioning time — add it to the policy above and retry. The [Troubleshooting](#troubleshooting) table below maps common errors to the action to add.
+> The connect form no longer runs an in-page permission simulator. (Earlier versions had a separate "Check Permissions" button.) If a required action is missing, the failing AWS call surfaces the specific permission at connect or provisioning time — add it to the policy above and retry. The [Troubleshooting](#troubleshooting) table below maps common errors to the action to add.
+>
+> Exception: the **Validate** button on an already-connected AWS card *does* dry-run the full required action set via `iam:SimulatePrincipalPolicy` when that action is granted. A connection missing any required action is then marked **invalid** with the gaps listed — so if you grant the simulator action, attach the Step 1 policy in full.
+
+### Optional actions
+
+Everything works without these; granting them enables extra checks:
+
+| Action | What it enables |
+|--------|-----------------|
+| `iam:SimulatePrincipalPolicy` | **Validate** dry-runs the required action set and reports missing permissions by name instead of relying on runtime errors |
+| `servicequotas:GetServiceQuota` | The provisioning preflight verifies your vCPU quota (on-demand and spot); without it the quota check degrades to a non-blocking warning |
 
 ---
 
@@ -110,6 +126,7 @@ The IAM policy in [Step 1](#step-1-create-an-iam-policy) **is** the required per
 | `AuthFailure` | Credentials are inactive or expired | Check IAM user status in IAM → Users |
 | Permission denied on `ec2:RunInstances` | IAM policy is missing the action | Attach the full policy from Step 1 |
 | Firewall allowlist update fails with `UnauthorizedOperation` | Connection was created before `ec2:RevokeSecurityGroupIngress` joined the required set | Add the action to the policy (it is in the Step 1 policy above) |
+| Spot agent deletion fails with `UnauthorizedOperation` | Policy predates `ec2:DescribeSpotInstanceRequests` / `ec2:CancelSpotInstanceRequests` joining the required set | Both actions are in the Step 1 policy above — re-attach it in full |
 | `Cannot simulate permissions` | IAM user lacks `iam:SimulatePrincipalPolicy` | Add the action to the policy or verify manually |
 
 ---

@@ -55,6 +55,7 @@ export default defineConfig({
           items: [
             { text: 'Welcome', link: '/' },
             { text: 'Installation', link: '/installation' },
+            { text: 'Self-Hosting an Agent', link: '/self-hosting' },
             { text: 'Extension Setup', link: '/extension' },
             { text: 'First Workflow', link: '/first-workflow' },
             { text: 'MCP Setup', link: '/mcp-setup' },
