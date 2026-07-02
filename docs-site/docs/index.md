@@ -45,5 +45,6 @@ Install a knowledge pack  →  AI agent gets domain knowledge  →  Agent works 
 - [Installation](/installation) — Get SideButton running
 - [Knowledge Packs](/knowledge-packs/overview) — Domain knowledge for AI agents
 - [MCP Setup](/mcp-setup) — Connect Claude Code or Cursor
+- [Connect Claude Subscription](/cloud/claude-subscription) — Sign a cloud agent's Claude Code into your Claude account
 - [First Workflow](/first-workflow) — Run your first automation
 - [Community Roles](/community-roles) — AI agent role templates

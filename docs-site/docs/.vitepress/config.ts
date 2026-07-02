@@ -64,6 +64,15 @@ export default defineConfig({
           ]
         },
         {
+          text: 'Cloud Agents',
+          items: [
+            { text: 'AWS Setup', link: '/cloud/aws-setup' },
+            { text: 'Hetzner Setup', link: '/cloud/hetzner-setup' },
+            { text: 'GCP Setup', link: '/cloud/gcp-setup' },
+            { text: 'Connect Claude Subscription', link: '/cloud/claude-subscription' }
+          ]
+        },
+        {
           text: 'Workflows',
           items: [
             { text: 'Overview', link: '/workflows/overview' },

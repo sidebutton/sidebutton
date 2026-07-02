@@ -127,3 +127,9 @@ You can inspect all created resources directly in the Hetzner Console under your
 - Tokens are never logged or exposed in API responses
 - You can delete the connection at any time — SideButton will refuse deletion if agents are still attached
 - Rotate your API token in Hetzner Console → Security → API Tokens and reconnect via **Integrations → Cloud → Hetzner → Rotate credentials**
+
+---
+
+## Next step
+
+Once your agent shows **Online**, [connect it to your Claude subscription](./claude-subscription.md) so Claude Code can authenticate and start working on jobs.

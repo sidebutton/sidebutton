@@ -220,3 +220,9 @@ Everything works without these; granting them enables extra checks:
 - You can delete the connection at any time — SideButton will refuse deletion if agents are still attached
 - Use a dedicated IAM user per environment (production, staging) to isolate blast radius — and prefer a [dedicated AWS account](#recommended-a-dedicated-aws-account-for-agents) over a shared one
 - Rotate access keys quarterly via IAM → Users → Security credentials → **Rotate**
+
+---
+
+## Next step
+
+Once your agent shows **Online**, [connect it to your Claude subscription](./claude-subscription.md) so Claude Code can authenticate and start working on jobs.
