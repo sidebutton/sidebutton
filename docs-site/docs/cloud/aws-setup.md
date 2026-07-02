@@ -13,6 +13,88 @@ SideButton provisions EC2 instances on your behalf using a dedicated IAM user wi
 - An AWS account with permission to create IAM users and policies
 - AWS Console access (or CLI)
 
+> **Best practice:** don't run agents next to your production workloads. Create a [dedicated AWS account for agents](#recommended-a-dedicated-aws-account-for-agents) first, then perform Steps 1–4 inside it.
+
+---
+
+## Recommended: a Dedicated AWS Account for Agents
+
+The IAM policy below uses `Resource: "*"` — in a shared account the SideButton user could describe or terminate **any** EC2 instance, not just agent VMs. Running agents in their own AWS account removes that risk entirely and keeps your existing setup untouched.
+
+| Benefit | Why it matters |
+|---------|----------------|
+| Blast-radius isolation | `Resource: "*"` then only reaches agent resources — your production instances live in a different account the credentials can't see |
+| No interference | SideButton creates security groups, key pairs, and tags; in a clean account these never collide with existing infrastructure or drift-detection tooling |
+| Cost separation | The account's bill **is** the agent spend — filter by linked account in Cost Explorer, set an AWS Budget alert on just this account |
+| Quota isolation | vCPU quotas are per account and region — agents can't eat production launch capacity, and vice versa |
+| Clean teardown | Done experimenting? Close the account and everything is gone |
+
+### Create the member account (AWS Organizations)
+
+1. In your **management account**, open [AWS Organizations](https://console.aws.amazon.com/organizations/) → **AWS accounts** → **Add an AWS account** → **Create an AWS account**
+2. Name it (e.g., `sidebutton-agents`) and give it a unique email — plus-addressing works well (e.g., `aws+sidebutton-agents@example.com`)
+3. Leave the IAM role name as the default `OrganizationAccountAccessRole`
+
+Or via CLI:
+
+```bash
+aws organizations create-account \
+  --email aws+sidebutton-agents@example.com \
+  --account-name "SideButton Agents"
+
+# poll until State shows SUCCEEDED, then note the new account ID
+aws organizations list-create-account-status --states SUCCEEDED
+```
+
+### Access the new account
+
+Use **Switch role** in the console (account ID + role `OrganizationAccountAccessRole`), or add a CLI profile:
+
+```ini
+# ~/.aws/config
+[profile sidebutton-agents]
+role_arn = arn:aws:iam::<member-account-id>:role/OrganizationAccountAccessRole
+source_profile = management
+```
+
+Then perform [Step 1](#step-1-create-an-iam-policy) through [Step 4](#step-4-connect-in-sidebutton) **inside this account**. Don't reuse an IAM user or access keys from another account.
+
+### First-run checklist for a fresh account
+
+New accounts start with defaults that block or degrade the first provision — SideButton's provisioning preflight checks all of these, but fixing them up front avoids a failed first launch:
+
+| Check | Why | Fix |
+|-------|-----|-----|
+| vCPU quotas | Fresh accounts often start at or near **0** — quota `0` is a provisioning blocker | In the target region: **Service Quotas → Amazon EC2** → request *Running On-Demand Standard instances* (`L-1216C47A`) and, if you plan spot agents, *All Standard Spot Instance Requests* (`L-34B43A08`). Agent VMs use 2–4 vCPUs each, so 32 vCPUs ≈ 8–16 agents |
+| Default VPC | The provisioner launches into the region's default VPC/subnets; provisioning fails with `No default VPC found in region` if it's missing | New accounts include one per region. If landing-zone tooling removed it: `aws ec2 create-default-vpc --region <region>` |
+| Region opt-in | Newer regions are disabled by default; the preflight flags this as a blocker | Enable the region under **Billing → Account → AWS Regions** |
+| Root user hygiene | The account is created with only a root user reachable by email password-reset | Enable MFA on root, then stop using it — do Steps 1–3 via `OrganizationAccountAccessRole` |
+
+### Optional: guardrail the account with an SCP
+
+To guarantee agents only ever launch in approved regions, attach a Service Control Policy to the member account from the management account:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "LimitAgentLaunchRegions",
+      "Effect": "Deny",
+      "Action": "ec2:RunInstances",
+      "Resource": "*",
+      "Condition": {
+        "StringNotEquals": { "aws:RequestedRegion": ["eu-central-1", "us-east-1"] }
+      }
+    }
+  ]
+}
+```
+
+### Without AWS Organizations
+
+On a standalone account (no organization), you can still sign up for a brand-new separate AWS account and use it exclusively for agents — and optionally create an organization from your existing account later and invite it. If a second account is not an option, the dedicated IAM user in this guide is the minimum isolation: it separates credentials, but not blast radius, quotas, or billing.
+
 ---
 
 ## Step 1: Create an IAM Policy
@@ -136,5 +218,5 @@ Everything works without these; granting them enables extra checks:
 - SideButton stores credentials encrypted with AES-256-GCM
 - Credentials are never logged or exposed in API responses
 - You can delete the connection at any time — SideButton will refuse deletion if agents are still attached
-- Use a dedicated IAM user per environment (production, staging) to isolate blast radius
+- Use a dedicated IAM user per environment (production, staging) to isolate blast radius — and prefer a [dedicated AWS account](#recommended-a-dedicated-aws-account-for-agents) over a shared one
 - Rotate access keys quarterly via IAM → Users → Security credentials → **Rotate**
