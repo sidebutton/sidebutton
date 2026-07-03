@@ -15,6 +15,8 @@ A knowledge pack packages everything SideButton needs to work with a particular 
 
 A single pack can contain multiple modules (subfolders), each with their own targets, roles, and workflows.
 
+Workflow YAMLs come in two flavors: browser workflows the engine interprets step-by-step, and [agent workflows](/workflows/orchestration) — complete missions dispatched to cloud agents (the default `agents` pack ships 17 of them).
+
 ## Pack Structure
 
 ```

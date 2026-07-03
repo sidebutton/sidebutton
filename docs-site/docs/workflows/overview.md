@@ -2,6 +2,10 @@
 
 Workflows are the heart of SideButton — reusable automation recipes defined in YAML.
 
+::: tip Running on cloud agents?
+This page covers the YAML DSL executed on your machine. For how workflows hand whole missions to cloud agents — playbooks, verdict gates, fleet dispatch — see [Orchestrating Agents](/workflows/orchestration).
+:::
+
 ## What is a Workflow?
 
 A workflow is a series of steps that SideButton executes in order. Each step can:
@@ -136,6 +140,7 @@ steps:
 
 ## Next Steps
 
+- **[Orchestrating Agents](/workflows/orchestration)** — Dispatch workflows to cloud agents
 - **[DSL Reference](/workflows/dsl)** — Complete YAML syntax
 - **[Step Types](/workflows/steps)** — All step types
 - **[Variables](/workflows/variables)** — Data flow between steps

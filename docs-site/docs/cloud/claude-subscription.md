@@ -126,3 +126,9 @@ The interrupted job picks up where it left off, and the agent is authenticated f
 | Wrong account is signed in on the consent screen | Click **Switch account** at the bottom of the consent screen |
 | The agent is paused/held and won't start jobs | Resume it from the agent card first |
 | No login prompt visible | The status line at the bottom of the Claude Code terminal shows *Not logged in* whenever authentication is missing; you can run `/login` at any time |
+
+---
+
+## Next step
+
+Your agent is signed in and ready to work. Head to [Orchestrating Agents](/workflows/orchestration) to dispatch a workflow or start a playbook against a ticket.

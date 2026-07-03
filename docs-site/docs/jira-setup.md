@@ -177,6 +177,8 @@ npx sidebutton run jira_prepare_issue_fields \
 
 ## Related Documentation
 
+- [Orchestrating Agents](/workflows/orchestration) — how agents work tickets and report back
+- [Linear Automations](/linear-automations) — trigger playbooks from Linear issue events
 - [Atlassian API Token Documentation](https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/)
 - [Jira REST API](https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/)
 - [SideButton MCP Setup](./mcp-setup.md)

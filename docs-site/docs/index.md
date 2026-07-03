@@ -16,6 +16,7 @@ SideButton is an **open-source platform that packages domain knowledge for AI ag
 
 - **Install knowledge packs** — pre-built bundles of domain knowledge, workflows, and role playbooks for specific web apps
 - **Define reusable workflows** in YAML with 45 step types (browser, shell, LLM, issues, git, control flow)
+- **Orchestrate cloud agents** — [chain workflows into playbooks](/workflows/orchestration) that work tickets end-to-end behind verdict gates
 - **Connect AI agents via MCP** — Claude Code, Cursor, or any MCP client gets real browser control
 - **Extend with plugins** — add custom MCP tools in any language (bash, Node.js, Python)
 
@@ -46,5 +47,6 @@ Install a knowledge pack  →  AI agent gets domain knowledge  →  Agent works 
 - [Knowledge Packs](/knowledge-packs/overview) — Domain knowledge for AI agents
 - [MCP Setup](/mcp-setup) — Connect Claude Code or Cursor
 - [Connect Claude Subscription](/cloud/claude-subscription) — Sign a cloud agent's Claude Code into your Claude account
+- [Orchestrating Agents](/workflows/orchestration) — Dispatch workflows and playbooks to a cloud agent fleet
 - [First Workflow](/first-workflow) — Run your first automation
 - [Community Roles](/community-roles) — AI agent role templates

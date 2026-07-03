@@ -172,5 +172,6 @@ policies:
 
 - **[MCP Setup](/mcp-setup)** — Configure your AI tool
 - **[MCP Tools Reference](/mcp/tools)** — All tools detailed
+- **[Orchestrating Agents](/workflows/orchestration)** — Dispatch workflows to cloud agents
 - **[Browser Tools](/mcp/browser)** — Browser automation
 - **[Plugins](/plugins/overview)** — Extend with custom MCP tools

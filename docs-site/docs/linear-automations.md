@@ -1,6 +1,6 @@
 # Linear Automations
 
-Turn Linear issues into agent work automatically. An automation watches your Linear workspace and — when a matching issue event arrives — either runs a full **playbook** against the ticket (multi-step, gated, dependency-ordered) or dispatches a single **workflow job** to an agent.
+Turn Linear issues into agent work automatically. An automation watches your Linear workspace and — when a matching issue event arrives — either runs a full [**playbook**](/workflows/orchestration#playbooks-chain-workflows-into-missions) against the ticket (multi-step, gated, dependency-ordered) or dispatches a single [**workflow job**](/workflows/orchestration#run-a-workflow-on-an-agent) to an agent.
 
 ## Overview
 
@@ -128,6 +128,7 @@ Then verify in the portal:
 
 ## Related Documentation
 
+- [Orchestrating Agents](/workflows/orchestration) — workflows, playbooks and gates explained
 - [Create a cloud agent (AWS)](./cloud/aws-setup.md) · [Hetzner](./cloud/hetzner-setup.md) · [GCP](./cloud/gcp-setup.md)
 - [Connect your agents to your Claude subscription](./cloud/claude-subscription.md)
 - [Jira Integration](./jira-setup.md)

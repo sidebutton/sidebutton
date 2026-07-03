@@ -225,4 +225,4 @@ Everything works without these; granting them enables extra checks:
 
 ## Next step
 
-Once your agent shows **Online**, [connect it to your Claude subscription](./claude-subscription.md) so Claude Code can authenticate and start working on jobs.
+Once your agent shows **Online**, [connect it to your Claude subscription](./claude-subscription.md) so Claude Code can authenticate and start working on jobs. Then send it work — see [Orchestrating Agents](/workflows/orchestration).

@@ -33,10 +33,27 @@ export default defineConfig({
 
     nav: [
       { text: 'Guide', link: '/installation' },
-      { text: 'Workflows', link: '/workflows/overview' },
+      {
+        text: 'Workflows',
+        items: [
+          { text: 'YAML Workflows', link: '/workflows/overview' },
+          { text: 'Orchestrating Agents', link: '/workflows/orchestration' }
+        ]
+      },
       { text: 'Knowledge Packs', link: '/knowledge-packs/overview' },
       { text: 'Plugins', link: '/plugins/overview' },
       { text: 'MCP', link: '/mcp/overview' },
+      {
+        text: 'Features',
+        items: [
+          { text: 'Dashboard', link: '/features/dashboard' },
+          { text: 'LLM Integration', link: '/features/llm' },
+          { text: 'Jira Integration', link: '/jira-setup' },
+          { text: 'Linear Automations', link: '/linear-automations' },
+          { text: 'Embed Buttons', link: '/features/embed' },
+          { text: 'Recording Mode', link: '/features/recording' }
+        ]
+      },
       // { text: 'API', link: '/api/rest' }, // Hidden until Phase 2
       {
         text: 'v1.0.12',
@@ -76,6 +93,7 @@ export default defineConfig({
           text: 'Workflows',
           items: [
             { text: 'Overview', link: '/workflows/overview' },
+            { text: 'Orchestrating Agents', link: '/workflows/orchestration' },
             { text: 'DSL Reference', link: '/workflows/dsl' },
             { text: 'Step Types', link: '/workflows/steps' },
             { text: 'Variables', link: '/workflows/variables' },
@@ -103,11 +121,12 @@ export default defineConfig({
         {
           text: 'Features',
           items: [
-            { text: 'Recording Mode', link: '/features/recording' },
-            { text: 'Embed Buttons', link: '/features/embed' },
             { text: 'Dashboard', link: '/features/dashboard' },
             { text: 'LLM Integration', link: '/features/llm' },
-            { text: 'Jira Integration', link: '/jira-setup' }
+            { text: 'Jira Integration', link: '/jira-setup' },
+            { text: 'Linear Automations', link: '/linear-automations' },
+            { text: 'Embed Buttons', link: '/features/embed' },
+            { text: 'Recording Mode', link: '/features/recording' }
           ]
         },
         {
