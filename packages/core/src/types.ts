@@ -319,6 +319,13 @@ export interface ConnectorDefinition {
   featureLevel: 'full' | 'standard' | 'basic';
   requiredEnvVars: string[];
   optionalEnvVars: string[];
+  /**
+   * Alternative credentials: any ONE of these env vars independently satisfies the connector's
+   * auth requirement in place of `requiredEnvVars` (e.g. Linear accepts an OAuth `LINEAR_ACCESS_TOKEN`
+   * instead of the raw `LINEAR_API_KEY`). Unlike `optionalEnvVars` (extra, non-credential config),
+   * these count toward connector availability — see {@link getProviderStatuses}.
+   */
+  altCredentialEnvVars?: string[];
   detectCommand?: string;
   stepTypes: string[];
   setupInstructions: string;

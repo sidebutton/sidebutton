@@ -8,6 +8,7 @@ import { execFile } from 'node:child_process';
 import type { IssuesProvider, ChatProvider, GitProvider } from './types.js';
 import type { ConnectorType, ProviderDefinition, ProviderStatus, ConnectorStatus } from '../types.js';
 import { JiraProvider } from './jira.js';
+import { LinearProvider } from './linear.js';
 import { AcliJiraProvider } from './jira-acli.js';
 import { GhCliProvider } from './github.js';
 
@@ -51,6 +52,27 @@ export const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
         stepTypes: [],
         setupInstructions: 'Set JIRA_BROWSER_URL to your Jira board URL (e.g. https://yoursite.atlassian.net). Make sure you are logged in to Jira in the browser.',
         usageFile: '_provider-jira-browser.md',
+      },
+    ],
+  },
+  {
+    id: 'linear',
+    name: 'Linear',
+    type: 'issues',
+    connectors: [
+      {
+        id: 'api',
+        name: 'GraphQL API',
+        featureLevel: 'full',
+        requiredEnvVars: ['LINEAR_API_KEY'],
+        optionalEnvVars: [],
+        // OAuth-connected accounts authenticate with LINEAR_ACCESS_TOKEN (Bearer) instead of the raw
+        // personal key. It is an ALTERNATIVE credential — either one on its own satisfies the connector
+        // (§11) — so it counts toward availability in getProviderStatuses, unlike a plain optional var.
+        altCredentialEnvVars: ['LINEAR_ACCESS_TOKEN'],
+        stepTypes: ['issues.create', 'issues.get', 'issues.search', 'issues.attach', 'issues.transition', 'issues.comment'],
+        setupInstructions: 'Add LINEAR_API_KEY (a Linear personal API key) in Settings → Environment Variables. The key identifies the workspace — no URL needed. Accounts connected via "Connect with Linear" (OAuth) instead receive a LINEAR_ACCESS_TOKEN, sent as a Bearer token and preferred when both are set.',
+        usageFile: '_provider-linear-api.md',
       },
     ],
   },
@@ -132,9 +154,12 @@ export function getProviderStatuses(opts: ProviderStatusOptions): ProviderStatus
       let available = true;
       let error: string | undefined;
 
-      // Check env var requirements
+      // Check env var requirements. A connector is credential-satisfied by all of requiredEnvVars,
+      // OR by any single alternative credential (altCredentialEnvVars) — e.g. Linear's OAuth
+      // LINEAR_ACCESS_TOKEN standing in for the raw LINEAR_API_KEY (SCRUM-1583 §11).
       const missingEnv = conn.requiredEnvVars.filter((v) => !envVars[v]);
-      if (missingEnv.length > 0) {
+      const hasAltCredential = (conn.altCredentialEnvVars ?? []).some((v) => envVars[v]);
+      if (missingEnv.length > 0 && !hasAltCredential) {
         available = false;
         error = `Missing: ${missingEnv.join(', ')}`;
       }
@@ -203,13 +228,15 @@ export function getIssuesProvider(
     case 'jira':
       if (activeConnector === 'cli') return new AcliJiraProvider();
       return new JiraProvider(envVars, site);
+    case 'linear':
+      return new LinearProvider(envVars);
     case 'github':
       return new GhCliProvider();
     default:
       throw new Error(
         override
-          ? `Unknown issues provider: "${override}". Supported: jira, github`
-          : 'No issues provider detected. Configure JIRA_USER_EMAIL + JIRA_API_TOKEN + JIRA_URL in Settings → Environment Variables.',
+          ? `Unknown issues provider: "${override}". Supported: jira, linear, github`
+          : 'No issues provider detected. Configure Jira (JIRA_USER_EMAIL + JIRA_API_TOKEN + JIRA_URL) or Linear (LINEAR_ACCESS_TOKEN or LINEAR_API_KEY) in Settings → Environment Variables.',
       );
   }
 }
@@ -249,6 +276,8 @@ export function getChatProvider(
 
 function detectIssuesProvider(envVars: Record<string, string>): string | undefined {
   if (envVars.JIRA_USER_EMAIL && envVars.JIRA_API_TOKEN) return 'jira';
+  // Either the OAuth app token (Bearer) or a personal key (raw) selects Linear.
+  if (envVars.LINEAR_ACCESS_TOKEN || envVars.LINEAR_API_KEY) return 'linear';
   return undefined;
 }
 

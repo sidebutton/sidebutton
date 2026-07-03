@@ -4,6 +4,7 @@
 
 export type { IssuesProvider, ChatProvider, GitProvider, Attachment, AttachmentResult } from './types.js';
 export { JiraProvider, getJiraAuth } from './jira.js';
+export { LinearProvider } from './linear.js';
 export { AcliJiraProvider } from './jira-acli.js';
 export { GhCliProvider } from './github.js';
 export {

@@ -10,7 +10,8 @@
 import { describe, it, expect } from 'vitest';
 import { parseWorkflow } from './parser.js';
 import { getAllStepTypes } from './steps/index.js';
-import { PROVIDER_DEFINITIONS, getGitProvider, getChatProvider } from './providers/registry.js';
+import { PROVIDER_DEFINITIONS, getGitProvider, getChatProvider, getIssuesProvider, getProviderStatuses } from './providers/registry.js';
+import { JiraProvider, LinearProvider } from './providers/index.js';
 import { WorkflowError } from './types.js';
 
 /** Run `fn`, return the error it throws (fails the test if it does not throw). */
@@ -77,6 +78,81 @@ describe('PROVIDER_DEFINITIONS catalogue is honest', () => {
         }
       }
     }
+  });
+});
+
+describe('Linear provider (SCRUM-1425) is wired honestly', () => {
+  it('is advertised with an api connector, LINEAR_API_KEY, the issues.* steps and a usage file', () => {
+    const linear = PROVIDER_DEFINITIONS.find((d) => d.id === 'linear');
+    expect(linear).toBeDefined();
+    expect(linear!.type).toBe('issues');
+    const api = linear!.connectors.find((c) => c.id === 'api');
+    expect(api?.requiredEnvVars).toEqual(['LINEAR_API_KEY']);
+    // OAuth app token is an alternative credential (SCRUM-1583 D1) — either one works on its own.
+    expect(api?.altCredentialEnvVars).toContain('LINEAR_ACCESS_TOKEN');
+    expect(api?.usageFile).toBe('_provider-linear-api.md');
+    expect(api?.stepTypes).toEqual([
+      'issues.create', 'issues.get', 'issues.search', 'issues.attach', 'issues.transition', 'issues.comment',
+    ]);
+  });
+
+  it('adds NO new step types — every linear step is already executable, count stays 42', () => {
+    const executable = new Set(getAllStepTypes());
+    const api = PROVIDER_DEFINITIONS.find((d) => d.id === 'linear')!.connectors[0];
+    for (const st of api.stepTypes) expect(executable.has(st)).toBe(true);
+    expect(getAllStepTypes().length).toBe(42);
+  });
+
+  it('getIssuesProvider resolves a LinearProvider (auto-detected and explicit)', () => {
+    expect(getIssuesProvider({ LINEAR_API_KEY: 'lin_api_x' })).toBeInstanceOf(LinearProvider);
+    expect(getIssuesProvider({ LINEAR_API_KEY: 'lin_api_x' }, 'linear')).toBeInstanceOf(LinearProvider);
+  });
+
+  it('auto-detects Linear from the OAuth token alone (SCRUM-1583 D1)', () => {
+    // An OAuth-connected account has no personal key — LINEAR_ACCESS_TOKEN must select Linear on its own.
+    expect(getIssuesProvider({ LINEAR_ACCESS_TOKEN: 'lin_oauth_x' })).toBeInstanceOf(LinearProvider);
+  });
+
+  it('detection is Jira-first when both are configured', () => {
+    const p = getIssuesProvider({ JIRA_USER_EMAIL: 'a@b.c', JIRA_API_TOKEN: 't', LINEAR_API_KEY: 'lin' });
+    expect(p).toBeInstanceOf(JiraProvider);
+  });
+
+  it('names linear in the unknown-provider error', () => {
+    expect(() => getIssuesProvider({}, 'bogus')).toThrow(/Supported: jira, linear, github/);
+  });
+});
+
+describe('getProviderStatuses honors alternative credentials (SCRUM-1583 D1)', () => {
+  const linearApiStatus = (envVars: Record<string, string>) =>
+    getProviderStatuses({ envVars })
+      .find((p) => p.id === 'linear')!
+      .connectorStatuses.find((c) => c.id === 'api')!;
+
+  it('reports the Linear api connector Ready with only the OAuth token — no spurious "Missing"', () => {
+    // Detection + construction already accept LINEAR_ACCESS_TOKEN alone; the status/usage-file-sync
+    // surface must agree, or an OAuth-only account is wrongly shown disconnected.
+    const api = linearApiStatus({ LINEAR_ACCESS_TOKEN: 'lin_oauth_x' });
+    expect(api.available).toBe(true);
+    expect(api.error).toBeUndefined();
+  });
+
+  it('reports it Ready with only the personal key (raw-key path unchanged, AC3)', () => {
+    expect(linearApiStatus({ LINEAR_API_KEY: 'lin_api_x' }).available).toBe(true);
+  });
+
+  it('reports Missing when neither credential is set', () => {
+    const api = linearApiStatus({});
+    expect(api.available).toBe(false);
+    expect(api.error).toMatch(/Missing: LINEAR_API_KEY/);
+  });
+
+  it('does not let a plain optional var satisfy a connector — Jira still needs its required creds', () => {
+    const jiraApi = getProviderStatuses({ envVars: { JIRA_URL: 'https://x.atlassian.net' } })
+      .find((p) => p.id === 'jira')!
+      .connectorStatuses.find((c) => c.id === 'api')!;
+    expect(jiraApi.available).toBe(false);
+    expect(jiraApi.error).toMatch(/Missing: JIRA_USER_EMAIL, JIRA_API_TOKEN/);
   });
 });
 
