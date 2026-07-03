@@ -19,6 +19,7 @@ function toBool(v: unknown): boolean | undefined {
 }
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as yaml from 'js-yaml';
 import {
@@ -86,6 +87,22 @@ function extractDomain(url: string | undefined): string | undefined {
     return undefined;
   }
 }
+
+/**
+ * Gallery-kind taxonomy for publish_artifact, mirroring the /api/jobs/artifacts EXT_MAP so the tool's
+ * inferred `kind` matches what the endpoint would derive. The server re-validates against
+ * screenshot|mock|report and re-derives from the extension anyway, so this is only a nicer default —
+ * unknown extensions fall through to 'report'.
+ */
+const ARTIFACT_KINDS = ['screenshot', 'mock', 'report'] as const;
+type ArtifactKind = (typeof ARTIFACT_KINDS)[number];
+const ARTIFACT_KIND_BY_EXT: Record<string, ArtifactKind> = {
+  '.png': 'screenshot', '.jpg': 'screenshot', '.jpeg': 'screenshot', '.gif': 'screenshot', '.webp': 'screenshot',
+  '.svg': 'mock', '.html': 'mock', '.htm': 'mock',
+  '.pdf': 'report', '.md': 'report', '.txt': 'report', '.csv': 'report', '.json': 'report',
+};
+/** Per-file cap, matching the endpoint's MAX_ARTIFACT_BYTES (reject early, before reading bytes). */
+const MAX_ARTIFACT_BYTES = 25 * 1024 * 1024;
 
 interface JsonRpcRequest {
   jsonrpc: string;
@@ -447,6 +464,8 @@ export class McpHandler {
         return this.toolGetWorkflow(args);
       case 'list_run_logs':
         return this.toolListRunLogs(args);
+      case 'publish_artifact':
+        return this.toolPublishArtifact(args);
       case 'get_browser_status':
         return this.toolGetBrowserStatus();
       case 'capture_page':
@@ -840,6 +859,196 @@ export class McpHandler {
     }
 
     return { content: [{ type: 'text', text: output }] };
+  }
+
+  /**
+   * publish_artifact (SCRUM-1606) — upload a workspace file to the portal MID-SESSION and return a
+   * paste-ready evidence snippet (tokenized no-login download link + Jira inline-attachment hint) for
+   * the agent to cite in its ONE resolution comment. A thin client over the B2 endpoint
+   * (POST /api/jobs/artifacts?attach=1&share=1, SCRUM-1605): it mirrors the Stop hook's upload
+   * (agent-runners base/14-claude-stop-hook.sh) — same creds, same job-context attribution — but
+   * flips attach+share on so the evidence exists before the comment is written.
+   *
+   * filename = basename(path) keeps the endpoint's (job_id, step_index, filename) upsert aligned with
+   * the hook's later re-glob, so no duplicate job_artifacts row is created (the row's source stays
+   * 'agent' via the endpoint's no-downgrade upsert). Every failure is NON-FATAL and surfaced as
+   * actionable tool text: the file is left on disk, so the post-session Stop hook still uploads it.
+   */
+  private async toolPublishArtifact(args: Record<string, unknown>): Promise<unknown> {
+    const err = (text: string): unknown => ({ content: [{ type: 'text', text }], isError: true });
+
+    // 1. Resolve + validate the path within the agent's home. The tool reads arbitrary bytes and
+    //    uploads them over a network-reachable MCP server (SCRUM-1490), so containment is a hard gate:
+    //    reject anything whose real target escapes $HOME (via `..` or a symlink).
+    const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
+    const workspaceRoot = path.join(home, 'workspace');
+    const rawPath = typeof args.path === 'string' ? args.path.trim() : '';
+    if (!rawPath) return err('publish_artifact requires a "path" to the file to upload.');
+
+    const resolved = path.isAbsolute(rawPath) ? path.resolve(rawPath) : path.resolve(workspaceRoot, rawPath);
+    let realPath: string;
+    try {
+      realPath = fs.realpathSync(resolved);
+    } catch {
+      return err(`File not found: "${rawPath}" (looked under ${path.dirname(resolved)}). Save it in ~/workspace first, then publish.`);
+    }
+    let homeReal: string;
+    try { homeReal = fs.realpathSync(home); } catch { homeReal = home; }
+    const rel = path.relative(homeReal, realPath);
+    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+      return err(`Refusing to publish "${rawPath}": it resolves to ${realPath}, outside your home directory. Only files under ~ can be published.`);
+    }
+
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(realPath);
+    } catch (e) {
+      return err(`Could not read "${rawPath}": ${e instanceof Error ? e.message : String(e)}.`);
+    }
+    if (stat.isDirectory()) return err(`"${rawPath}" is a directory — publish a single file, not a folder.`);
+    if (!stat.isFile()) return err(`"${rawPath}" is not a regular file.`);
+    if (stat.size === 0) return err(`"${rawPath}" is empty (0 bytes) — nothing to publish.`);
+    if (stat.size > MAX_ARTIFACT_BYTES) {
+      return err(`"${rawPath}" is ${(stat.size / (1024 * 1024)).toFixed(1)} MB, over the 25 MB per-file limit.`);
+    }
+
+    // 2. Job attribution from ~/.sidebutton/job-context.json (the dispatch-assigned session_id wins
+    //    server-side; job_id/step_index are the fallback). No context → not a dispatched job.
+    let jobCtx: { job_id?: unknown; step_index?: unknown; session_id?: unknown };
+    try {
+      jobCtx = JSON.parse(fs.readFileSync(path.join(home, '.sidebutton', 'job-context.json'), 'utf8'));
+    } catch {
+      return err('No active job on this machine (~/.sidebutton/job-context.json is missing). publish_artifact only works on a dispatched job — save the file under artifacts/ and it will upload at session end.');
+    }
+    const jobId = toNum(jobCtx.job_id);
+    const stepIndex = toNum(jobCtx.step_index);
+    const sessionId = typeof jobCtx.session_id === 'string' ? jobCtx.session_id : undefined;
+    if (jobId === undefined || stepIndex === undefined) {
+      return err('The job context on this machine has no job_id / step_index — cannot attribute the upload. Save the file under artifacts/ and it will upload at session end.');
+    }
+
+    // 3. Creds from env — the same AGENT_TOKEN / AGENT_NAME / PORTAL_URL the transcript + artifact
+    //    uploads use (sidebutton.service loads /home/agent/.agent-env). Fall back to SIDEBUTTON_AGENT_*.
+    const token = process.env.AGENT_TOKEN || process.env.SIDEBUTTON_AGENT_TOKEN;
+    const agentName = process.env.AGENT_NAME || process.env.SIDEBUTTON_AGENT_NAME;
+    const portalUrl = (process.env.PORTAL_URL || 'https://sidebutton.com').replace(/\/+$/, '');
+    if (!token || !agentName) {
+      return err('Missing agent credentials (AGENT_TOKEN / AGENT_NAME) in the server environment — cannot reach the portal. Save the file under artifacts/ and it will upload at session end.');
+    }
+
+    // 4. filename = basename (dedup key with the Stop hook); kind from the arg, else the extension.
+    const filename = path.basename(realPath);
+    const kindArg = typeof args.kind === 'string' ? args.kind : undefined;
+    const kind: ArtifactKind = kindArg && (ARTIFACT_KINDS as readonly string[]).includes(kindArg)
+      ? (kindArg as ArtifactKind)
+      : ARTIFACT_KIND_BY_EXT[path.extname(filename).toLowerCase()] ?? 'report';
+    const caption = typeof args.caption === 'string' && args.caption.trim() ? args.caption.trim() : undefined;
+
+    // 5. POST the raw bytes with attach=1&share=1 — the only delta from the Stop hook's call.
+    const qs = new URLSearchParams({
+      job_id: String(jobId),
+      step_index: String(stepIndex),
+      kind,
+      filename,
+      attach: '1',
+      share: '1',
+    });
+    if (sessionId) qs.set('session_id', sessionId);
+    const uploadUrl = `${portalUrl}/api/jobs/artifacts?${qs.toString()}`;
+
+    // Copy the bytes into a Uint8Array over a fresh, concrete ArrayBuffer: this satisfies fetch's
+    // BodyInit (a Buffer / Uint8Array<ArrayBufferLike> does not) and sends the exact bytes with the
+    // octet-stream Content-Type, matching the Stop hook's --data-binary.
+    let body: Uint8Array<ArrayBuffer>;
+    try {
+      const fileBuf = fs.readFileSync(realPath);
+      body = new Uint8Array(new ArrayBuffer(fileBuf.byteLength));
+      body.set(fileBuf);
+    } catch (e) {
+      return err(`Could not read "${rawPath}": ${e instanceof Error ? e.message : String(e)}.`);
+    }
+
+    let res: Awaited<ReturnType<typeof fetch>>;
+    try {
+      res = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          Authorization: `Bearer ${token}`,
+          'X-Agent-Name': agentName,
+        },
+        body,
+        signal: AbortSignal.timeout(120_000),
+      });
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      return err(`Could not reach the portal at ${portalUrl} (${detail}). The file is still on disk — the Stop hook will upload it at session end.`);
+    }
+
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const j = (await res.json()) as { error?: string };
+        if (j?.error) detail = ` — ${j.error}`;
+      } catch { /* non-JSON body */ }
+      const hint =
+        res.status === 404 ? ' (no matching job step — a ticketless or chat job cannot attach/share evidence)'
+        : res.status === 401 ? ' (agent token not accepted — this usually clears after the first heartbeat)'
+        : '';
+      return err(`Publish failed: HTTP ${res.status}${detail}${hint}. The file is still on disk — the Stop hook will retry at session end.`);
+    }
+
+    // 6. Success — build the paste-ready snippet. download_url is present only when share succeeded;
+    //    attachment is null when the job has no ticket (link-only mode). Warnings carry the reason.
+    let parsed: {
+      download_url?: unknown;
+      attachment?: { id?: unknown; filename?: unknown } | null;
+      warnings?: unknown;
+      kind?: unknown;
+      filename?: unknown;
+    };
+    try {
+      parsed = await res.json();
+    } catch {
+      return err('Publish succeeded but the portal returned an unreadable response. Check the ticket / Files hub to confirm.');
+    }
+
+    const outFilename = typeof parsed.filename === 'string' ? parsed.filename : filename;
+    const downloadUrl = typeof parsed.download_url === 'string' ? parsed.download_url : undefined;
+    const attached = !!parsed.attachment;
+    const warnings = Array.isArray(parsed.warnings) ? parsed.warnings.filter((w): w is string => typeof w === 'string') : [];
+    const outKind = typeof parsed.kind === 'string' ? parsed.kind : kind;
+    const sizeKb = (stat.size / 1024).toFixed(1);
+    const label = caption ?? outFilename;
+
+    const status =
+      attached && downloadUrl ? 'attached to the ticket + shareable link minted'
+      : attached ? 'attached to the ticket (no share link)'
+      : downloadUrl ? 'link-only — NOT attached to the ticket'
+      : 'stored (no share link, not attached)';
+
+    const lines: string[] = [];
+    lines.push(`✅ Published **${outFilename}** (${outKind}, ${sizeKb} KB) — ${status}.`);
+    lines.push('');
+    lines.push('Cite it in your ONE resolution comment — paste this into the comment body:');
+    lines.push('');
+    lines.push('```');
+    if (downloadUrl) lines.push(`${label}: ${downloadUrl}`);
+    else lines.push(label);
+    if (attached) lines.push(`[^${outFilename}]`); // Jira inline-attachment reference; harmless elsewhere
+    lines.push('```');
+    if (!downloadUrl && attached) {
+      lines.push('');
+      lines.push('Note: no download link was minted; the [^…] reference renders the attachment inline on Jira.');
+    }
+    if (!attached && downloadUrl) {
+      lines.push('');
+      lines.push('Note: link-only mode — the file was not attached to a ticket, but the download link above works without login.');
+    }
+    for (const w of warnings) lines.push(`⚠️ ${w}`);
+    if (caption) lines.push('\n_(The caption is shown here only — it is not stored on the artifact.)_');
+
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
   }
 
   private async toolGetBrowserStatus(): Promise<unknown> {
@@ -1419,6 +1628,14 @@ export class McpHandler {
     lines.push('');
     lines.push('workflow:// resources exist for reference only (YAML source code).');
     lines.push('To execute a workflow, always use the run_workflow tool — not resources/read.');
+    lines.push('');
+    lines.push('## Publishing Evidence');
+    lines.push('');
+    lines.push('- **publish_artifact(path, kind?, caption?)** — on a dispatched job, upload a screenshot / mockup / report');
+    lines.push('  from your workspace and get back a paste-ready snippet (no-login download link + inline attachment');
+    lines.push('  reference) to cite in your ONE resolution comment. Publish BEFORE writing the comment — an artifact');
+    lines.push('  saved afterward cannot be cited. If the tool is unavailable, save the file under artifacts/ and it');
+    lines.push('  uploads automatically at session end.');
     lines.push('');
     lines.push('## Browser Tools');
     lines.push('');

@@ -48,5 +48,6 @@ Install a knowledge pack  →  AI agent gets domain knowledge  →  Agent works 
 - [MCP Setup](/mcp-setup) — Connect Claude Code or Cursor
 - [Connect Claude Subscription](/cloud/claude-subscription) — Sign a cloud agent's Claude Code into your Claude account
 - [Orchestrating Agents](/workflows/orchestration) — Dispatch workflows and playbooks to a cloud agent fleet
+- [Working with Tasks](/workflows/tasks) — Batch a whole epic into the pool and approve it
 - [First Workflow](/first-workflow) — Run your first automation
 - [Community Roles](/community-roles) — AI agent role templates

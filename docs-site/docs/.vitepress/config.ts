@@ -37,7 +37,8 @@ export default defineConfig({
         text: 'Workflows',
         items: [
           { text: 'YAML Workflows', link: '/workflows/overview' },
-          { text: 'Orchestrating Agents', link: '/workflows/orchestration' }
+          { text: 'Orchestrating Agents', link: '/workflows/orchestration' },
+          { text: 'Working with Tasks', link: '/workflows/tasks' }
         ]
       },
       { text: 'Knowledge Packs', link: '/knowledge-packs/overview' },
@@ -94,6 +95,7 @@ export default defineConfig({
           items: [
             { text: 'Overview', link: '/workflows/overview' },
             { text: 'Orchestrating Agents', link: '/workflows/orchestration' },
+            { text: 'Working with Tasks', link: '/workflows/tasks' },
             { text: 'DSL Reference', link: '/workflows/dsl' },
             { text: 'Step Types', link: '/workflows/steps' },
             { text: 'Variables', link: '/workflows/variables' },

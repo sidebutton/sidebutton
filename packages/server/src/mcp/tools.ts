@@ -108,6 +108,45 @@ export const MCP_TOOLS: McpTool[] = [
     annotations: { title: 'List Run Logs', readOnlyHint: true, openWorldHint: true },
   },
   {
+    name: 'publish_artifact',
+    description:
+      'Publish a piece of evidence (a screenshot, a design mockup, an RCA/coverage report) to the portal ' +
+      'RIGHT NOW, mid-session, and get back a paste-ready snippet to cite in your ONE resolution comment on ' +
+      'the ticket. The file is uploaded, attached to the ticket automatically, and given a tokenized no-login ' +
+      'download link — the snippet contains that link plus the Jira inline-attachment reference. Use this the ' +
+      'moment you have evidence worth showing, instead of waiting for the end of the session (nothing you save ' +
+      'after your comment is written can be cited in it). ' +
+      'Only works on a dispatched job (it needs the on-box job context); on a ticketless/chat job it returns a ' +
+      'download link only. Files must be ≤ 25 MB and live under your home directory. On any failure the file is ' +
+      'left on disk and still uploads at session end, so save deliverables under artifacts/ as a fallback.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description:
+            'Path to the file to publish. A relative path resolves against your workspace (~/workspace); an ' +
+            'absolute path is also accepted, as long as it stays within your home directory.',
+        },
+        kind: {
+          type: 'string',
+          enum: ['screenshot', 'mock', 'report'],
+          description:
+            'Gallery category. Optional — inferred from the file extension when omitted (images → screenshot, ' +
+            '.svg/.html → mock, .pdf/.md/.txt/.csv/.json → report).',
+        },
+        caption: {
+          type: 'string',
+          description:
+            'Optional short label for the snippet. Shown only in the returned snippet as a hint for your ' +
+            'comment; it is NOT stored on the artifact.',
+        },
+      },
+      required: ['path'],
+    },
+    annotations: { title: 'Publish Artifact', destructiveHint: true, openWorldHint: true },
+  },
+  {
     name: 'get_browser_status',
     description: 'Check if the browser extension is connected.',
     inputSchema: {

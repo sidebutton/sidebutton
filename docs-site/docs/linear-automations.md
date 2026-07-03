@@ -129,6 +129,7 @@ Then verify in the portal:
 ## Related Documentation
 
 - [Orchestrating Agents](/workflows/orchestration) — workflows, playbooks and gates explained
+- [Working with Tasks](/workflows/tasks) — review and approve the tickets automations pool
 - [Create a cloud agent (AWS)](./cloud/aws-setup.md) · [Hetzner](./cloud/hetzner-setup.md) · [GCP](./cloud/gcp-setup.md)
 - [Connect your agents to your Claude subscription](./cloud/claude-subscription.md)
 - [Jira Integration](./jira-setup.md)

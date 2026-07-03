@@ -39,6 +39,11 @@ import { applyProjects, statusProjects, statConfigFiles, resetProject, type Appl
 import { applySkills, type ApplySkill } from './skills.js';
 import { applyFiles, FILES_APPLY_BODY_LIMIT, type ApplyFile } from './files.js';
 import {
+  applyComponentConfig,
+  COMPONENT_CONFIG_APPLY_BODY_LIMIT,
+  type ApplyComponentConfigItem,
+} from './component-config.js';
+import {
   isUuid,
   tmuxSessionName,
   findClaudeSessionPid,
@@ -1862,6 +1867,26 @@ export async function startServer(config: ServerConfig): Promise<void> {
     const results = await applyFiles(body.workspace_path, body.files as ApplyFile[]);
     return { results };
   });
+
+  // Component config — stage + `sudo sb-config-place` each VPN/RDP profile at its component's declared
+  // default path (SCRUM-1601). Privileged sibling of /api/files/apply: the payload is the agent's full
+  // effective set, so this reconciles (de-scoped files are torn down) and raises bodyLimit above the
+  // 1 MB default. Agents predating this route answer 404 → the portal soft-skips (mixed fleet).
+  fastify.post(
+    '/api/component-config/apply',
+    { bodyLimit: COMPONENT_CONFIG_APPLY_BODY_LIMIT },
+    async (request, reply) => {
+      const body = request.body as { items?: unknown } | undefined;
+      if (!body || typeof body !== 'object') {
+        return reply.code(400).send({ error: 'request body is required' });
+      }
+      if (!Array.isArray(body.items)) {
+        return reply.code(400).send({ error: 'items must be an array' });
+      }
+      const results = await applyComponentConfig(body.items as ApplyComponentConfigItem[]);
+      return { results };
+    },
+  );
 
   // Git projects — local-only status for one or more projects.
   fastify.get('/api/projects/status', async (request, reply) => {

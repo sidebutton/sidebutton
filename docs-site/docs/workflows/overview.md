@@ -141,6 +141,7 @@ steps:
 ## Next Steps
 
 - **[Orchestrating Agents](/workflows/orchestration)** — Dispatch workflows to cloud agents
+- **[Working with Tasks](/workflows/tasks)** — Batch tickets into the pool and run them in dependency order
 - **[DSL Reference](/workflows/dsl)** — Complete YAML syntax
 - **[Step Types](/workflows/steps)** — All step types
 - **[Variables](/workflows/variables)** — Data flow between steps

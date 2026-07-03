@@ -126,7 +126,7 @@ The Playbooks page is the operating view. At the top, intake: paste a ticket lin
 
 ![Playbooks page with the intake composer, two active runs showing live step progress, agents and cost, and the searchable history of recent runs](/agent-orchestration/01-playbooks-hub.png)
 
-For batch work there is also the **Tasks** pool: queue many tickets with a playbook each, and the scheduler starts each one as agents free up — honoring "blocked by" links between pooled tickets, so dependent work runs in the right order.
+For batch work there is also the [**Tasks** pool](/workflows/tasks): queue many tickets with a playbook each, and the scheduler starts each one as agents free up — honoring "blocked by" links between pooled tickets, so dependent work runs in the right order.
 
 ---
 
@@ -144,6 +144,7 @@ sidebutton registry update     # refresh installed packs from your registries
 
 ## Related Documentation
 
+- [Working with Tasks](/workflows/tasks) — batch many tickets into the pool and run them in dependency order
 - [Workflows Overview](/workflows/overview) — the YAML DSL shared by both workflow flavors
 - [Knowledge Packs](/knowledge-packs/overview) — authoring, installing and publishing packs
 - [Linear Automations](/linear-automations) — trigger playbooks from issue events
