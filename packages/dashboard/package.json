@@ -11,7 +11,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@sentry/svelte": "^10.48.0",
+    "@sentry/svelte": "^10.63.0",
     "@sidebutton/core": "workspace:*",
     "navaid": "^1.2.0",
     "svelte": "^5.55.3"
