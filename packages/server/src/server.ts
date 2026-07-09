@@ -38,6 +38,7 @@ import { listRegistries, addRegistry, removeRegistry, getRegistryDir, readRegist
 import { applyProjects, statusProjects, statConfigFiles, resetProject, type ApplyProject, type StatusProject } from './projects.js';
 import { applySkills, type ApplySkill } from './skills.js';
 import { applyFiles, FILES_APPLY_BODY_LIMIT, type ApplyFile } from './files.js';
+import { applyAgentAppEnv } from './agent-app-env.js';
 import {
   applyComponentConfig,
   COMPONENT_CONFIG_APPLY_BODY_LIMIT,
@@ -1813,6 +1814,15 @@ export async function startServer(config: ServerConfig): Promise<void> {
           results.push({ path: ep.path, ok: false, error: err.message });
         }
       }
+    }
+
+    // AAP-21 (SCRUM-1659): reconcile ~/.agent-env.d/<slug> from the delivered agent_app_env so an app
+    // created / edited / key-rotated after provisioning reaches this RUNNING agent — the per-app env used
+    // to ride ONLY the first-boot base/19-secrets path. `undefined` (an older portal) is a no-op; a
+    // present map reconciles to exactly that set (writes/updates non-empty slugs, removes orphans). See
+    // ./agent-app-env.ts for the format + back-compat contract.
+    for (const r of applyAgentAppEnv(body.agent_app_env, homeDir)) {
+      results.push({ path: `~/.agent-env.d/${r.slug}`, ok: r.ok, ...(r.error ? { error: r.error } : {}) });
     }
 
     return { ok: true, results };

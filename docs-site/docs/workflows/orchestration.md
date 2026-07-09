@@ -122,7 +122,7 @@ With **sync status** on, the ticket in Jira or Linear moves through its workflow
 
 ## Watch it run
 
-The Playbooks page is the operating view. At the top, intake: paste a ticket link — or just describe a problem and attach screenshots, and SideButton creates the ticket and starts the playbook in one step. Below, every active run with its current step, the agent working it, elapsed time and live cost — and the full run history with per-run cost, so you know exactly what each resolved ticket took.
+The Playbooks page is the operating view — the full tour of it lives in [Working with Playbooks](/workflows/playbooks). At the top, intake: paste a ticket link — or just describe a problem and attach screenshots, and SideButton creates the ticket and starts the playbook in one step. Below, every active run with its current step, the agent working it, elapsed time and live cost — and the full run history with per-run cost, so you know exactly what each resolved ticket took.
 
 ![Playbooks page with the intake composer, two active runs showing live step progress, agents and cost, and the searchable history of recent runs](/agent-orchestration/01-playbooks-hub.png)
 
@@ -144,6 +144,7 @@ sidebutton registry update     # refresh installed packs from your registries
 
 ## Related Documentation
 
+- [Working with Playbooks](/workflows/playbooks) — the Playbooks page end-to-end: intake, live zone, history and library
 - [Working with Tasks](/workflows/tasks) — batch many tickets into the pool and run them in dependency order
 - [Workflows Overview](/workflows/overview) — the YAML DSL shared by both workflow flavors
 - [Knowledge Packs](/knowledge-packs/overview) — authoring, installing and publishing packs

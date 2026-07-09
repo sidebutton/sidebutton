@@ -38,6 +38,7 @@ export default defineConfig({
         items: [
           { text: 'YAML Workflows', link: '/workflows/overview' },
           { text: 'Orchestrating Agents', link: '/workflows/orchestration' },
+          { text: 'Working with Playbooks', link: '/workflows/playbooks' },
           { text: 'Working with Tasks', link: '/workflows/tasks' }
         ]
       },
@@ -87,6 +88,7 @@ export default defineConfig({
             { text: 'AWS Setup', link: '/cloud/aws-setup' },
             { text: 'Hetzner Setup', link: '/cloud/hetzner-setup' },
             { text: 'GCP Setup', link: '/cloud/gcp-setup' },
+            { text: 'Create an Agent', link: '/cloud/create-agent' },
             { text: 'Connect Claude Subscription', link: '/cloud/claude-subscription' }
           ]
         },
@@ -95,6 +97,7 @@ export default defineConfig({
           items: [
             { text: 'Overview', link: '/workflows/overview' },
             { text: 'Orchestrating Agents', link: '/workflows/orchestration' },
+            { text: 'Working with Playbooks', link: '/workflows/playbooks' },
             { text: 'Working with Tasks', link: '/workflows/tasks' },
             { text: 'DSL Reference', link: '/workflows/dsl' },
             { text: 'Step Types', link: '/workflows/steps' },

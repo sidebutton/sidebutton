@@ -1,6 +1,6 @@
 # Working with Tasks
 
-The **Tasks** pool is SideButton's drop-&-forget work queue. Paste in tickets — a single key, a whole epic, or a JQL query — and each becomes a pooled task that picks up a playbook and runs on its own once its blockers clear. It is the batch counterpart to [Playbooks](/workflows/orchestration#playbooks-chain-workflows-into-missions): where a playbook run is one ticket you start and watch, the pool is many tickets you drop and leave to the scheduler.
+The **Tasks** pool is SideButton's drop-&-forget work queue. Paste in tickets — a single key, a whole epic, or a JQL query — and each becomes a pooled task that picks up a playbook and runs on its own once its blockers clear. It is the batch counterpart to [Playbooks](/workflows/playbooks): where a playbook run is one ticket you start and watch, the pool is many tickets you drop and leave to the scheduler.
 
 Every task maps to a playbook run — sometimes several, across rework and reopen — and every run is a chain of [jobs](/workflows/orchestration#anatomy-of-an-agent-workflow) worked by your agents. The most common gesture is the one this page walks through: **paste an epic link, review the plan, and approve** — the fleet then works the whole epic in dependency order.
 
@@ -90,16 +90,17 @@ Everything you have ever pooled lives in the **All tasks** ledger below the band
 
 ## Good to know
 
-- **Tasks is drop-&-forget; Playbooks is work-&-watch.** Use the pool for batches you want the scheduler to run; use [Playbooks](/workflows/orchestration) intake to run a single ticket now with hands-on options. Playbooks intake never writes to the pool.
+- **Tasks is drop-&-forget; Playbooks is work-&-watch.** Use the pool for batches you want the scheduler to run; use [Playbooks](/workflows/playbooks) intake to run a single ticket now with hands-on options. Playbooks intake never writes to the pool.
 - **A task maps to one run — or several.** Rework, a reopen, or a failed gate can give one task more than one run over its life; the ledger keeps them all.
 - **Blockers only bind inside the pool.** A *"blocked by"* link holds a run only when the blocking ticket is pooled too; links to tickets outside the pool are ignored.
-- **Suggestions resolve to your default playbooks.** Until custom issue-type mappings land, the suggested playbook is the seeded default for that type — override it per ticket, or set a whole-batch playbook in **⚙ Options** before adding.
+- **Suggestions resolve through issue-type routing.** The suggested playbook comes from your account's issue-type → playbook map (**Issue type routing** on the [Playbooks page](/workflows/playbooks#the-playbook-library)); a type with no mapping falls back to the seeded default. Override it per ticket, or set a whole-batch playbook in **⚙ Options** before adding.
 - **Batch options.** The intake card's **⚙ Options** sets the effort tier, tracker-status sync, and a shared hint applied to everything in the batch.
 
 ---
 
 ## Related Documentation
 
+- [Working with Playbooks](/workflows/playbooks) — run one ticket end-to-end and watch every step
 - [Orchestrating Agents](/workflows/orchestration) — workflows, playbooks and gates explained
 - [Linear Automations](/linear-automations) — pool tickets automatically from issue events
 - [Jira Integration](/jira-setup) — connect the tracker your tickets come from
