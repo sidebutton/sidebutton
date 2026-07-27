@@ -277,6 +277,73 @@ sidebutton install --list
 
 See the [CLI Reference](/knowledge-packs/cli) for full command details, including in-place publishing mode and all options.
 
+## Editing in the Portal
+
+The workflow above is CLI-first — clone the repo, edit files, `sidebutton publish`. If your pack is an **account pack** on the Fleet Control portal, you can edit the same content in the browser instead. The portal commits each save straight to the pack repository — authored as your signed-in user — and running agents pick the change up automatically. It's the portal-side equivalent of committing and pushing: no clone, no separate publish step.
+
+### What you can edit
+
+| Content | Where | How |
+|---------|-------|-----|
+| Module skill (`_skill.md`) | **Skills** → a module | **Edit** on the file card |
+| Role playbook (`_roles/<slug>.md`) | **Roles** → a role (or a role with no playbook) | **Edit**, or **Create playbook file** on the empty state |
+| Workflow YAML | **Workflows** → a workflow | **Edit YAML** |
+| A new module or domain | **Skills** | **+ Module** / **+ Domain** — scaffolds the same skeleton as `sidebutton init` |
+
+**Editing** an existing file and **creating** a new one (a missing role playbook, a scaffolded module or domain) both go through the same save path. Your file is saved exactly as you submit it. Frontmatter that carries discovery contracts — `confidence`, `repos`, `workspaces` — is checked on save: dropping one of these fields does not block the commit, but the response carries a non-fatal warning that the grooming metadata was lost.
+
+> **Default-pack workflows.** Editing a workflow that ships in the shared default pack does not touch the catalog. The save **copies the workflow into your account pack**, and your account's copy takes over from then on — there is no separate "fork" step.
+
+### Who can write, and consent for your own repo
+
+Writing requires an **admin** portal user, and the usual trial limits apply.
+
+A **portal-provided** pack repo (the default the portal provisions for you) is always writable — it is portal infrastructure, so there is nothing to opt into.
+
+If you pointed your account at your **own** GitHub or Bitbucket repo, portal writes are **opt-in**. Pick a write mode in **Settings → Skill Pack Repository**:
+
+| Mode | A save… |
+|------|---------|
+| **Read-only** (`off`, default) | is disabled — the editor links out to your host's own web editor. This is the previous "the portal never pushes" behavior, now an explicit choice. |
+| **Commit** (`commit`) | commits directly to your default branch — the same access your agents already have. |
+| **Pull request** (`pr`) | pushes an edit branch and opens a pull request. *Rolling out — not yet selectable in Settings.* |
+
+Turning on **Commit** runs a one-time capability probe against your stored git credential and refuses, with a reason, if it is read-only (GitHub needs `repo` scope; Bitbucket needs *Repositories: Write*).
+
+### Saving: conflicts and validation
+
+Every save is all-or-nothing — the working copy is never left half-written:
+
+1. **Validate** — frontmatter, workflow YAML, and the manifest schema must parse. A bad edit is rejected up front with a `422` and per-field reasons, before anything is pulled or written.
+2. **Refresh** — the portal pulls the latest from the remote.
+3. **Conflict check** — if the file changed upstream since you opened it (discovery agents write these repos too), the save is rejected with a `409` and the editor shows a *changed upstream* prompt carrying the latest version to merge. Last-write-wins is never silent.
+4. **Commit, push, re-sync** — the commit is authored as you, then readiness, pipelines, and roles recompute immediately.
+
+A successful save returns the new commit and any non-fatal notes:
+
+```json
+{
+  "commit_sha": "9f2c41d",
+  "warnings": ["_skill.md dropped SD-contract frontmatter field(s): confidence"],
+  "pull_request_url": "https://github.com/your-org/your-pack/pull/42"
+}
+```
+
+`pull_request_url` is present only in **Pull request** mode.
+
+### How fast changes propagate
+
+| Consumer | Sees the change |
+|----------|-----------------|
+| The Fleet Control portal | Immediately — the save re-syncs before it returns. |
+| Agents (Claude Code / MCP) | On the next registry sync — **within ~5 minutes**. |
+
+Account packs need no manifest version bump to propagate: agents force-reinstall on every pull, and the portal sync is gated on the repository's `HEAD` commit. On an agent, MCP `resources/read` serves the new content live; the pack summary from `initialize` refreshes on reconnect.
+
+### Not yet available
+
+Portal editing is **create and edit** only. **Deleting or renaming** a pack file is not available in the portal yet — treat a scaffolded file as a one-way door for now. The registry `index.json` is always regenerated, never hand-edited.
+
 ## Learning Loop
 
 Knowledge packs aren't static — they improve every time your agent uses them.

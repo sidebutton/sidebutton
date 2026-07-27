@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import type { Step } from '../types.js';
 import type { ExecutionContext } from '../context.js';
 import { WorkflowError } from '../types.js';
+import { ensureClaudeFolderTrust } from '../claude-trust.js';
 
 const execAsync = promisify(exec);
 const IS_MAC = platform() === 'darwin';
@@ -234,6 +235,20 @@ export async function executeTerminalRun(
     // POST /api/session/input paste a native user turn into the live session
     // (SCRUM-1384). Detached + unref keeps the launcher non-blocking.
     const resolvedCwd = ctx.terminalCwd || homedir();
+
+    // Pre-trust the launch dir before Claude starts: an interactive Claude in a
+    // dir with no `projects[<dir>].hasTrustDialogAccepted` entry in
+    // ~/.claude.json blocks the whole job on the native folder-trust dialog
+    // (--dangerously-skip-permissions does not cover first-run gates), and
+    // portal-created workspaces land on paths provisioning never seeded.
+    if (cmd.includes('claude ')) {
+      const seeded = ensureClaudeFolderTrust(resolvedCwd);
+      if (seeded === 'seeded') {
+        ctx.emitLog('info', `Pre-trusted ${resolvedCwd} for Claude Code`);
+      } else if (seeded === 'failed') {
+        ctx.emitLog('warn', `Could not pre-trust ${resolvedCwd} for Claude Code — the session may pause on the folder-trust prompt`);
+      }
+    }
 
     try {
       const scriptPath = join(tmpdir(), `sb-terminal-${Date.now()}.sh`);

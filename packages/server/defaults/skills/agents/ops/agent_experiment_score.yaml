@@ -1,0 +1,88 @@
+schema_version: 1
+id: agent_experiment_score
+title: "Score Experiment Branches"
+description: "Judge two A/B experiment branches against ticket acceptance criteria — read-only, posts one verdict comment"
+overview: |
+  The A/B experiment judge. After a forked playbook step finishes both branches, this workflow
+  reviews each branch's work product against the ticket's acceptance criteria and posts ONE
+  structured verdict comment on the ticket: per-branch scores (coverage / correctness / quality /
+  overall, each 0-100), a recommended winner, and a rationale. The engine parses that comment into
+  the experiment ledger; the recommendation is advisory — the operator makes the actual pick.
+
+  Quality only: cost, turns, and model identity come from each branch's job telemetry and must not
+  influence the scores. Read-only otherwise — the verdict comment is this workflow's only write.
+  No code changes, no merges, no ticket status changes, no PR comments.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: qa
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  ticket_url:
+    type: string
+    description: "Jira ticket URL"
+  branch_a_ref:
+    type: string
+    description: "Branch A's work product: a PR URL, or an instruction pointing at the ticket's [exp A] comment"
+  branch_b_ref:
+    type: string
+    description: "Branch B's work product: a PR URL, or an instruction pointing at the ticket's [exp B] comment"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: Score Experiment Branches"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read ticket with attachments and all comments - {{ticket_url}}. if it fails, stop and report the error.
+      you are the judge for an A/B experiment: two agents each completed this ticket's step independently, as branch A and branch B. score both against the ticket's acceptance criteria.
+      branch A: {{branch_a_ref}}
+      branch B: {{branch_b_ref}}
+      for each branch: if its ref is a PR link, review that PR's diff line-by-line against the acceptance criteria; otherwise follow the ref's instruction (the ticket comment prefixed [exp A] or [exp B] holds that branch's result). you may check out and build a branch locally when the diff alone is inconclusive. if a branch left no PR and no prefixed comment, score only what is evidenced and say so in the rationale — never bail without posting the verdict comment.
+      score QUALITY ONLY, 0-100 per dimension: coverage (each acceptance criterion mapped to work that implements it), correctness (logic and edge cases), quality (maintainability, tests, scope discipline), plus an overall. ignore cost, speed, and which model produced the work — the system compares those from job telemetry.
+      READ-ONLY GUARDRAILS: do not change code, do not merge or approve anything, do not change the ticket status, do not comment on any PR, do not post more than one ticket comment.
+      {{hint}}
+      write EXACTLY ONE comment to the ticket, as your FINAL action: a 2-4 sentence comparison summary, then exactly one fenced json code block in exactly this shape (all scores numbers 0-100, recommendation "A" or "B", non-empty rationale):
+      ```json
+      {"branches":{"A":{"coverage":90,"correctness":85,"quality":80,"overall":85},"B":{"coverage":95,"correctness":88,"quality":82,"overall":88}},"recommendation":"B","rationale":"B implements the empty-state AC that A missed; both build and test clean."}
+      ```
+      replace the example scores and rationale with your real verdict. in your summary and rationale, do NOT include PR links or PR numbers, and do NOT use the words pass, fail, merged, blocked, or conflict — the pipeline string-matches ticket comments for those tokens and your comment must not trigger it.
+      SB_PROMPT
+      )"

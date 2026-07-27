@@ -167,5 +167,6 @@ If you want to teach an agent *what to do* on a domain, create a knowledge pack.
 ## Next Steps
 
 - **[Creating Knowledge Packs](/knowledge-packs/creating)** — Build and publish your own
+- **[Editing in the Portal](/knowledge-packs/creating#editing-in-the-portal)** — Edit pack content in the browser, no clone required
 - **[CLI Reference](/knowledge-packs/cli)** — Install, manage, and search packs
 - **[Plugins](/plugins/overview)** — Extend SideButton with custom MCP tools

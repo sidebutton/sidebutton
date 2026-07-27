@@ -1,0 +1,76 @@
+schema_version: 1
+id: agent_qa_followup
+title: "Re-review PR After Fixes"
+description: "Re-review PR after developer addresses prior QA feedback — does NOT test live site"
+overview: |
+  A follow-up QA pass that focuses strictly on the latest commits added in response to earlier review comments. The agent reads the prior review thread, checks each requested change, and confirms that the developer addressed every item without regressing previously-approved behaviour. It only reads code on the PR branch — it does not touch the deployed site.
+
+  Use this after a developer has pushed fixes to a PR that QA already reviewed once. The PR acceptance outcome is posted back to the ticket along with a clear approve, request-changes, or block decision.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: qa
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # step's ticket comment; declaring it here is what makes this workflow content-routable.
+  verdicts: [PASS, FAIL]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  ticket_url:
+    type: string
+    description: "Jira ticket URL"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: QA Re-review PR"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read ticket with attachments and all comments - {{ticket_url}}. if it fails, stop and report the error.
+      focus on the most recent QA comments to understand what previously failed, and the most recent SE comment to find the updated PR.
+      learn how to QA relevant parts.
+      IMPORTANT — the fix is in a PR branch, NOT deployed. do NOT test the live site.
+      1. review the latest PR changes against prior QA feedback.
+      2. verify each previously reported issue is addressed.
+      3. confirm original acceptance criteria still hold.
+      {{hint}}
+      save each evidence file, publish it via the publish_artifact tool, and cite the returned download link inline in your single ticket comment; if publish_artifact is unavailable, save under ~/workspace/artifacts/ for post-run collection.
+      write one comment to the ticket with: re-test results per prior issue, any new issues found, and verdict (PASS or FAIL).
+      SB_PROMPT
+      )"

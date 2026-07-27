@@ -6,8 +6,8 @@ layout: doc
 
 Open source platform for AI agents with structured roles, skills, and domain knowledge.
 
-<a href="/sidebutton-agent-stack.png" target="_blank">
-  <img src="/sidebutton-agent-stack.png" alt="The AI Agent Stack — SideButton" style="max-width: 600px; width: 100%; border-radius: 8px; border: 1px solid var(--vp-c-divider); margin: 1.5rem 0;" />
+<a href="/sidebutton-oss-stack.png" target="_blank">
+  <img src="/sidebutton-oss-stack.png" alt="The AI Agent Stack — SideButton" style="max-width: 600px; width: 100%; border-radius: 8px; border: 1px solid var(--vp-c-divider); margin: 1.5rem 0;" />
 </a>
 
 ## What is SideButton?

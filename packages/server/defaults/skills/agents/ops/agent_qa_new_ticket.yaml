@@ -1,0 +1,77 @@
+schema_version: 1
+id: agent_qa_new_ticket
+title: "Test Live Site (New Ticket)"
+description: "Test the live site against ticket scope — no PR, tests production directly"
+overview: |
+  This workflow drives a first-pass QA verification against the live production site for a new ticket. The agent reads the ticket scope, loads knowledge packs for the affected modules, then exercises the real deployed UI — clicking, typing, extracting — to verify acceptance criteria. It is intended for tickets that describe user-visible behaviour rather than internal code changes.
+
+  No PR or branch is required. Findings are posted back to the ticket as a clear pass, fail-with-evidence, or partial-pass verdict, along with the exact steps reproduced and the selectors used. If a fix is required, a follow-up SE dispatch is recommended separately.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: qa
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # step's ticket comment; declaring it here is what makes this workflow content-routable.
+  verdicts: [BUG_CONFIRMED, NO_BUG]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  ticket_url:
+    type: string
+    description: "Jira ticket URL"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: QA Test Live"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read ticket with attachments - {{ticket_url}}. if it fails, stop and report the error.
+      EXECUTION RULES (read first — they override any habit):
+      - Do ALL of the work in THIS session, in the FOREGROUND, and finish before your turn ends. You MAY spawn subagents (the Agent / Task tool) or run parallel searches to investigate faster — but you MUST wait for every subagent and any background task to return and fold their results in YOURSELF before ending the turn. Never move the work (or the comment) into the background — no run_in_background, no background workflows, no trailing & — and then end the turn expecting to be resumed. Ending your turn is FINAL here: nothing wakes you to "resume", so a turn that ends while a spawned subagent or any background work is still pending is reported as a FAILED step, not a pause.
+      - Post the ticket comment YOURSELF, in the foreground, as the LAST thing you do — after every subagent and background task has returned. Never delegate that comment to a subagent, and never end the turn "holding", "pausing", or planning to "resume/continue later". If you genuinely cannot finish, say so in the comment and stop.
+      the description defines the scope — pages to test, features to verify, acceptance criteria.
+      review any attachments (screenshots, mockups) for expected visual state.
+      load skill packs for relevant modules.
+      work through the scope systematically — navigate, collect evidence, verify behavior.
+      {{hint}}
+      save each evidence file, publish it via the publish_artifact tool, and cite the returned download link inline in your single ticket comment; if publish_artifact is unavailable, save under ~/workspace/artifacts/ for post-run collection.
+      as your FINAL foreground action, write one comment to the ticket with: results table (scope item | PASS/FAIL | notes), bugs found (repro steps, expected vs actual, severity, URL), and overall verdict: PASS or FAIL.
+      SB_PROMPT
+      )"

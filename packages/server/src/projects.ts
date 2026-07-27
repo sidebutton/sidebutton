@@ -58,6 +58,8 @@ export interface ConfigFileStat {
 }
 
 export interface ConfigFiles {
+  /** Canonical instruction file since SCRUM-479. Null on a workspace applied by an older build. */
+  agents_md: ConfigFileStat | null;
   claude_md: ConfigFileStat | null;
   mcp_json: ConfigFileStat | null;
 }
@@ -298,24 +300,30 @@ async function statOne(filePath: string): Promise<ConfigFileStat | null> {
 }
 
 /**
- * Stat the agent's per-workspace config files (`CLAUDE.md`, `.mcp.json`) so the
- * portal's workspace matrix can show their on-disk size + last-modified time.
- * The agent is the only honest source of this state — `/api/config/apply`
- * writes these files but nothing reported them back.
+ * Stat the agent's per-workspace config files (`AGENTS.md`, `CLAUDE.md`,
+ * `.mcp.json`) so the portal's workspace matrix can show their on-disk size +
+ * last-modified time. The agent is the only honest source of this state —
+ * `/api/config/apply` writes these files but nothing reported them back.
  *
- * Two `fs.stat` calls, no content reads, so it stays well within the portal's
+ * `AGENTS.md` carries the instruction text since SCRUM-479 and `CLAUDE.md` is
+ * usually just the `@AGENTS.md` pointer, so the portal reads the instruction
+ * size off `agents_md` and falls back to `claude_md` for workspaces an older
+ * agent build applied. Both are reported; the portal decides.
+ *
+ * Three `fs.stat` calls, no content reads, so it stays well within the portal's
  * 5s status budget. A missing file resolves to `null` (not an error).
  */
 export async function statConfigFiles(workspace_path: string): Promise<ConfigFiles> {
   const resolved = resolveSubpath(workspace_path, '');
   if (!resolved.ok) {
-    return { claude_md: null, mcp_json: null };
+    return { agents_md: null, claude_md: null, mcp_json: null };
   }
-  const [claude_md, mcp_json] = await Promise.all([
+  const [agents_md, claude_md, mcp_json] = await Promise.all([
+    statOne(path.join(resolved.target, 'AGENTS.md')),
     statOne(path.join(resolved.target, 'CLAUDE.md')),
     statOne(path.join(resolved.target, '.mcp.json')),
   ]);
-  return { claude_md, mcp_json };
+  return { agents_md, claude_md, mcp_json };
 }
 
 export async function resetProject(workspace_path: string, subpath: string | null | undefined, branch: string): Promise<ResetResult> {

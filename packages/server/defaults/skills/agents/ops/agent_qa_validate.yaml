@@ -1,0 +1,78 @@
+schema_version: 1
+id: agent_qa_validate
+title: "Review PR Fix"
+description: "Review PR code against ticket acceptance criteria — does NOT test live site"
+overview: |
+  A code-level QA review that checks whether a PR's changes actually satisfy the acceptance criteria on the linked ticket. The agent reads the ticket, then reads the PR diff line-by-line, mapping each requirement to the code that implements it. If something in the criteria has no backing code, that is called out explicitly.
+
+  This workflow never touches a running site — it is a gating step before deploy, not a validation of deployed behaviour. Output is an approval, a request-changes with specific line references, or a block decision with rationale, all posted to the ticket and the PR.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: qa
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # step's ticket comment; declaring it here is what makes this workflow content-routable.
+  verdicts: [PASS, FAIL]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  ticket_url:
+    type: string
+    description: "Jira ticket URL"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: QA Review PR Fix"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read ticket with attachments and all comments - {{ticket_url}}. if it fails, stop and report the error.
+      learn how to QA relevant parts.
+      IMPORTANT — the fix is in a PR branch, NOT deployed to production. do NOT test the live site to verify the fix.
+      1. find the PR link in ticket comments.
+      2. review the PR diff for correctness against acceptance criteria.
+      3. check out the branch locally and build/test if possible.
+      4. if not buildable, do a thorough diff review against the ticket requirements.
+      5. check edge cases by reviewing code paths changed in the PR.
+      you MAY confirm the bug exists on the live site as a baseline, but do NOT expect the fix to be live.
+      {{hint}}
+      save each evidence file, publish it via the publish_artifact tool, and cite the returned download link inline in your single ticket comment; if publish_artifact is unavailable, save under ~/workspace/artifacts/ for post-run collection.
+      write one comment to the ticket with: pre-fix baseline (optional), PR fix verification, edge case analysis, and verdict (PASS or FAIL).
+      SB_PROMPT
+      )"

@@ -425,7 +425,7 @@
     border: none; border-radius: var(--radius-md); cursor: pointer; font-size: 14px; font-weight: 500;
     transition: all var(--transition-fast);
   }
-  .btn-primary { background: var(--color-primary); color: white; }
+  .btn-primary { background: var(--color-primary); color: var(--color-on-primary); }
   .btn-primary:hover { opacity: 0.9; }
   .btn-secondary { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); }
   .btn-secondary:hover { background: var(--color-border); }

@@ -6,6 +6,26 @@ import { randomUUID } from 'node:crypto';
 import type { WebSocket } from 'ws';
 import type { ExtensionClient, ExtensionStatus } from '@sidebutton/core';
 
+/**
+ * Raised whenever a browser command is attempted with no extension attached.
+ *
+ * Browser tools drive the user's real Chrome, so there is no in-process
+ * fallback — the caller has to change something. The message names both
+ * situations that produce it, including the container case, because an agent
+ * handed a bare "Browser not connected" retries the same call instead of
+ * reaching for a tool that works.
+ */
+export const BROWSER_NOT_CONNECTED = [
+  'Browser not connected.',
+  'SideButton browser tools drive real Chrome through the SideButton extension,',
+  'which connects to this server on 127.0.0.1:9876.',
+  'Install it from https://sidebutton.com/extension, then click the SideButton icon in Chrome.',
+  'If this server runs inside a container, no extension can reach it (in stdio mode the',
+  'extension port stays on container-local loopback) — run `npx sidebutton` on the host for',
+  'browser automation.',
+  'Workflow, run-log, artifact and knowledge-pack tools need no browser.',
+].join(' ');
+
 interface CommandResponse {
   ok: boolean;
   requestId?: number;
@@ -206,7 +226,7 @@ export class ExtensionClientImpl implements ExtensionClient {
     params: Record<string, unknown> = {}
   ): Promise<CommandResponse> {
     if (!this.socket || !this.connected) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const requestId = this.requestCounter++;

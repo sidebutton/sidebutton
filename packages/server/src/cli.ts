@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { VERSION } from './version.js';
 import {
   installSkillPack,
+  seedSkillPack,
   uninstallSkillPack,
   listInstalledPacks,
   copyDirRecursive,
@@ -81,16 +82,27 @@ function copyDefaults(configDir: string): void {
     }
   }
 
-  // Copy default skills if any exist
+  // Seed knowledge packs bundled under defaults/skills. Valid packs are
+  // registered in the installed-packs manifest (source: defaults seed), so a
+  // later plain `sidebutton install <domain>` — e.g. fleet provisioning's
+  // `install agents` — upgrades them instead of refusing over "user content".
   const skillsSrc = path.join(defaultsDir, 'skills');
   const skillsDest = path.join(configDir, 'skills');
   if (fs.existsSync(skillsSrc)) {
     const entries = fs.readdirSync(skillsSrc, { withFileTypes: true });
     for (const entry of entries) {
-      if (entry.isDirectory()) {
+      if (!entry.isDirectory()) continue;
+      const packDir = path.join(skillsSrc, entry.name);
+      const seeded = seedSkillPack(packDir, configDir);
+      if (seeded) {
+        if (seeded.status === 'seeded') {
+          process.stderr.write(`  ${chalk.green('✓')} Seeded knowledge pack: ${seeded.domain}\n`);
+        }
+      } else {
+        // No skill-pack.json — plain content directory, copied verbatim.
         const destDir = path.join(skillsDest, entry.name);
         if (!fs.existsSync(destDir)) {
-          copyDirRecursive(path.join(skillsSrc, entry.name), destDir);
+          copyDirRecursive(packDir, destDir);
         }
       }
     }

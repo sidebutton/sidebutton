@@ -223,7 +223,7 @@
     border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text);
     cursor: pointer; transition: all var(--transition-fast);
   }
-  .run-btn:hover { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+  .run-btn:hover { background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-primary); }
 
   @media (max-width: 768px) {
     header {

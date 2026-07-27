@@ -50,6 +50,7 @@ export default defineConfig({
         items: [
           { text: 'Dashboard', link: '/features/dashboard' },
           { text: 'LLM Integration', link: '/features/llm' },
+          { text: 'AGENTS.md Support', link: '/agents-md' },
           { text: 'Jira Integration', link: '/jira-setup' },
           { text: 'Linear Automations', link: '/linear-automations' },
           { text: 'Embed Buttons', link: '/features/embed' },
@@ -74,10 +75,11 @@ export default defineConfig({
           items: [
             { text: 'Welcome', link: '/' },
             { text: 'Installation', link: '/installation' },
-            { text: 'Self-Hosting an Agent', link: '/self-hosting' },
+            { text: 'Self-Host on Your Machine', link: '/self-hosting' },
             { text: 'Extension Setup', link: '/extension' },
             { text: 'First Workflow', link: '/first-workflow' },
             { text: 'MCP Setup', link: '/mcp-setup' },
+            { text: 'AGENTS.md Support', link: '/agents-md' },
             { text: 'Community Roles', link: '/community-roles' },
             { text: 'Troubleshooting', link: '/troubleshooting' }
           ]
@@ -85,10 +87,11 @@ export default defineConfig({
         {
           text: 'Cloud Agents',
           items: [
+            { text: 'Hosted Agents', link: '/cloud/hosted-agents' },
             { text: 'AWS Setup', link: '/cloud/aws-setup' },
             { text: 'Hetzner Setup', link: '/cloud/hetzner-setup' },
             { text: 'GCP Setup', link: '/cloud/gcp-setup' },
-            { text: 'Create an Agent', link: '/cloud/create-agent' },
+            { text: 'Self-Host in Your Cloud', link: '/cloud/create-agent' },
             { text: 'Connect Claude Subscription', link: '/cloud/claude-subscription' }
           ]
         },

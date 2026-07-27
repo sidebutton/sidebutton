@@ -1,0 +1,93 @@
+schema_version: 1
+id: agent_sd_coverage
+title: "Improve Skill Coverage"
+description: "Grow a pack's coverage — improve existing modules, discover new ones, or align them with recent code changes"
+overview: |
+  The Skill Discovery agent runs this chain to grow a pack's knowledge coverage over time. Every run starts with target resolution (the sd playbook's README-first contract): read each scoped repo's README, take the deployed URL it documents — or follow its setup instructions to bring the product up locally — classify the platform, and pick the matching harness: browser for web apps, HTTP probing for API services, adb/emulator for Android when the VM provides one, source-only scaffolding otherwise. It then operates in one of three modes, set by the `target` param:
+
+  - **improve** (default) — scan the installed modules, pick the one with the weakest knowledge file (lowest confidence, outdated last-verified date, or known gaps), exercise that area of the product through the resolved harness, and raise its coverage.
+  - **discover** — explore the product surface for pages, screens, endpoints, and flows not yet covered by a module and scaffold new `_skill.md` (and `_roles/qa.md` / `se.md` once they reach the thresholds) for them.
+  - **align** — for each target repository, find the commits made since the pack was last updated and revise the affected modules so they match the current code: changed selectors and flows, new or removed pages, data-model changes.
+
+  The output is a PR on the skill-packs repo that raises confidence, fills gaps, and updates verification timestamps. Dispatch it on a schedule — typically once a day — to keep long-lived packs accurate without manual curation, or on demand from the workspace Run once control with a chosen mode, repo scope, and hint.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: sd
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  target:
+    type: string
+    default: "improve"
+    description: "Run mode: improve | discover | align"
+  repos:
+    type: string
+    default: ""
+    description: "Target repositories to scope this run to (empty = every repo cloned in the workspace)"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: SD Coverage"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      Learn about the target product and the Skill Discovery methodology (load the sd role playbook — including its Target Resolution section — and the SD Frontmatter Contract).
+      Scope this run to these target repositories: {{repos}}. If that is empty, use every repo cloned in the workspace.
+
+      First resolve the discovery target for each scoped repo (Target Resolution, README-first):
+      - Read the repo's README (plus docs/, compose files, package manifests, gradle/Xcode files, OpenAPI specs). If it documents a deployed or demo URL, that is the target — verify it is reachable. Otherwise FOLLOW THE README SETUP to run the product locally (dev server, docker compose, build) and target that.
+      - Classify the platform and pick the harness: web app -> browser tools; API service -> HTTP requests against its base URL and spec (read-only against live services unless explicitly instructed); Android app -> build per the README and, if an emulator is available (ANDROID_HOME set and `emulator -list-avds` lists one), install and drive it via adb/uiautomator, otherwise scaffold modules from source with capped confidence; iOS app -> scaffold from source only.
+      - Record the resolution (platform, target URL or run command, harness) in the domain root _skill.md so future sessions reuse it instead of re-deriving.
+      - Document a blocker and stop ONLY when no URL is documented, no README setup can bring the product up, and no source scaffolding applies. A native app without an emulator is NOT a blocker — scaffold it from source.
+
+      Operate in '{{target}}' mode:
+      - improve: review the skill pack coverage summary, pick the module with the lowest coverage or quality, exercise it through the resolved harness (navigate, drive, or probe it), capture all states and interactions, and raise its coverage.
+      - discover: explore the product surface for pages, screens, endpoints, and flows NOT yet covered by a module; scaffold a new _skill.md (and _roles/qa.md / se.md where it reaches the thresholds) for each, following the discovery methodology.
+      - align: for each target repository, find the commits made AFTER the pack was last updated (inspect the pack repo git history), then update the affected modules so they match the current code — changed selectors and flows, new or removed pages, and data-model changes.
+
+      In every mode, keep each module's portal-linking frontmatter current — the workspaces:/repos: fields per the SD Frontmatter Contract. Install changes with sidebutton registry update, then publish ONLY to the registry SideButton configured from the SIDEBUTTON_DEFAULT_REGISTRY env var (find it with sidebutton registry list): edit and commit on a branch in the registry clone at ~/.sidebutton/registries/<name> (auth is already on the VM). Then PUBLISH SO YOUR WORK REACHES THE main BRANCH — every consumer (the SideButton portal and the other agents on their VMs) reads ONLY main, so a branch that never lands on main is invisible to all of them. Publish per the origin host:
+      - GitHub origin: push your branch and open a gh PR (a human merges it).
+      - Portal-hosted origin (host git.sidebutton.com): it has NO pull-request or review UI and nothing else merges for you, so YOU publish to main with a fast-forward — run: git fetch origin main; git checkout main; git merge --ff-only <your-branch>; git push origin main — then also push <your-branch> as a record. Never force-push main; if the push is rejected because main moved, re-run git fetch origin main, rebase your branch onto origin/main, and retry the ff-only merge and push.
+      - Any other origin (for example Bitbucket): push your branch; a reviewer merges it through that host's pull-request UI.
+      Do NOT commit, push, or PR to any repo other than that one — in particular not the shared sidebutton/sidebutton-skill-packs OSS catalog, unless it is what SIDEBUTTON_DEFAULT_REGISTRY points to. If sidebutton registry list shows no writable account registry, STOP and report.
+      {{hint}}
+      Report which modules were created or improved and what was added.
+      SB_PROMPT
+      )"

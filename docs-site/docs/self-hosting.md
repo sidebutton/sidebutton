@@ -1,14 +1,17 @@
-# Self-Hosting an Agent
+# Self-Host on Your Machine
 
 A **SideButton agent** is a machine running a full Linux desktop, Chrome, the
 SideButton MCP server, and an AI coding assistant — connected to your portal
 account. The portal dispatches jobs to it and streams back its desktop,
 terminal, and results.
 
-The portal can provision agents for you (**Agents → Create Agent**), but you can
-also **self-host** an agent on infrastructure you control — a cloud VM, a
+There are two easier ways to get an agent: **Agents → Request Hosted Agent** gives you a
+[hosted agent](/cloud/hosted-agents) on SideButton's cloud (Claude included,
+nothing to connect), and **Agents → Create Agent** provisions one into
+[your own cloud account](/cloud/create-agent). This page covers the third path:
+**install the agent yourself** on any infrastructure you control — a cloud VM, a
 dedicated server, or a local box — and attach it to your account with a single
-**Agent token**. This page covers that flow.
+**Agent token**.
 
 ## How attaching works
 

@@ -22,6 +22,10 @@ export const colors = {
   accent: '#F97316',
   accentLight: '#FFEDD5',
 
+  // Ink on brand fills - dark text keeps WCAG-AA on bright teal/orange (D1)
+  onPrimary: '#06241D',
+  onAccent: '#2A1606',
+
   // Status colors
   success: '#22C55E',
   successLight: '#DCFCE7',
@@ -215,46 +219,9 @@ export const pickerPalette = [
   '#8B5CF6',        // purple
   '#06B6D4',        // cyan/teal
   '#EC4899',        // pink
-  colors.primary,   // #475569 - slate
+  colors.primary,   // #15C39A - teal
   colors.error,     // #EF4444 - red
 ] as const;
-
-// =============================================================================
-// CSS CUSTOM PROPERTIES GENERATOR
-// =============================================================================
-
-export function generateCSSVariables(): string {
-  return `
-  --color-primary: ${colors.primary};
-  --color-primary-hover: ${colors.primaryHover};
-  --color-primary-light: ${colors.primaryLight};
-  --color-accent: ${colors.accent};
-  --color-accent-light: ${colors.accentLight};
-  --color-success: ${colors.success};
-  --color-success-light: ${colors.successLight};
-  --color-warning: ${colors.warning};
-  --color-warning-light: ${colors.warningLight};
-  --color-error: ${colors.error};
-  --color-error-light: ${colors.errorLight};
-  --color-info: ${colors.info};
-  --color-info-light: ${colors.infoLight};
-  --color-bg: ${colors.bg};
-  --color-surface: ${colors.surface};
-  --color-card: ${colors.card};
-  --color-border: ${colors.border};
-  --color-border-strong: ${colors.borderStrong};
-  --color-text: ${colors.text};
-  --color-text-secondary: ${colors.textSecondary};
-  --color-text-muted: ${colors.textMuted};
-  --shadow-sm: ${shadows.sm};
-  --shadow-md: ${shadows.md};
-  --shadow-lg: ${shadows.lg};
-  --shadow-xl: ${shadows.xl};
-  --transition-fast: ${transitions.fast};
-  --transition-medium: ${transitions.medium};
-  --transition-slow: ${transitions.slow};
-  `.trim();
-}
 
 // =============================================================================
 // TYPE EXPORTS

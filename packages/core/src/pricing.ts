@@ -36,6 +36,10 @@ export const DEFAULT_MODEL_PRICES: Record<string, ModelPrice> = {
   'claude-haiku-4-5':  { input_per_1m_usd: 1,    output_per_1m_usd: 5,  cache_read_per_1m_usd: 0.1,   cache_create_per_1m_usd: 1.25  },
   'gpt-5.4':           { input_per_1m_usd: 1.25, output_per_1m_usd: 10, cache_read_per_1m_usd: 0.125, cache_create_per_1m_usd: 0     },
   'gpt-5.4-mini':      { input_per_1m_usd: 0.25, output_per_1m_usd: 2,  cache_read_per_1m_usd: 0.025, cache_create_per_1m_usd: 0     },
+  // Moonshot (Kimi) — nominal API rates for the local dashboard fallback (SCRUM-1734)
+  'kimi-for-coding':      { input_per_1m_usd: 0.95, output_per_1m_usd: 4.0, cache_read_per_1m_usd: 0.16, cache_create_per_1m_usd: 0 },
+  'kimi-for-coding-fast': { input_per_1m_usd: 2.0,  output_per_1m_usd: 8.0, cache_read_per_1m_usd: 0.30, cache_create_per_1m_usd: 0 },
+  'kimi-fast':            { input_per_1m_usd: 2.0,  output_per_1m_usd: 8.0, cache_read_per_1m_usd: 0.30, cache_create_per_1m_usd: 0 },
 };
 
 export function computeCost(usage: Usage, price: ModelPrice): number {

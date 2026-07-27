@@ -1,0 +1,28 @@
+# Build context excludes for packages/server/Dockerfile.
+#
+# BuildKit reads `<dockerfile>.dockerignore` in preference to the root
+# .dockerignore, so this file governs `docker build -f packages/server/Dockerfile .`
+# It lives beside the Dockerfile on purpose: sync-oss.sh mirrors packages/ to the
+# public repo but does not sync root-level files, so a root .dockerignore would
+# silently rot out of the OSS mirror.
+#
+# The Dockerfile also copies by explicit path rather than `COPY . .`, so these
+# entries are a second line of defence — and what keeps a local build from
+# shipping a 1.1 GB context.
+
+**/node_modules
+**/dist
+**/.turbo
+**/.vitepress/cache
+**/.vitepress/dist
+
+# Never let a developer's local secrets reach the build context: cli.ts runs
+# `import 'dotenv/config'` from the working directory.
+**/.env
+**/.env.*
+!**/.env.example
+
+.git
+.github
+run_logs
+**/*.log

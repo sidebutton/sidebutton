@@ -427,7 +427,7 @@
     transition: all var(--transition-fast);
   }
   .btn:disabled { opacity: 0.5; cursor: default; }
-  .btn-primary { background: var(--color-primary); color: white; }
+  .btn-primary { background: var(--color-primary); color: var(--color-on-primary); }
   .btn-primary:hover:not(:disabled) { opacity: 0.9; }
   .btn-ghost { background: transparent; color: var(--color-text-secondary); }
   .btn-ghost:hover { color: var(--color-text); background: var(--color-surface); }

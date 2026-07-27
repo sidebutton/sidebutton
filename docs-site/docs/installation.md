@@ -44,6 +44,51 @@ pnpm build
 pnpm start
 ```
 
+## Alternative: Docker
+
+The MCP server ships a Dockerfile. Build it from the repository **root** — the
+server depends on `@sidebutton/core` through the pnpm workspace, so the build
+context cannot be narrowed to `packages/server`:
+
+```bash
+docker build -f packages/server/Dockerfile -t mcp/sidebutton .
+
+# Speak MCP over stdio, the way a client starts it
+docker run -i --rm mcp/sidebutton
+
+# Keep workflows, run logs and installed packs across restarts
+docker run -i --rm -v sidebutton-data:/home/node/.sidebutton mcp/sidebutton
+```
+
+Point an MCP client at it with:
+
+```json
+{
+  "mcpServers": {
+    "sidebutton": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "mcp/sidebutton"]
+    }
+  }
+}
+```
+
+::: warning Browser tools do not work in a container
+The container runs the workflow engine, the seven browserless MCP tools and all
+`skill://` knowledge packs. The 21 browser tools drive the real Chrome on your
+machine through the [SideButton extension](/docs/extension), which connects to a
+server on the host's `127.0.0.1:9876`. In stdio mode the container binds that
+listener to container-local loopback by design, so publishing the port does not
+bridge it. Use `npx sidebutton` on the host for browser automation.
+:::
+
+First run seeds the universal `agents` knowledge pack, so a fresh container
+already exposes its `skill://agents/...` resources; `sidebutton install agents`
+upgrades it to the current catalog version.
+
+The image runs as an unprivileged user, contains no credentials, and disables
+crash reporting (`SIDEBUTTON_CONTAINER=1`).
+
 ## Desktop App
 
 SideButton also has a native desktop app for macOS, Windows, and Linux:

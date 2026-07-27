@@ -280,15 +280,20 @@ describe('statConfigFiles', () => {
     if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  it('reports size + mtime for present CLAUDE.md and .mcp.json', async () => {
+  it('reports size + mtime for present AGENTS.md, CLAUDE.md and .mcp.json', async () => {
     const ws = path.join(tmp, 'present');
     fs.mkdirSync(ws, { recursive: true });
+    const agentsBody = '# AGENTS.md\ncanonical instructions\n';
     const claudeBody = '# CLAUDE.md\nhello world\n';
     const mcpBody = '{\n  "mcpServers": {}\n}\n';
+    fs.writeFileSync(path.join(ws, 'AGENTS.md'), agentsBody);
     fs.writeFileSync(path.join(ws, 'CLAUDE.md'), claudeBody);
     fs.writeFileSync(path.join(ws, '.mcp.json'), mcpBody);
 
     const out = await statConfigFiles(ws);
+    expect(out.agents_md).not.toBeNull();
+    expect(out.agents_md!.size).toBe(Buffer.byteLength(agentsBody));
+    expect(Number.isNaN(Date.parse(out.agents_md!.mtime))).toBe(false);
     expect(out.claude_md).not.toBeNull();
     expect(out.mcp_json).not.toBeNull();
     expect(out.claude_md!.size).toBe(Buffer.byteLength(claudeBody));
@@ -303,10 +308,10 @@ describe('statConfigFiles', () => {
     const ws = path.join(tmp, 'empty');
     fs.mkdirSync(ws, { recursive: true });
     const out = await statConfigFiles(ws);
-    expect(out).toEqual({ claude_md: null, mcp_json: null });
+    expect(out).toEqual({ agents_md: null, claude_md: null, mcp_json: null });
   });
 
-  it('reports one file present and the other absent independently', async () => {
+  it('reports one file present and the others absent independently', async () => {
     const ws = path.join(tmp, 'partial');
     fs.mkdirSync(ws, { recursive: true });
     fs.writeFileSync(path.join(ws, 'CLAUDE.md'), 'only claude\n');
@@ -314,7 +319,20 @@ describe('statConfigFiles', () => {
     const out = await statConfigFiles(ws);
     expect(out.claude_md).not.toBeNull();
     expect(out.claude_md!.size).toBe(Buffer.byteLength('only claude\n'));
+    expect(out.agents_md).toBeNull();
     expect(out.mcp_json).toBeNull();
+  });
+
+  // A workspace applied by an older agent build has no AGENTS.md — the slot must read null, not
+  // fall back to CLAUDE.md, so the portal can tell the two layouts apart.
+  it('reports agents_md null on a legacy workspace that only has CLAUDE.md', async () => {
+    const ws = path.join(tmp, 'legacy');
+    fs.mkdirSync(ws, { recursive: true });
+    fs.writeFileSync(path.join(ws, 'CLAUDE.md'), '# legacy instructions\n');
+
+    const out = await statConfigFiles(ws);
+    expect(out.agents_md).toBeNull();
+    expect(out.claude_md).not.toBeNull();
   });
 
   it('respects ~ expansion in workspace_path', async () => {
@@ -334,6 +352,6 @@ describe('statConfigFiles', () => {
 
   it('returns nulls (not an error) for an empty workspace_path', async () => {
     const out = await statConfigFiles('');
-    expect(out).toEqual({ claude_md: null, mcp_json: null });
+    expect(out).toEqual({ agents_md: null, claude_md: null, mcp_json: null });
   });
 });

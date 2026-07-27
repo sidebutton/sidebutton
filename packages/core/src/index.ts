@@ -115,6 +115,10 @@ export { executeWorkflow, executeSteps } from './executor.js';
 // Context utilities
 export { getContextSource, getSkillDomain } from './context-utils.js';
 
+// Claude Code folder-trust pre-seeding
+export { ensureClaudeFolderTrust } from './claude-trust.js';
+export type { TrustSeedResult } from './claude-trust.js';
+
 // Delay
 export type { DelayConstant, DelayValue } from './delay.js';
 export { resolveDelay, DELAY_BASE } from './delay.js';

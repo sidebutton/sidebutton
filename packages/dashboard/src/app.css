@@ -1,5 +1,5 @@
 /**
- * Theme: Option B Graphite
+ * Theme: SideButton
  * Global CSS custom properties and base styles
  *
  * Source of truth: src/lib/theme.ts
@@ -7,17 +7,21 @@
 
 :root {
   /* ==========================================================================
-     CORE PALETTE - Graphite
+     CORE PALETTE - SideButton
      ========================================================================== */
 
-  /* Primary - Slate gray for primary actions */
-  --color-primary: #475569;
-  --color-primary-hover: #334155;
-  --color-primary-light: #F1F5F9;
+  /* Primary - Teal green for primary actions and brand identity */
+  --color-primary: #15C39A;
+  --color-primary-hover: #0EA87D;
+  --color-primary-light: #D1FAE5;
 
-  /* Accent - Sky blue for links and highlights */
-  --color-accent: #0EA5E9;
-  --color-accent-light: #E0F2FE;
+  /* Accent - Orange for high-impact CTAs and highlights */
+  --color-accent: #F97316;
+  --color-accent-light: #FFEDD5;
+
+  /* Ink on brand fills - dark text keeps WCAG-AA on bright teal/orange (D1) */
+  --color-on-primary: #06241D;
+  --color-on-accent: #2A1606;
 
   /* Status colors */
   --color-success: #22C55E;

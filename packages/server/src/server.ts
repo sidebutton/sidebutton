@@ -36,6 +36,7 @@ import { matchTarget } from './matching.js';
 import { listInstalledPacks, installSkillPack, uninstallSkillPack } from './skill-pack.js';
 import { listRegistries, addRegistry, removeRegistry, getRegistryDir, readRegistryIndex } from './registry.js';
 import { applyProjects, statusProjects, statConfigFiles, resetProject, type ApplyProject, type StatusProject } from './projects.js';
+import { writeWorkspaceInstructions } from './workspace-instructions.js';
 import { applySkills, type ApplySkill } from './skills.js';
 import { applyFiles, FILES_APPLY_BODY_LIMIT, type ApplyFile } from './files.js';
 import { applyAgentAppEnv } from './agent-app-env.js';
@@ -77,7 +78,7 @@ import type {
   AgentJob,
   SkillRegistry,
 } from '@sidebutton/core';
-import { ExecutionContext, executeWorkflow, JiraProvider, PROVIDER_DEFINITIONS, getProviderStatuses, getActiveUsageFile, detectCli, getContextSource, buildRunLogUsage } from '@sidebutton/core';
+import { ExecutionContext, executeWorkflow, JiraProvider, PROVIDER_DEFINITIONS, getProviderStatuses, getActiveUsageFile, detectCli, getContextSource, buildRunLogUsage, ensureClaudeFolderTrust } from '@sidebutton/core';
 import type { ConnectorType } from '@sidebutton/core';
 import {
   isLoopbackHost,
@@ -1789,7 +1790,8 @@ export async function startServer(config: ServerConfig): Promise<void> {
       }
     }
 
-    // Write .mcp.json and CLAUDE.md for each entry_path
+    // Write .mcp.json and the instruction files (AGENTS.md + CLAUDE.md pointer) for each entry_path
+    const trustDirs: string[] = [];
     if (Array.isArray(body.entry_paths)) {
       for (const ep of body.entry_paths) {
         if (!ep.path) continue;
@@ -1800,20 +1802,35 @@ export async function startServer(config: ServerConfig): Promise<void> {
         }
         try {
           fs.mkdirSync(resolved, { recursive: true });
+          trustDirs.push(resolved);
           if (ep.mcp_json) {
             const mcpPath = path.join(resolved, '.mcp.json');
             fs.writeFileSync(mcpPath, JSON.stringify(ep.mcp_json, null, 2), 'utf8');
             results.push({ path: mcpPath, ok: true });
           }
           if (ep.claude_md !== undefined) {
-            const claudePath = path.join(resolved, 'CLAUDE.md');
-            fs.writeFileSync(claudePath, ep.claude_md, 'utf8');
-            results.push({ path: claudePath, ok: true });
+            // SCRUM-479: the text lands in AGENTS.md (canonical, engine-agnostic) with CLAUDE.md
+            // reduced to an `@AGENTS.md` import. Still keyed off `claude_md` — that is the portal
+            // field carrying the instruction text, whatever file it ends up in.
+            results.push(...writeWorkspaceInstructions(resolved, ep.claude_md));
           }
         } catch (err: any) {
           results.push({ path: ep.path, ok: false, error: err.message });
         }
       }
+    }
+
+    // Pre-trust every delivered entry path for Claude Code. The dirs were just
+    // created above (a portal-created workspace lands on any path under $HOME),
+    // and the first dispatched session cd's there and launches Claude
+    // INTERACTIVELY — without `projects[<dir>].hasTrustDialogAccepted` in
+    // ~/.claude.json the whole job blocks on the native folder-trust dialog.
+    // Provisioning (agent-runners base/15b) seeds only the standard dirs at
+    // provision time; this keeps every later-created workspace covered too.
+    // Best-effort: a seed failure is the terminal launcher's problem to retry,
+    // never a config-apply failure — and the response shape stays unchanged.
+    if (trustDirs.length > 0) {
+      ensureClaudeFolderTrust(trustDirs, path.join(homeDir, '.claude.json'));
     }
 
     // AAP-21 (SCRUM-1659): reconcile ~/.agent-env.d/<slug> from the delivered agent_app_env so an app

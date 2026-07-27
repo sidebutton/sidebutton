@@ -375,7 +375,7 @@
     transition: all var(--transition-fast);
   }
   .btn:disabled { opacity: 0.5; cursor: default; }
-  .btn-primary { background: var(--color-primary); color: white; }
+  .btn-primary { background: var(--color-primary); color: var(--color-on-primary); }
   .btn-primary:hover:not(:disabled) { opacity: 0.9; }
   .btn-secondary { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); }
   .btn-secondary:hover { background: var(--color-border); }

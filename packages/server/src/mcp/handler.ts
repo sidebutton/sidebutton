@@ -38,6 +38,7 @@ import type { ExtensionClientImpl } from '../extension.js';
 import { MCP_TOOLS, type McpTool } from './tools.js';
 import { loadPlugins, executePluginTool, summarizePlugins, PluginServiceManager } from '../plugins/index.js';
 import type { LoadedPlugin, PluginToolDefinition } from '../plugins/types.js';
+import { BROWSER_NOT_CONNECTED } from '../extension.js';
 import { reportRunLog } from '../services/report.js';
 import { loadContextAll, loadTargets, loadRoles } from '../context.js';
 import { matchTarget } from '../matching.js';
@@ -590,7 +591,7 @@ export class McpHandler {
     );
 
     if (hasBrowserSteps && !(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected - please connect the browser extension first');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     // Execute workflow
@@ -1065,7 +1066,7 @@ export class McpHandler {
 
   private async toolCapturePage(): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const result = await this.extensionClient.captureSelectors();
@@ -1082,7 +1083,7 @@ export class McpHandler {
     const url = args.url as string;
 
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     await this.extensionClient.navigate(url);
@@ -1091,7 +1092,7 @@ export class McpHandler {
 
   private async toolSnapshot(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const includeContent = toBool(args.includeContent) ?? false;
@@ -1101,7 +1102,7 @@ export class McpHandler {
 
   private async toolClick(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const selector = args.selector as string | undefined;
@@ -1123,7 +1124,7 @@ export class McpHandler {
 
   private async toolType(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const selector = args.selector as string | undefined;
@@ -1147,7 +1148,7 @@ export class McpHandler {
 
   private async toolPressKey(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const key = args.key as string;
@@ -1170,7 +1171,7 @@ export class McpHandler {
 
   private async toolScroll(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const direction = args.direction as string;
@@ -1182,7 +1183,7 @@ export class McpHandler {
 
   private async toolSelectOption(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const selector = args.selector as string | undefined;
@@ -1205,7 +1206,7 @@ export class McpHandler {
 
   private async toolExtract(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const selector = args.selector as string;
@@ -1215,7 +1216,7 @@ export class McpHandler {
 
   private async toolScreenshot(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const ref = toNum(args.ref);
@@ -1240,7 +1241,7 @@ export class McpHandler {
 
   private async toolFill(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const selector = args.selector as string;
@@ -1254,7 +1255,7 @@ export class McpHandler {
 
   private async toolSetBasicAuth(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const username = args.username as string;
@@ -1270,7 +1271,7 @@ export class McpHandler {
 
   private async toolClearBasicAuth(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const origin = args.origin as string | undefined;
@@ -1284,7 +1285,7 @@ export class McpHandler {
 
   private async toolWait(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const selector = args.selector as string;
@@ -1297,7 +1298,7 @@ export class McpHandler {
 
   private async toolExists(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const selector = args.selector as string;
@@ -1310,7 +1311,7 @@ export class McpHandler {
 
   private async toolExtractAll(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const selector = args.selector as string;
@@ -1324,7 +1325,7 @@ export class McpHandler {
 
   private async toolExtractMap(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const selector = args.selector as string;
@@ -1338,7 +1339,7 @@ export class McpHandler {
 
   private async toolScrollIntoView(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const selector = args.selector as string;
@@ -1351,7 +1352,7 @@ export class McpHandler {
 
   private async toolHover(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const selector = args.selector as string;
@@ -1361,7 +1362,7 @@ export class McpHandler {
 
   private async toolEvaluate(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     const js = args.js as string;
@@ -1412,7 +1413,7 @@ export class McpHandler {
     const snapshotTail = toBool(args.snapshot_tail) ?? true;
 
     if (!(await this.extensionClient.isConnected())) {
-      throw new Error('Browser not connected');
+      throw new Error(BROWSER_NOT_CONNECTED);
     }
 
     interface StepOutcome {

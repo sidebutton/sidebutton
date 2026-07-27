@@ -100,7 +100,10 @@ describe('set_basic_auth / clear_basic_auth MCP tools', () => {
     const handler = makeHandler({ connected: false });
     const res = await callTool(handler, 'set_basic_auth', { username: 'a', password: 'b' });
     expect(res.result).toBeUndefined();
-    expect(res.error?.message).toBe('Browser not connected');
+    // Asserted as a prefix so the remedy text stays editable: it tells callers
+    // how to attach an extension and that container runs never can.
+    expect(res.error?.message).toMatch(/^Browser not connected\./);
+    expect(res.error?.message).toContain('sidebutton.com/extension');
   });
 
   it('rejects a missing password', async () => {

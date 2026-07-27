@@ -1,0 +1,85 @@
+schema_version: 1
+id: agent_se_work
+title: "Implement Fix + PR"
+description: "Read ticket, understand context, implement fix, create PR, report back"
+overview: |
+  The default SE work chain. Given a ticket, the agent reads the description and acceptance criteria, loads any knowledge packs for affected modules, implements the change, runs the local test suite, and opens a PR against the default branch. The PR body links the ticket and maps each acceptance item to the file and line that implements it.
+
+  Once the PR is open, the agent posts a short progress note to the ticket and hands off. Reviews and merges are driven by separate workflows. Use this for standard feature and fix tickets that do not need a dedicated investigation step first.
+
+  Step continuation (dynamic playbooks P1): when the remaining scope does not fit one session, the agent pushes all progress to the work branch and posts a HANDOFF comment ending with the WORK_CONTINUE token — the platform then re-dispatches this same step to the next agent, which continues from the handoff instead of starting over (up to the playbook step's max_attempts total tries).
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: se
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # step's ticket comment; declaring it here is what makes this workflow content-routable.
+  # WORK_CONTINUE is the step-continuation token (dynamic playbooks P1): token-only matched,
+  # routed by the seeds' gate.retry — it re-dispatches this step to the next agent, so the
+  # prompt below allows it ONLY as the final line of a NOT-DONE handoff comment.
+  verdicts: [PR_OPEN, WORK_CONTINUE, BLOCKED]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  ticket_url:
+    type: string
+    description: "Jira ticket URL"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: SE Work"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read ticket with attachments and all comments - {{ticket_url}}. if it fails, stop and report the error.
+      EXECUTION RULES (read first — they override any habit):
+      - Do ALL of the work in THIS session, in the FOREGROUND, and finish before your turn ends. You MAY spawn subagents (the Agent / Task tool) or run parallel searches to work faster — but you MUST wait for every subagent and any background task to return and fold their results in YOURSELF before ending the turn. Never move the work (or the comment) into the background — no run_in_background, no background workflows, no trailing & — and then end the turn expecting to be resumed. Ending your turn is FINAL here: nothing wakes you to "resume", so a turn that ends while any spawned or background work is still pending is reported as a FAILED step, not a pause.
+      - Post the ticket comment YOURSELF, in the foreground, as the LAST thing you do — after every subagent and background task has returned. Never delegate it, and never end the turn "holding" or planning to "resume later".
+      CONTINUATION: if a CONTINUATION note appears below, or the ticket carries a HANDOFF comment from a previous agent, this ticket is already mid-implementation — fetch the named work branch, review its diff against the ticket scope, and continue from where it stopped. Do NOT start over and do NOT redo finished items. If the prior branch is unusable, say why in your comment and restart cleanly.
+      learn how to SE relevant parts, read relevant code and apply a focused fix.
+      create PR to target repo or repos. if PR creation fails (rate limit, host error), retry it in this session; if it still cannot be created, that is NOT DONE below — never claim done without a real PR.
+      {{hint}}
+      if you produced a mock, diagram, screenshot, or report as evidence, publish it via the publish_artifact tool and cite the returned download link in your comment; if the tool is unavailable, save under ~/workspace/artifacts/ for post-run collection.
+      FINISH — your LAST action is exactly ONE ticket comment, in exactly ONE of these three shapes:
+      1. DONE — the PR exists: what was changed (file refs), the PR link(s), and how to verify.
+      2. NOT DONE — the remaining scope does not fit this session, or the PR could not be created: FIRST commit and push ALL progress to the work branch, THEN post a HANDOFF comment with: the branch name, what is done, what remains (a concrete checklist), the single next step, and the draft-PR link if one exists. End the comment with the token WORK_CONTINUE on its own line. The platform will dispatch another agent to continue from your handoff.
+      3. BLOCKED — a missing decision, credential, or access stops the work entirely: state what blocks you and what would unblock it. End the comment with the token BLOCKED on its own line.
+      Never mix the shapes: WORK_CONTINUE and BLOCKED are routing tokens — each may appear ONLY as the final line of its own shape, and a DONE comment must contain neither.
+      SB_PROMPT
+      )"

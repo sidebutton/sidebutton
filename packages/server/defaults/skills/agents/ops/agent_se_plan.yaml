@@ -1,0 +1,78 @@
+schema_version: 1
+id: agent_se_plan
+title: "Investigate + Plan"
+description: "Read-only: investigate the ticket and draft a concrete work plan — no code changes, no PR"
+overview: |
+  A read-only planning pass for any ticket — feature, refactor, or task — that produces an implementation plan before any code is written. The software engineer agent reads the ticket and the relevant code, configs, schemas, and any linked PRs, designs, or mockups, then posts a concrete work plan: the goal and acceptance criteria, the approach and key files to change, an ordered step checklist, risks and edge cases, a test strategy, and a complexity estimate. No code is changed and no PR is opened.
+
+  Use this as the first step of a feature or design-sensitive playbook so a human — or a later gate — can review the plan before engineering effort is committed. For a defect whose cause is unknown, use Root Cause Analysis instead: that workflow reproduces the failure and traces the cause, whereas this one plans the build.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: se
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  ticket_url:
+    type: string
+    description: "Jira ticket URL"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: SE Plan"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read ticket with attachments and all comments - {{ticket_url}}. if it fails, stop and report the error.
+      EXECUTION RULES (read first — they override any habit):
+      - Do ALL of the work in THIS session, in the FOREGROUND, and finish before your turn ends. You MAY spawn subagents (the Agent / Task tool) or run parallel searches to investigate faster — but you MUST wait for every subagent and any background task to return and fold their results in YOURSELF before ending the turn. Never move the work (or the comment) into the background — no run_in_background, no background workflows, no trailing & — and then end the turn expecting to be resumed. Ending your turn is FINAL here: nothing wakes you to "resume", so a turn that ends while a spawned subagent or any background work is still pending is reported as a FAILED step, not a pause.
+      - Post the ticket comment YOURSELF, in the foreground, as the LAST thing you do — after every subagent and background task has returned. Never delegate that comment to a subagent, and never end the turn "holding", "pausing", or planning to "resume/continue later". If you genuinely cannot finish, say so in the comment and stop.
+      this is a READ-ONLY planning pass: make NO code changes, run NO migrations, open NO PR.
+      learn the relevant area first - read the affected code, configs, schemas, and any linked PRs / designs / mockups; reproduce current behaviour only if it helps scope the work.
+      then draft a concrete WORK PLAN to deliver this ticket:
+        - GOAL: the outcome + acceptance criteria (one line each)
+        - APPROACH: implementation strategy + key files/modules to change (file:line where known)
+        - STEPS: an ordered, reviewable checklist of the edits to make
+        - RISKS: edge cases, what could break, backward-compatibility concerns
+        - TESTS: which tests / QA verify it (new + existing)
+        - ESTIMATE: complexity (S/M/L) + rough effort
+      {{hint}}
+      as your FINAL foreground action, post ONE comment to the ticket with the work plan in the sections above. do not modify code or open a PR.
+      SB_PROMPT
+      )"

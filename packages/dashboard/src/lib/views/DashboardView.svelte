@@ -428,7 +428,7 @@
     border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text);
     cursor: pointer; transition: all var(--transition-fast);
   }
-  .run-btn:hover { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+  .run-btn:hover { background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-primary); }
 
   .shortcuts-grid {
     display: grid;
@@ -466,7 +466,7 @@
     display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
     border: none; border-radius: var(--radius-md); cursor: pointer; font-size: 14px; font-weight: 500;
   }
-  .btn-primary { background: var(--color-primary); color: white; }
+  .btn-primary { background: var(--color-primary); color: var(--color-on-primary); }
   .btn-primary:hover { opacity: 0.9; }
 
   @media (max-width: 768px) {

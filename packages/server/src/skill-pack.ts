@@ -31,6 +31,15 @@ const MANIFEST_FILE = 'skill-pack.json';
 const INSTALLED_DIR = '.installed';
 const INSTALLED_FILE = 'skill-packs.json';
 const SKIP_PATTERNS = [MANIFEST_FILE, 'README.md', '.git'];
+
+/**
+ * Manifest `source` marker for packs seeded from the server's bundled
+ * defaults/skills/ rather than installed by the user. Seeded packs are vendor
+ * content, so `installSkillPack` may replace them at any version delta without
+ * --force — a plain `sidebutton install agents` (fleet provisioning, step
+ * base/13) must upgrade a stale seed instead of refusing over "user content".
+ */
+export const DEFAULTS_SEED_SOURCE = 'defaults';
 const COLLECT_SKIP = new Set(['.git', '.DS_Store', 'node_modules', MANIFEST_FILE, 'README.md']);
 
 export function readSkillPackManifest(packDir: string): SkillPackManifest {
@@ -131,7 +140,14 @@ export function installSkillPack(
     if (existing.version === manifest.version && !options.force) {
       return { domain: manifest.domain, filesInstalled: 0, status: 'skipped' };
     }
-    if (existing.version !== manifest.version && !options.force) {
+    // A version mismatch needs --force to protect user-managed installs — but
+    // not for packs seeded from the bundled defaults: those are vendor content
+    // and the incoming pack is authoritative regardless of version direction.
+    if (
+      existing.version !== manifest.version &&
+      existing.source !== DEFAULTS_SEED_SOURCE &&
+      !options.force
+    ) {
       throw new Error(
         `Already installed (v${existing.version}). Use --force to overwrite.`,
       );
@@ -161,6 +177,50 @@ export function installSkillPack(
 
   const status = existing ? 'updated' : 'installed';
   return { domain: manifest.domain, filesInstalled, status };
+}
+
+/**
+ * Seed a skill pack bundled in the server's defaults/ into a config dir.
+ *
+ * Unlike installSkillPack this copies the tree verbatim — skill-pack.json
+ * included — so the result is indistinguishable from a remote install and the
+ * publish round-trip keeps working. The pack is registered in the installed
+ * manifest under DEFAULTS_SEED_SOURCE, which is what later lets a plain
+ * `sidebutton install <domain>` upgrade it without --force.
+ *
+ * Returns null when packDir has no valid manifest (the caller may still treat
+ * it as plain content); never overwrites an existing install or directory.
+ */
+export function seedSkillPack(
+  packDir: string,
+  configDir: string,
+): { domain: string; filesInstalled: number; status: 'seeded' | 'skipped' } | null {
+  let manifest: SkillPackManifest;
+  try {
+    manifest = readSkillPackManifest(packDir);
+  } catch {
+    return null;
+  }
+
+  const dest = path.join(configDir, 'skills', manifest.domain);
+  const installed = getInstalledManifest(configDir);
+  if (installed[manifest.domain] || fs.existsSync(dest)) {
+    return { domain: manifest.domain, filesInstalled: 0, status: 'skipped' };
+  }
+
+  const filesInstalled = copyDirRecursive(packDir, dest, { skip: ['.git', '.DS_Store'] });
+
+  installed[manifest.domain] = {
+    name: manifest.name,
+    version: manifest.version,
+    domain: manifest.domain,
+    title: manifest.title || manifest.name,
+    installedAt: new Date().toISOString(),
+    source: DEFAULTS_SEED_SOURCE,
+  };
+  saveInstalledManifest(configDir, installed);
+
+  return { domain: manifest.domain, filesInstalled, status: 'seeded' };
 }
 
 export function uninstallSkillPack(domain: string, configDir: string): void {

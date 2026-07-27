@@ -1,10 +1,12 @@
-# Create an Agent
+# Self-Host in Your Cloud
 
-This guide walks through the Create-Agent wizard — from a connected cloud account to an agent card reporting **Online** on the Agent Fleet page.
+This guide walks through the **Create Agent** wizard (titled **Create Agent in AWS** or **Create Agent in Hetzner**, after your cloud) — from a connected cloud account to an agent card reporting **Online** on the Agent Fleet page.
+
+> **Looking for the zero-setup path?** [Hosted Agents](/cloud/hosted-agents) run on SideButton's cloud with Claude Opus/Sonnet included — one click, nothing to connect. This page is the *self-hosted* lane: agents on infrastructure you own.
 
 ## Overview
 
-Agents run on VMs in your own cloud account. The wizard picks a machine, roles and workspaces; **Launch** does the rest: SideButton creates the server, SSH key and firewall in your cloud project, installs the agent runtime, and the new card reports **Online** in about ten minutes. Nothing to install on your side.
+Self-hosted agents run on VMs in your own cloud account. The wizard picks a machine, roles and workspaces; **Launch** does the rest: SideButton creates the server, SSH key and firewall in your cloud project, installs the agent runtime, and the new card reports **Online** in about ten minutes. Nothing to install on your side.
 
 ---
 
@@ -17,7 +19,7 @@ Agents run on VMs in your own cloud account. The wizard picks a machine, roles a
 
 ## Step 1: Machine
 
-Open **Portal → Agents** and click **+ Create Agent**.
+Open **Portal → Agents** and click **Create Agent**.
 
 1. Pick the **cloud connection** the agent should be provisioned into
 2. Choose a **region** and **server size** — machines start from ~$5/mo on Hetzner

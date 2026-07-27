@@ -1,0 +1,90 @@
+schema_version: 1
+id: agent_pm_breakdown
+title: "Break Down to Sub-tasks"
+description: "Decompose an epic into child issues with dependency waves (using the board's own issue types), and reconcile them (create, update, remove) to match the thread — issues only, no portal Tasks, no dispatch"
+overview: |
+  A planning pass that turns an analyzed epic into its child issues (the ticket is usually the epic
+  itself). The PM agent reads the epic and its ENTIRE comment thread — the analysis, the decisions and
+  answers, and any prior context — grounds itself in the relevant skill packs and the codebase, then
+  creates independently-shippable Jira issues under the epic (as many as the work needs, using the
+  board's own issue types), each with acceptance criteria, a workspace, a suggested delivery playbook,
+  and a size, linked by blocked-by / blocks into parallel waves.
+
+  It is idempotent: an epic with no children gets a fresh set; an epic that already has children is
+  reconciled to the latest decisions and answers — issues are added, updated, or removed — never
+  duplicated. It maintains Jira issues ONLY — moving an issue into the portal Tasks pool is a separate
+  one-click action, and engineering work runs there, not here. The verdict reports whether issues were
+  created fresh or reconciled. Use it as the breakdown step of the goal-shaping flow, or standalone on
+  any analyzed epic.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: pm
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # step's ticket comment; declaring it here is what makes this workflow content-routable.
+  verdicts: [ISSUES_CREATED, ISSUES_RECONCILED]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  ticket_url:
+    type: string
+    description: "Jira epic URL (the ticket to break down; usually the epic itself)"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: PM Break Down"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read the ticket with attachments and ALL comments - {{ticket_url}}; it is usually the epic itself. if it fails, stop and report the error.
+      this pass creates and maintains JIRA ISSUES ONLY - not the portal Tasks pool (a separate one-click action).
+      learn the area first - ground yourself in the relevant skill packs and the codebase before decomposing.
+      following the analysis, decisions, and answers in the thread, decompose the epic into as many independently-shippable child issues as the work needs - do not cap the count; size each so it can ship on its own. use the same issue types the board already uses. for each issue give:
+        - TITLE: outcome-focused
+        - ACCEPTANCE CRITERIA: testable, one line each
+        - WORKSPACE: the workspace / area it belongs to
+        - SUGGESTED PLAYBOOK: the workflow that would deliver it (e.g. bug-fix, feature-impl)
+        - SIZE: S / M / L
+      set blocked-by / blocks links so the issues form parallel WAVES (wave 1 = no blockers).
+      be idempotent and reconcile to the latest decisions and answers: create what is missing, update issues that changed, and delete or close issues that are no longer needed or that the thread asked to drop - never create duplicates.
+      {{hint}}
+      post ONE summary comment to the ticket: the issues created, updated, or removed (key + title) and the wave map.
+      end with one line - "VERDICT:" followed by exactly one of ISSUES_CREATED (created fresh child issues) / ISSUES_RECONCILED (added to, updated, or pruned existing children) - and use these uppercase tokens nowhere else in the comment.
+      SB_PROMPT
+      )"

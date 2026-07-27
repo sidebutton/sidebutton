@@ -1,0 +1,93 @@
+schema_version: 1
+id: agent_pm_goal_analysis
+title: "Goal Analysis"
+description: "Read-only: analyze an epic's scope, dependencies, risks and open decisions, then post one decision-oriented comment — no issues, no code, no dispatch"
+overview: |
+  A read-only analysis pass for an epic (the analyzed ticket is usually the epic itself). The PM agent
+  reads the epic and its ENTIRE comment thread — any prior context, analysis, or answers already posted
+  — grounds itself in the relevant skill packs and the codebase, then posts a single comment: scope,
+  dependency waves, risks, sizing, a decision overview (each decision with options and a
+  recommendation), and the open questions to resolve before breakdown.
+
+  Prior context enriches the analysis but is not required; the pass proceeds with whatever is in the
+  thread. It is phase-aware and idempotent — a fresh epic gets a full analysis, an already-analyzed
+  epic gets a delta. No issues are created and no work is dispatched. The verdict reports whether the
+  epic is ready to break down or has open decisions to resolve first. Use it as the analysis step of
+  the goal-shaping flow, or standalone on any epic.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: pm
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # step's ticket comment; declaring it here is what makes this workflow content-routable.
+  verdicts: [READY_TO_PLAN, NEEDS_DECISIONS, NO_CHANGE]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  ticket_url:
+    type: string
+    description: "Jira epic URL (the ticket to analyze; usually the epic itself)"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: PM Goal Analysis"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read the ticket with attachments and ALL comments - {{ticket_url}}; it is usually the epic itself. also read its child issues, if any, and any linked or blocking epics. if it fails, stop and report the error.
+      EXECUTION RULES (read first — they override any habit):
+      - Do ALL of the work in THIS session, in the FOREGROUND, and finish before your turn ends. You MAY spawn subagents (the Agent / Task tool) or run parallel searches to investigate faster — but you MUST wait for every subagent and any background task to return and fold their results in YOURSELF before ending the turn. Never move the work (or the comment) into the background — no run_in_background, no background workflows, no trailing & — and then end the turn expecting to be resumed. Ending your turn is FINAL here: nothing wakes you to "resume", so a turn that ends while a spawned subagent or any background work is still pending is reported as a FAILED step, not a pause.
+      - Post the ticket comment YOURSELF, in the foreground, as the LAST thing you do — after every subagent and background task has returned. Never delegate that comment to a subagent, and never end the turn "holding", "pausing", or planning to "resume/continue later". If you genuinely cannot finish, say so in the comment and stop.
+      this is a READ-ONLY analysis pass.
+      learn the area first - ground yourself in the relevant skill packs and the codebase (modules, dependencies, data model) before scoping.
+      detect phase and act idempotently:
+        - NEW (no prior analysis): produce a full analysis.
+        - EXISTING (analysis already posted, or the epic already has children): produce a DELTA - surface only what is new (scope drift, a fresh blocker, missing work).
+      analyze the epic and produce:
+        - SCOPE: what is in, what is out (one line each)
+        - DEPENDENCIES: intra-epic and cross-epic blockers, grouped into parallel waves (wave 1 = nothing blocks it)
+        - RISKS: edge cases, what could break, environments and data touched
+        - SIZING: rough size per area (S / M / L)
+        - DECISIONS: each open decision with its options and your recommendation
+        - QUESTIONS: the open questions to answer before breakdown
+      {{hint}}
+      as your FINAL foreground action, post ONE comment to the ticket with the sections above, as clear prose; keep DECISIONS and QUESTIONS as their own labelled lists.
+      end with one line - "VERDICT:" followed by exactly one of READY_TO_PLAN (analysis complete, nothing blocks breakdown) / NEEDS_DECISIONS (open decisions or questions must be answered first) / NO_CHANGE (re-analysis found nothing material to add) - and use these uppercase tokens nowhere else in the comment.
+      SB_PROMPT
+      )"

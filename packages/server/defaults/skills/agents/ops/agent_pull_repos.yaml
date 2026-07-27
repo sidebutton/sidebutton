@@ -1,0 +1,59 @@
+schema_version: 1
+id: agent_pull_repos
+title: "Pull Workspace Repos"
+description: "Sync every repo in a workspace, upgrade the SideButton CLI, and reinstall skill packs"
+overview: |
+  Operational housekeeping that brings one workspace back in sync with upstream. It walks every git repository in the selected workspace (its entry path), resets each to its remote default branch, runs `sidebutton registry update` so the account's knowledge-pack registry picks up any pushed modules, and runs `sudo sb-self-update` to bring the agent's own SideButton install up to date.
+
+  Run it at the start of a shift, after an upstream release, or whenever an agent behaves as if it is running stale code or outdated knowledge. It is idempotent — already-current repos resolve to no change, and every update step is change-gated to a true no-op when nothing moved — but it discards local commits and uncommitted changes, so don't run it on a workspace with unpushed work.
+
+  `sudo sb-self-update` is a narrow root-owned wrapper provisioned by agent-runners and the only privileged action in the job. It does three change-gated things: upgrades the SideButton CLI/server to `@latest` (restarting only on a version change), refreshes the agent's base artifacts (Claude hooks, timers, helper scripts) from agent-runners, and reinstalls the universal `agents` ops pack from the catalog so default workflows added or changed since this agent was provisioned become dispatchable. On an agent that predates the wrapper the step is skipped with a notice rather than failing the run.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: ops
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Workspace directory to sync"
+
+steps:
+  - type: terminal.open
+    title: "Agent: Pull Workspace Repos"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      the current directory is your workspace. sync every git repo inside it to its remote default branch: for each, fetch, hard-reset to origin/main (or origin/master), and clean untracked files. then run `sidebutton registry update` to refresh the account knowledge-pack registry. then bring the agent's own SideButton install up to date: if `sb-self-update` exists, run `sudo sb-self-update` (one change-gated wrapper that upgrades the SideButton CLI/server to latest and restarts only on a version change, refreshes base artifacts from agent-runners, and reinstalls the universal `agents` ops pack from the catalog so newly published default workflows become dispatchable); if it does not exist, skip it and note it. report the SideButton version before and after, what `sb-self-update` changed (CLI / base artifacts / ops pack), and what changed in each repo.
+      SB_PROMPT
+      )"

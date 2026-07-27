@@ -53,7 +53,7 @@ Once connected, the **Hetzner** card shows a green **Connected** badge.
 
 After connecting, any new agent you create can use your Hetzner connection:
 
-1. Go to **Agents** → **Add agent** — the **Create Agent** wizard opens
+1. Go to **Agents** → **Create Agent** — the **Create Agent in Hetzner** wizard opens
 2. Pick an agent profile, then select your Hetzner connection as the cloud account
 3. Choose a **Location** and **Machine size** (see table below)
 4. Click **Launch** — SideButton provisions the server, SSH key, and firewall automatically

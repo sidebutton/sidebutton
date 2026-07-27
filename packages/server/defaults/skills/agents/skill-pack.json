@@ -1,0 +1,19 @@
+{
+  "name": "agents",
+  "version": "1.16.0",
+  "title": "Autonomous Agents",
+  "description": "Universal methodology for autonomous agents — Ops, SE, QA, SD, PM role playbooks plus operational workflows for agent fleets.",
+  "domain": "agents",
+  "requires": {
+    "browser": true,
+    "llm": false
+  },
+  "roles": [
+    "ops",
+    "se",
+    "qa",
+    "sd",
+    "pm"
+  ],
+  "private": false
+}

@@ -1,0 +1,85 @@
+schema_version: 1
+id: agent_sentry_triage
+title: "Sentry Triage"
+description: "Poll Sentry for new production errors, dedup against Jira, file Bug tickets with evidence and initial RCA"
+overview: |
+  A monitoring triage chain. The agent polls Sentry for fresh unresolved production errors across the account's projects, drops anything already tracked in Jira (matched by a sentry-<short-id> label), and files the most impactful remainder as Bug tickets — each with evidence, a stack-trace excerpt, and an initial root-cause hypothesis mapped to repo code. Tickets land in the backlog untouched; Jira webhook automations and playbooks drive the fix lifecycle from there.
+
+  Run this on a schedule (cron automation) pinned to the one agent that holds a Sentry auth token and the Sentry MCP server. It is intentionally shallow on purpose: deep RCA, fixing, and regression testing belong to the downstream bug-fix playbook, so this workflow only watches, dedups, and reports.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: se
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  sentry_org:
+    type: string
+    default: "aictpo"
+    description: "Sentry organization slug"
+  sentry_projects:
+    type: string
+    default: "sidebutton-server, sidebutton-portal, sidebutton-extension, sidebutton-dashboard"
+    description: "Comma-separated Sentry project slugs to check"
+  jira_project:
+    type: string
+    default: "SCRUM"
+    description: "Jira project key for new Bug tickets"
+  max_tickets:
+    type: string
+    default: "3"
+    description: "Max new tickets per run"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: Sentry Triage"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      use the sentry mcp tools, org {{sentry_org}}. if sentry tools are unavailable or auth fails, stop and report the error.
+      search issues in each project separately - {{sentry_projects}} - with query "is:unresolved is:for_review" sorted by freq. org-wide search silently returns nothing, so always pass the project.
+      for every candidate issue, check jira for an existing ticket: jql search {{jira_project}} for label sentry-<short-id, lowercased>. skip candidates that already have a ticket, regardless of its status.
+      skip pure infrastructure noise (broken pipes, EPIPE spam, network blips) unless new or clearly escalating.
+      pick at most {{max_tickets}} remaining issues, highest impact first (event count, users affected, recency).
+      for each picked issue fetch full details - stack trace, event count, first/last seen, environment, server/release. locate the crashing frame in the repo code in your workspace and name the suspected cause (file:line). initial rca only - do not implement a fix.
+      {{hint}}
+      create one Bug in {{jira_project}} per picked issue and leave it in the backlog - no transitions, no assignee, no extra comments; downstream automations take it from there. labels: sentry plus sentry-<short-id, lowercased>. title: Sentry: <error title> (<SHORT-ID>). description: sentry issue link, evidence (event count, first/last seen, environment, server), short stack trace excerpt, suspected root cause with file:line refs, user impact, recommended priority. set the jira priority field to match.
+      finish with one summary line: tickets created (keys), duplicates skipped (count), or no new issues.
+      SB_PROMPT
+      )"

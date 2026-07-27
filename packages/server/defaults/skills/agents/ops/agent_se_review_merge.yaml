@@ -1,0 +1,89 @@
+schema_version: 1
+id: agent_se_review_merge
+title: "Review + Merge PR"
+description: "Review PR, resolve conflicts, fix issues, merge, report back"
+overview: |
+  A senior-style merge chain for PRs that are already close to approval. The agent reviews the diff for correctness, style, and acceptance-criteria coverage, fixes any small issues it finds with its own commits, resolves merge conflicts against the default branch, and then merges using the repo's preferred strategy.
+
+  After the merge, a concise report is posted back to the source ticket with the commit SHA, any follow-ups that were deferred, and a pointer to the first deploy that will carry the change. Reserve this workflow for PRs that are intentionally being landed by an agent rather than a human reviewer.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: se
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # step's ticket comment; declaring it here is what makes this workflow content-routable.
+  verdicts: [MERGED, CONFLICT, CI_FAIL]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  ticket_url:
+    type: string
+    description: "Jira ticket URL"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: SE Review + Merge"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read ticket with attachments and all comments - {{ticket_url}}. if it fails, stop and report the error.
+      find the linked PR in ticket comments. learn how to SE relevant parts.
+      check out the PR branch locally and review the diff against ticket requirements.
+      enable code-review skill(s).
+
+      EXECUTION RULES (read first — they override any habit):
+      - Do ALL of the work in THIS session, in the FOREGROUND. Never move review, tests, type-check, code-review, or the merge into the background (no run_in_background, no background workflows, no trailing &) and then wait for it. Run each long task and WAIT for it to finish before the next step. Ending your turn is FINAL here — nothing wakes you to "resume", so a turn that ends with work still pending is reported as a FAILED step, not a pause.
+      - Never end your turn "holding", "pausing", or planning to "resume/continue later". If you truly cannot finish (unresolvable conflicts, or CI you cannot fix), that is a CONFLICT or CI_FAIL result — report it and stop.
+
+      REVIEW: review the code.
+
+      CONFLICTS: if the PR has merge conflicts with the target branch, resolve them — prefer the PR intent, preserve target branch fixes.
+
+      ISSUES: if you find bugs, missing logic, or acceptance criteria gaps — fix them in the PR branch and push.
+
+      CI: after fixes, run the build, tests, lint, and type-check to completion IN THE FOREGROUND and WAIT for the results (do not background them and move on). fix any CI failures.
+
+      MERGE: once review is clean, CI passes, and no conflicts remain — merge the PR from the CLI (merge commit, not squash, unless repo convention says otherwise), then delete the remote branch. This works the same whether the repo is on GitHub or Bitbucket — use whichever host this repo lives on.
+
+      VERIFY: before reporting success, confirm FROM THE HOST that the PR's state is actually MERGED (GitHub: `gh pr view`; Bitbucket: the pull-request REST API or page). If it is not merged, you are NOT done — resolve the blocker or report CONFLICT/CI_FAIL.
+
+      {{hint}}
+      As your FINAL action (after the merge is confirmed), write ONE comment to the ticket. Its LAST line must be an explicit verdict on its own line — exactly one of: MERGED, CONFLICT, or CI_FAIL. Include: review summary (what was checked), conflicts resolved (if any), issues fixed (file refs), CI status, and — for MERGED — the PR link + merge commit SHA and how to verify on the target branch; for CONFLICT or CI_FAIL, the specific blocker.
+      SB_PROMPT
+      )"
