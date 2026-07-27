@@ -76,7 +76,7 @@ Point an MCP client at it with:
 ::: warning Browser tools do not work in a container
 The container runs the workflow engine, the seven browserless MCP tools and all
 `skill://` knowledge packs. The 21 browser tools drive the real Chrome on your
-machine through the [SideButton extension](/docs/extension), which connects to a
+machine through the [SideButton extension](/extension), which connects to a
 server on the host's `127.0.0.1:9876`. In stdio mode the container binds that
 listener to container-local loopback by design, so publishing the port does not
 bridge it. Use `npx sidebutton` on the host for browser automation.
