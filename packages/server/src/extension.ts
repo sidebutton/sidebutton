@@ -20,9 +20,10 @@ export const BROWSER_NOT_CONNECTED = [
   'SideButton browser tools drive real Chrome through the SideButton extension,',
   'which connects to this server on 127.0.0.1:9876.',
   'Install it from https://sidebutton.com/extension, then click the SideButton icon in Chrome.',
-  'If this server runs inside a container, no extension can reach it (in stdio mode the',
-  'extension port stays on container-local loopback) — run `npx sidebutton` on the host for',
-  'browser automation.',
+  'In a container, use the `browser` image profile — it bundles Chromium and installs the',
+  'extension itself. The server-only profile has no browser at all, and an extension on the',
+  'host cannot reach it either, because in stdio mode the extension port stays on',
+  'container-local loopback; run `npx sidebutton` on the host instead.',
   'Workflow, run-log, artifact and knowledge-pack tools need no browser.',
 ].join(' ');
 

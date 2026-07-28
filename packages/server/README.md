@@ -140,16 +140,26 @@ The other 21 drive your real Chrome through the SideButton extension:
 
 ## Run with Docker
 
-```bash
-# Build from the repository ROOT — @sidebutton/server depends on
-# @sidebutton/core via workspace:*, so the workspace must stay intact.
-docker build -f packages/server/Dockerfile -t mcp/sidebutton .
+Two profiles, selected with `--target`. Both build from the repository **root** —
+`@sidebutton/server` depends on `@sidebutton/core` via `workspace:*`, so the
+workspace has to stay intact.
 
-# Speak MCP over stdio, the way a client starts it
-docker run -i --rm mcp/sidebutton
+| Profile | Target | Size | Tools | Needs |
+| --- | --- | --- | --- | --- |
+| **browser** (default) | `browser` | ~1.5 GB | all 28 | egress to the Chrome Web Store |
+| **server-only** | `runner` | ~580 MB | 7 of 28 | nothing |
+
+```bash
+# browser — bundles Chromium, installs the extension itself, all 28 tools
+docker build -f packages/server/Dockerfile -t sidebutton .
+docker run -i --rm sidebutton
+
+# server-only — no browser, smaller image
+docker build -f packages/server/Dockerfile --target runner -t sidebutton:slim .
+docker run -i --rm sidebutton:slim
 
 # Keep workflows, run logs and installed packs across restarts
-docker run -i --rm -v sidebutton-data:/home/node/.sidebutton mcp/sidebutton
+docker run -i --rm -v sidebutton-data:/home/node/.sidebutton sidebutton
 ```
 
 MCP client configuration:
@@ -159,19 +169,46 @@ MCP client configuration:
   "mcpServers": {
     "sidebutton": {
       "command": "docker",
-      "args": ["run", "-i", "--rm", "mcp/sidebutton"]
+      "args": ["run", "-i", "--rm", "sidebutton"]
     }
   }
 }
 ```
 
-**Container scope.** The seven browserless tools, the workflow engine and all
-`skill://` knowledge packs work. The 21 browser tools do not: they drive the
-real Chrome on your machine through the SideButton extension, which connects to
-a server on the host's `127.0.0.1:9876`, and in stdio mode the container binds
-that listener to container-local loopback by design (SCRUM-1490) — publishing
-the port does not bridge it. Install from npm (`npx sidebutton`) for browser
-automation.
+**How the browser profile gets the extension.** It does not ship it. A Chrome
+managed policy in the image force-installs the published extension from the
+Chrome Web Store at first launch — the same mechanism the agent fleet uses. The
+image contains no extension source and redistributes nothing, and the extension
+auto-updates. See [`chrome-policy/README.md`](chrome-policy/README.md).
+
+Consequences worth knowing:
+
+- **First launch needs network** to `clients2.google.com` and
+  `clients2.googleusercontent.com`. Without it the browser starts but no
+  extension installs, and every browser tool reports "browser not connected".
+- **Startup is not instant.** The extension is fetched, then attaches to a tab —
+  typically a few seconds. The entrypoint restarts Chromium if that fails, up to
+  `SIDEBUTTON_ATTACH_RETRIES` times.
+- **No `--shm-size` needed.** Chromium launches with `--disable-dev-shm-usage`,
+  which routes shared memory to `/tmp` instead of Docker's 64 MB `/dev/shm`. The
+  image has to work under a runner whose flags we do not control — the Docker
+  MCP Toolkit gateway, for one — so this is handled in the image rather than
+  asked of the caller.
+- **`SIDEBUTTON_START_URL`** (default `https://sidebutton.com`) must stay a
+  regular `http(s)` URL. The extension refuses to attach to `about:blank` and
+  other restricted schemes, which surfaces as a connected socket with no tab.
+- **Do not override `--port`.** The extension dials a hardcoded
+  `ws://localhost:9876`, so browser tools only work on the default port. The
+  entrypoint detects an override, says so, and skips Chromium rather than
+  spending minutes on attach attempts that cannot succeed; the browserless tools
+  keep working.
+
+**Server-only scope.** The seven browserless tools, the workflow engine and all
+`skill://` knowledge packs work. The 21 browser tools do not, and a browser on
+the *host* cannot rescue them: the extension connects to `127.0.0.1:9876`, and in
+stdio mode the container binds that listener to container-local loopback by
+design (SCRUM-1490), so publishing the port does not bridge it. Use the `browser`
+profile, or install from npm (`npx sidebutton`) to drive your own Chrome.
 
 **Included by default.** First run seeds the universal `agents` knowledge pack
 — the same one fleet provisioning installs — so a fresh container answers

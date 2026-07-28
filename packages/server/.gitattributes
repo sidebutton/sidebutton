@@ -1,0 +1,10 @@
+# Shell scripts in this package are executed inside Linux containers. This repo
+# has no root .gitattributes and Windows clones run with core.autocrlf=true, so
+# without this a CRLF checkout makes the shebang `#!/bin/sh\r`, which the kernel
+# reports as "no such file or directory" — an error that names neither the file
+# nor the line endings. Pin them.
+#
+# It lives in packages/ rather than the repo root because sync-oss.sh mirrors
+# packages/ to the public repo but does not sync root-level files, and the
+# container is built from that mirror.
+*.sh text eol=lf

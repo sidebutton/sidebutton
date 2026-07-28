@@ -12,11 +12,21 @@
 #
 #   docker run -i --rm mcp/sidebutton
 #
-# Scope: the 22 browser tools drive real Chrome through the SideButton
-# extension, which connects to a server on the *host's* 127.0.0.1:9876. A
-# container cannot serve them (in stdio mode the HTTP side binds container-local
-# loopback by design). Workflow, run-log, artifact and knowledge-pack tools work
-# fully. See packages/server/README.md § Run with Docker.
+# Two profiles, selected with --target:
+#
+#   browser (default, all 28 tools) — bundles Chromium and force-installs the
+#     published extension from the Chrome Web Store, so the browser tools work
+#     with no host involvement. ~1.6 GB.
+#
+#   runner (7 tools, ~580 MB) — server only. Workflow, run-log, artifact and
+#     browser-status tools plus all skill:// knowledge packs. The 21 browser
+#     tools report "browser not connected": the extension dials 127.0.0.1:9876,
+#     and in stdio mode that port is container-local by design, so a browser on
+#     the *host* can never reach it.
+#
+#     docker build -f packages/server/Dockerfile --target runner -t sidebutton .
+#
+# See packages/server/README.md § Run with Docker.
 
 FROM node:22-slim AS base
 # pnpm is pinned to the root package.json `packageManager` version. Installed
@@ -102,4 +112,55 @@ EXPOSE 9876
 # First run seeds $HOME/.sidebutton from packages/server/defaults. Mount a
 # volume there to keep workflows, run logs and installed packs across restarts.
 ENTRYPOINT ["node", "/app/packages/server/bin/sidebutton.js"]
+CMD ["serve", "--stdio"]
+
+# ---------------------------------------------------------------------------
+# browser — runner + Chromium + the extension, so all 28 tools work in-container
+#
+# The extension is NOT copied in. It is FSL-1.1-Apache-2.0 and ships only
+# through the Chrome Web Store (sync-oss.sh keeps extension/ out of the public
+# mirror), so a source copy could neither be built from the public repository
+# nor redistributed. Instead a managed policy force-installs the published
+# extension at first launch — the same mechanism the agent fleet uses. The image
+# therefore carries four lines of JSON and no third-party code.
+#
+# Chromium, not Google Chrome: it is open source, honours the same
+# ExtensionInstallForcelist policy (verified), and keeps a proprietary browser
+# out of an image published and signed by Docker.
+#
+# This is the LAST stage, so it is what a plain `docker build` produces.
+# ---------------------------------------------------------------------------
+FROM runner AS browser
+
+USER root
+
+# chromium — the browser the extension drives.
+# xvfb    — Chromium needs a display; the extension's service worker and the
+#           debugger API are unreliable under headless for this workload.
+# fonts   — without them every rendered page is tofu boxes, which silently
+#           corrupts screenshots and text extraction.
+# curl    — the entrypoint polls /health to detect the extension handshake.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        chromium xvfb fonts-liberation fonts-dejavu-core curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Force-installs the published extension from the Web Store on first launch.
+# See packages/server/chrome-policy/README.md.
+COPY packages/server/chrome-policy/sidebutton.json /etc/chromium/policies/managed/sidebutton.json
+
+COPY packages/server/scripts/docker-browser-entrypoint.sh /usr/local/bin/sidebutton-browser-entrypoint.sh
+RUN chmod +x /usr/local/bin/sidebutton-browser-entrypoint.sh
+
+# SIDEBUTTON_START_URL must stay a regular http(s) URL — see the entrypoint.
+# Point it at http://127.0.0.1:9876/health on a network without Web Store
+# access, though the extension will not install there either.
+ENV DISPLAY=:99 \
+    CHROME_USER_DATA_DIR=/home/node/.chrome-profile \
+    SIDEBUTTON_START_URL=https://sidebutton.com
+
+USER node
+RUN mkdir -p /home/node/.chrome-profile
+
+ENTRYPOINT ["/usr/local/bin/sidebutton-browser-entrypoint.sh"]
 CMD ["serve", "--stdio"]

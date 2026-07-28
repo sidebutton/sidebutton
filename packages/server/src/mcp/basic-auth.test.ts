@@ -101,7 +101,7 @@ describe('set_basic_auth / clear_basic_auth MCP tools', () => {
     const res = await callTool(handler, 'set_basic_auth', { username: 'a', password: 'b' });
     expect(res.result).toBeUndefined();
     // Asserted as a prefix so the remedy text stays editable: it tells callers
-    // how to attach an extension and that container runs never can.
+    // how to attach an extension, and which container profile bundles one.
     expect(res.error?.message).toMatch(/^Browser not connected\./);
     expect(res.error?.message).toContain('sidebutton.com/extension');
   });

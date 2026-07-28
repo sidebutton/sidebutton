@@ -46,18 +46,26 @@ pnpm start
 
 ## Alternative: Docker
 
-The MCP server ships a Dockerfile. Build it from the repository **root** — the
-server depends on `@sidebutton/core` through the pnpm workspace, so the build
-context cannot be narrowed to `packages/server`:
+The MCP server ships a Dockerfile with two profiles. Build from the repository
+**root** — the server depends on `@sidebutton/core` through the pnpm workspace,
+so the build context cannot be narrowed to `packages/server`:
+
+| Profile | Target | Size | Tools |
+| --- | --- | --- | --- |
+| **browser** (default) | `browser` | ~1.5 GB | all 28 |
+| **server-only** | `runner` | ~580 MB | 7 of 28 |
 
 ```bash
-docker build -f packages/server/Dockerfile -t mcp/sidebutton .
+# browser — bundles Chromium and installs the extension itself
+docker build -f packages/server/Dockerfile -t sidebutton .
+docker run -i --rm sidebutton
 
-# Speak MCP over stdio, the way a client starts it
-docker run -i --rm mcp/sidebutton
+# server-only — no browser, smaller image
+docker build -f packages/server/Dockerfile --target runner -t sidebutton:slim .
+docker run -i --rm sidebutton:slim
 
 # Keep workflows, run logs and installed packs across restarts
-docker run -i --rm -v sidebutton-data:/home/node/.sidebutton mcp/sidebutton
+docker run -i --rm -v sidebutton-data:/home/node/.sidebutton sidebutton
 ```
 
 Point an MCP client at it with:
@@ -67,26 +75,38 @@ Point an MCP client at it with:
   "mcpServers": {
     "sidebutton": {
       "command": "docker",
-      "args": ["run", "-i", "--rm", "mcp/sidebutton"]
+      "args": ["run", "-i", "--rm", "sidebutton"]
     }
   }
 }
 ```
 
-::: warning Browser tools do not work in a container
-The container runs the workflow engine, the seven browserless MCP tools and all
-`skill://` knowledge packs. The 21 browser tools drive the real Chrome on your
-machine through the [SideButton extension](/extension), which connects to a
-server on the host's `127.0.0.1:9876`. In stdio mode the container binds that
-listener to container-local loopback by design, so publishing the port does not
-bridge it. Use `npx sidebutton` on the host for browser automation.
+::: tip The browser profile needs no host setup
+It bundles Chromium and installs the [SideButton extension](/extension) itself,
+via a Chrome managed policy that force-installs the published extension from the
+Chrome Web Store on first launch. No extension source ships in the image, and it
+auto-updates.
+
+First launch therefore needs network access to `clients2.google.com` and
+`clients2.googleusercontent.com`, and takes a few seconds to fetch and attach.
+No `--shm-size` flag is needed: Chromium runs with `--disable-dev-shm-usage`, so
+Docker's 64 MB `/dev/shm` is bypassed from inside the image.
+:::
+
+::: warning The server-only profile has no browser
+It runs the workflow engine, the seven browserless MCP tools and all `skill://`
+knowledge packs. The 21 browser tools do not work, and an extension on the *host*
+cannot reach it either: it connects to `127.0.0.1:9876`, and in stdio mode the
+container binds that listener to container-local loopback by design, so
+publishing the port does not bridge it. Use the `browser` profile, or
+`npx sidebutton` on the host to drive the Chrome you are already signed into.
 :::
 
 First run seeds the universal `agents` knowledge pack, so a fresh container
 already exposes its `skill://agents/...` resources; `sidebutton install agents`
 upgrades it to the current catalog version.
 
-The image runs as an unprivileged user, contains no credentials, and disables
+Both images run as an unprivileged user, contain no credentials, and disable
 crash reporting (`SIDEBUTTON_CONTAINER=1`).
 
 ## Desktop App
