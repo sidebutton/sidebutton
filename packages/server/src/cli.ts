@@ -11,6 +11,7 @@ import * as fs from 'node:fs';
 import chalk from 'chalk';
 import { loadWorkflowsFromDir, loadWorkflow, type Workflow } from '@sidebutton/core';
 import { startServer } from './server.js';
+import { ensureAgentClaudeMd } from './agent-claude-md.js';
 import { startStdioMode } from './stdio-mode.js';
 import { fileURLToPath } from 'node:url';
 import { VERSION } from './version.js';
@@ -264,6 +265,16 @@ program
   .option('--stdio', 'Use stdio transport for MCP (for Claude Desktop)')
   .action(async (options) => {
     const configDir = getConfigDir();
+
+    // Reconcile the engine-managed tracker-access block in ~/.claude/CLAUDE.md (SCRUM-1830 T3):
+    // auth instructions live in session CONTEXT, not in workflow prompts, and serve-start is the
+    // one seam every fleet update passes through (sb-self-update restarts the service). Best-effort
+    // and journal-quiet when nothing changed.
+    const claudeMd = ensureAgentClaudeMd();
+    if (claudeMd.status !== 'unchanged') {
+      process.stderr.write(`  CLAUDE.md tracker block: ${claudeMd.status}${claudeMd.detail ? ` (${claudeMd.detail})` : ''}\n`);
+    }
+
     const port = Number(options.port);
     // Bind loopback by default; widen only via --host / SIDEBUTTON_HOST (SCRUM-1490).
     const host = options.host ?? process.env.SIDEBUTTON_HOST ?? '127.0.0.1';

@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { ExtensionClientImpl } from './extension.js';
 import { McpHandler } from './mcp/handler.js';
 import { reportRunLog } from './services/report.js';
+import { newRunId } from './run-id.js';
 import { VERSION } from './version.js';
 import {
   loadContextAll,
@@ -32,7 +33,7 @@ import {
   deleteTarget,
   parseFrontmatter,
 } from './context.js';
-import { matchTarget } from './matching.js';
+import { matchTarget, matchRole } from './matching.js';
 import { listInstalledPacks, installSkillPack, uninstallSkillPack } from './skill-pack.js';
 import { listRegistries, addRegistry, removeRegistry, getRegistryDir, readRegistryIndex } from './registry.js';
 import { applyProjects, statusProjects, statConfigFiles, resetProject, type ApplyProject, type StatusProject } from './projects.js';
@@ -2059,8 +2060,9 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
 
     // Generate run ID
-    const timestamp = new Date().toISOString();
-    const runId = `${workflowId}_${timestamp.replace(/[:.]/g, '').slice(0, 15)}`;
+    const startedAt = new Date();
+    const timestamp = startedAt.toISOString();
+    const runId = newRunId(workflowId, startedAt);
 
     // Load settings for LLM config and user contexts
     const settings = loadSettings(config.configDir);
@@ -2129,11 +2131,13 @@ export async function startServer(config: ServerConfig): Promise<void> {
       ctx.userContexts.unshift(`[Persona]\n${contextConfig.persona.body}`);
     }
 
-    // All enabled roles
+    // Enabled roles that apply here: account-wide playbooks (no `match`) always, a domain extension
+    // only on its own domain. Mirrors the MCP handler; see matchRole for the fail-open rules.
+    const roleCategoryDomain = workflow?.category?.domain;
     for (const role of contextConfig.roles) {
-      if (role.enabled !== false && role.body.trim()) {
-        ctx.userContexts.push(`[Role: ${role.name}]\n${role.body}`);
-      }
+      if (role.enabled === false || !role.body.trim()) continue;
+      if (!matchRole(role.match, requestDomain, workflowId, roleCategoryDomain)) continue;
+      ctx.userContexts.push(`[Role: ${role.name}]\n${role.body}`);
     }
 
     // Enabled targets that match domain / workflow / tag (skip _system.md)

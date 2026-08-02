@@ -1,20 +1,19 @@
 # SideButton
 
-**Open-source AI agent platform — MCP server, knowledge packs, and workflow automation tools.**
+**Open-source AI agent platform for agentic coding — MCP server, knowledge packs, and AI workflow automation.**
 
+[![npm](https://img.shields.io/npm/v/sidebutton)](https://www.npmjs.com/package/sidebutton)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20%2B%20FSL--1.1-blue.svg)](LICENSING.md)
-[![Website](https://img.shields.io/badge/website-sidebutton.com-purple)](https://sidebutton.com)
-[![Docs](https://img.shields.io/badge/docs-docs.sidebutton.com-green)](https://docs.sidebutton.com)
 
-> **[Website](https://sidebutton.com)** · **[Documentation](https://docs.sidebutton.com)** · **[GitHub](https://github.com/sidebutton/sidebutton)**
+> **[sidebutton.com](https://sidebutton.com)** · **[docs.sidebutton.com](https://docs.sidebutton.com)**
 
 <p align="center">
-  <a href="https://sidebutton.com/media/sidebutton-open-source-platform-release">
-    <img src="https://sidebutton.com/media/sidebutton-agent-stack.png" alt="The AI Agent Stack — SideButton" width="700" />
+  <a href="https://sidebutton.com">
+    <img src="https://sidebutton.com/media/sidebutton-oss-stack.png" alt="SideButton open-source AI agent platform for agentic coding: MCP server, agentic workflows, knowledge packs" width="700" />
   </a>
 </p>
 
-AI agent platform with 40+ AI agent tools. Run autonomous AI agents with agentic workflows, knowledge packs, and real browser control. Connect Claude Code, Cursor, ChatGPT, or any MCP client.
+Run AI coding agents with agentic workflows, knowledge packs, and real browser control. Connect Claude Code, Codex, Cursor, ChatGPT, or any MCP client.
 
 ```bash
 npx sidebutton@latest
@@ -25,11 +24,11 @@ npx sidebutton@latest
 
 | | |
 |---|---|
-| **MCP Server** | 40+ AI agent tools for browser control, workflow execution, knowledge pack access. Stdio and SSE transports. |
-| **REST API** | 60+ endpoints. Trigger workflows remotely from webhooks, cron jobs, mobile apps, or other agents. |
-| **Workflow Engine** | AI workflow automation with 34+ step types — browser, shell, LLM, control flow. Define agentic workflows in YAML. |
+| **MCP Server** | AI agent tools for browser control, workflow execution, and knowledge pack access. Stdio and SSE transports. |
+| **REST API** | Trigger workflows remotely from webhooks, cron jobs, mobile apps, or other agents. |
+| **Workflow Engine** | AI workflow automation with browser, git, issue-tracking, LLM, shell, and control-flow steps. Define agentic workflows in YAML. |
 | **Knowledge Packs** | Installable domain knowledge — CSS selectors, data models, state machines. Role playbooks turn coding agents into an AI software engineer, QA, or PM. |
-| **Chrome Extension** | 40+ browser commands. Real DOM access via WebSocket, not screenshots. Recording mode. |
+| **Chrome Extension** | Browser commands with real DOM access via WebSocket, not screenshots. Recording mode. |
 | **Dashboard** | Svelte UI — workflow browser, run logs, skill pack manager, system status. |
 
 ## Quick Start
@@ -66,24 +65,29 @@ pnpm cli publish [source]          # Publish to a registry
 
 ## MCP Server
 
-SideButton is an AI agent platform and MCP server. AI coding agents connect to it directly for browser control, workflow automation, and domain knowledge.
+SideButton is an open-source [MCP server for AI coding agents](https://sidebutton.com/mcp). Agents connect to it directly for browser control, workflow automation, and domain knowledge.
 
-Works with **Claude Code**, **Cursor**, **Claude Desktop**, **VS Code**, **Windsurf**, **ChatGPT** — any MCP client.
+Works with **Claude Code**, **Codex**, **Cursor**, **Claude Desktop**, **VS Code**, **Windsurf**, **ChatGPT** — any MCP client.
 
 ### Claude Code
 
-Add to `~/.claude/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "sidebutton": {
-      "type": "sse",
-      "url": "http://localhost:9876/mcp"
-    }
-  }
-}
+```bash
+claude mcp add sidebutton --transport http http://localhost:9876/mcp
 ```
+
+Persists to `~/.claude.json`; add `--scope project` to write `./.mcp.json` instead. Full guide: [Claude Code SideButton MCP setup](https://sidebutton.com/mcp/claude-code).
+
+### Codex
+
+Add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.sidebutton]
+command = "sidebutton"
+args = ["serve", "--stdio"]
+```
+
+Full guide: [OpenAI Codex SideButton MCP setup](https://sidebutton.com/mcp/codex).
 
 ### Claude Desktop
 
@@ -119,34 +123,37 @@ Add to `~/.cursor/mcp.json`:
 | Tool | Description |
 |------|-------------|
 | `run_workflow` | Execute a workflow by ID |
+| `get_run_log` | Get execution log for a run |
 | `list_workflows` | List all available workflows |
 | `get_workflow` | Get workflow YAML definition |
-| `get_run_log` | Get execution log for a run |
 | `list_run_logs` | List recent workflow executions |
+| `publish_artifact` | Publish evidence (screenshots, reports) from a session |
 | `get_browser_status` | Check browser extension connection |
 | `capture_page` | Capture selectors from current page |
 | `navigate` | Navigate browser to URL |
 | `snapshot` | Get page accessibility snapshot |
 | `click` | Click an element |
 | `type` | Type text into an element |
+| `press_key` | Send keyboard keys |
 | `scroll` | Scroll the page |
-| `screenshot` | Capture page screenshot |
-| `hover` | Hover over element |
 | `extract` | Extract text from element |
-| `extract_all` | Extract all matching elements |
-| `extract_map` | Extract structured data from repeated elements |
+| `screenshot` | Capture page screenshot |
 | `select_option` | Select dropdown option |
 | `fill` | Fill input value (React-compatible) |
-| `press_key` | Send keyboard keys |
-| `scroll_into_view` | Scroll element into viewport |
-| `evaluate` | Execute JavaScript in browser |
-| `exists` | Check if element exists |
 | `wait` | Wait for element or delay |
-| `check_writing_quality` | Evaluate text quality |
+| `exists` | Check if element exists |
+| `extract_all` | Extract all matching elements |
+| `extract_map` | Extract structured data from repeated elements |
+| `scroll_into_view` | Scroll element into viewport |
+| `hover` | Hover over element |
+| `evaluate` | Execute JavaScript in browser |
+| `browser_batch` | Run a sequence of browser actions in one call |
+| `set_basic_auth` | Set HTTP Basic Auth credentials for the connected tab |
+| `clear_basic_auth` | Clear stored HTTP Basic Auth credentials |
 
 ## REST API
 
-60+ JSON endpoints for external integrations. Same workflows available via MCP locally and via REST remotely.
+JSON endpoints for external integrations. The same workflows are available via MCP locally and via REST remotely.
 
 ```bash
 # Run a workflow
@@ -165,46 +172,22 @@ Trigger workflows from webhooks, cron jobs, mobile apps, or other agents on diff
 
 ## Workflow Engine
 
-YAML-first orchestration. 34+ step types:
+YAML-first orchestration for agentic workflows. Step types by family:
 
 ### Step Types
 
-| Type | Description |
-|------|-------------|
-| **Browser** | |
-| `browser.navigate` | Open a URL |
-| `browser.click` | Click an element by selector |
-| `browser.type` | Type text into an element |
-| `browser.fill` | Fill input value (React-compatible) |
-| `browser.scroll` | Scroll the page |
-| `browser.extract` | Extract text from element into variable |
-| `browser.extractAll` | Extract all matching elements |
-| `browser.extractMap` | Extract structured data from repeated elements |
-| `browser.wait` | Wait for element or fixed delay |
-| `browser.exists` | Check if element exists |
-| `browser.hover` | Position cursor on element |
-| `browser.key` | Send keyboard keys |
-| `browser.snapshot` | Capture accessibility snapshot |
-| `browser.injectCSS` | Inject CSS styles into page |
-| `browser.injectJS` | Execute JavaScript in page |
-| `browser.select_option` | Select dropdown option |
-| `browser.scrollIntoView` | Scroll element into view |
-| **Shell** | |
-| `shell.run` | Execute a bash command |
-| `terminal.open` | Open a visible terminal window (macOS) |
-| `terminal.run` | Run command in terminal window |
-| **LLM** | |
-| `llm.classify` | Structured classification with categories |
-| `llm.generate` | Free-form text generation |
-| **Control Flow** | |
-| `control.if` | Conditional branching |
-| `control.retry` | Retry with backoff |
-| `control.stop` | End workflow with message |
+| Family | Steps |
+|------|-------|
+| `browser.*` | navigate, click, type, fill, extract, extractAll, extractMap, snapshot, wait, exists, hover, key, scroll, scrollIntoView, select_option, injectCSS, injectJS |
+| `git.*` | createPR, getPR, listPRs, getIssue, listIssues |
+| `issues.*` | create, get, search, comment, attach, transition |
+| `llm.*` | classify, decide, generate |
+| `control.*` | if, foreach, retry, stop |
+| `shell` / `terminal` | shell.run, terminal.open, terminal.run |
+| `data.*` | first, get |
 | `workflow.call` | Call another workflow with parameters |
-| **Data** | |
-| `data.first` | Extract first item from list |
 
-LLM steps work with Ollama (local), OpenAI, Anthropic, and Google.
+LLM steps work with Ollama (local), OpenAI, and Anthropic.
 
 ### Example
 
@@ -256,13 +239,13 @@ sidebutton install github.com
 sidebutton install atlassian.net
 ```
 
-11 domains, 28+ modules published. Open registry — build and share packs for any web app.
+Open registry with published packs for popular web apps. Build and share packs for any domain.
 
 ## Chrome Extension
 
-Install from the **[Chrome Web Store](https://chromewebstore.google.com/detail/sidebutton/odaefhmdmgijnhdbkfagnlnmobphgkij)**.
+Install the **[SideButton Chrome Extension](https://chromewebstore.google.com/detail/sidebutton/odaefhmdmgijnhdbkfagnlnmobphgkij)** from the Chrome Web Store.
 
-- 40+ browser commands — navigate, click, type, extract, scroll, wait, snapshot
+- Browser commands — navigate, click, type, extract, scroll, wait, snapshot
 - Real DOM access via CSS selectors — not pixel coordinates, not screenshots
 - Recording mode — capture manual actions as workflows
 - Embed buttons — inject action buttons into any web page
@@ -282,7 +265,7 @@ Svelte UI at `http://localhost:9876`:
 - Skill pack manager — install, browse, inspect
 - System status — extension connection, LLM config, server health
 
-SideButton handles AI agent orchestration — from workflow execution to knowledge injection.
+SideButton handles multi-agent orchestration — from workflow execution to knowledge injection.
 
 ## Architecture
 
@@ -305,7 +288,7 @@ SideButton handles AI agent orchestration — from workflow execution to knowled
 │  │                       @sidebutton/core                              │  │
 │  │                                                                     │  │
 │  │  - Workflow types & parser (YAML)                                  │  │
-│  │  - Step executors (37 step types)                                  │  │
+│  │  - Step executors (YAML step types)                                │  │
 │  │  - Variable interpolation                                          │  │
 │  │  - Execution context & events                                      │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
@@ -388,14 +371,9 @@ SideButton is a general-purpose browser automation framework. When automating th
 
 **The authors do not endorse or encourage violations of third-party terms of service.**
 
-## Legal
-
-- [Terms of Service](https://sidebutton.com/terms)
-- [Privacy Policy](https://sidebutton.com/privacy)
-
 ## License
 
-This project uses mixed licensing. See [LICENSING.md](LICENSING.md) for details.
+This project uses mixed licensing — see [LICENSING.md](LICENSING.md):
 
-- **Engine, server, CLI, dashboard** — [Apache-2.0](LICENSE)
-- **Browser extension** — [FSL-1.1-Apache-2.0](https://fsl.software) (converts to Apache-2.0 on 2029-03-15)
+- **Engine, server, CLI, dashboard** — Apache-2.0
+- **Browser extension** — FSL-1.1-Apache-2.0 (converts to Apache-2.0 on 2029-03-15)

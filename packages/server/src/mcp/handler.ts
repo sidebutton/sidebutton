@@ -35,13 +35,14 @@ import {
   buildRunLogUsage,
 } from '@sidebutton/core';
 import type { ExtensionClientImpl } from '../extension.js';
+import { newRunId } from '../run-id.js';
 import { MCP_TOOLS, type McpTool } from './tools.js';
 import { loadPlugins, executePluginTool, summarizePlugins, PluginServiceManager } from '../plugins/index.js';
 import type { LoadedPlugin, PluginToolDefinition } from '../plugins/types.js';
 import { BROWSER_NOT_CONNECTED } from '../extension.js';
 import { reportRunLog } from '../services/report.js';
 import { loadContextAll, loadTargets, loadRoles } from '../context.js';
-import { matchTarget } from '../matching.js';
+import { matchTarget, matchRole } from '../matching.js';
 import { VERSION } from '../version.js';
 
 /**
@@ -596,8 +597,9 @@ export class McpHandler {
 
     // Execute workflow
     const startTime = Date.now();
-    const timestamp = new Date().toISOString();
-    const runId = `${workflowId}_${timestamp.replace(/[:.]/g, '').slice(0, 15)}`;
+    const startedAt = new Date();
+    const timestamp = startedAt.toISOString();
+    const runId = newRunId(workflowId, startedAt);
 
     // Load settings for LLM config and user contexts
     const settings = this.loadSettings();
@@ -636,10 +638,13 @@ export class McpHandler {
       ctx.userContexts.unshift(`[Persona]\n${contextConfig.persona.body}`);
     }
 
+    // Roles that apply here: the account-wide playbooks (no `match`) always, a domain extension only
+    // when this run is on that domain. See matchRole for the two fail-open rules.
+    const roleCategoryDomain = workflow?.category?.domain;
     for (const role of contextConfig.roles) {
-      if (role.enabled !== false && role.body.trim()) {
-        ctx.userContexts.push(`[Role: ${role.name}]\n${role.body}`);
-      }
+      if (role.enabled === false || !role.body.trim()) continue;
+      if (!matchRole(role.match, requestDomain, workflowId, roleCategoryDomain)) continue;
+      ctx.userContexts.push(`[Role: ${role.name}]\n${role.body}`);
     }
 
     const categoryDomain = workflow?.category?.domain;

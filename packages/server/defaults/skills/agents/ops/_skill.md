@@ -29,8 +29,8 @@ A workflow that ends in a machine-matchable outcome declares it in its YAML — 
 | `agent_qa_validate` | `PASS` · `FAIL` |
 | `agent_qa_followup` | `PASS` · `FAIL` |
 | `agent_qa_regression` | `PASS` · `FAIL` |
-| `agent_se_work` | `PR_OPEN` · `WORK_CONTINUE` (step continuation — NOT-DONE handoff, token-only) · `BLOCKED` |
-| `agent_se_rca_fix` | `PR_OPEN` · `BLOCKED` |
+| `agent_se_work` | `PR_OPEN` · `WORK_CONTINUE` (step continuation — NOT-DONE handoff, token-only) · `BLOCKED` (token-only) |
+| `agent_se_rca_fix` | `PR_OPEN` · `BLOCKED` (token-only) |
 | `agent_se_review_merge` | `MERGED` · `CONFLICT` · `CI_FAIL` |
 | `agent_pm_goal_analysis` | `READY_TO_PLAN` · `NEEDS_DECISIONS` · `NO_CHANGE` |
 | `agent_pm_breakdown` | `ISSUES_CREATED` · `ISSUES_RECONCILED` |
