@@ -13,7 +13,7 @@
   </a>
 </p>
 
-AI agent platform with 28 AI agent tools and 41 workflow step types. Run AI coding agents with agentic workflows, knowledge packs, and real browser control. Connect Claude Code, Codex, Cursor, ChatGPT, or any MCP client.
+Run AI coding agents with agentic workflows, knowledge packs, and real browser control. Connect Claude Code, Codex, Cursor, ChatGPT, or any MCP client.
 
 ```bash
 npx sidebutton@latest
@@ -24,11 +24,11 @@ npx sidebutton@latest
 
 | | |
 |---|---|
-| **MCP Server** | 28 AI agent tools for browser control, workflow execution, knowledge pack access. Stdio and SSE transports. |
-| **REST API** | 60+ endpoints. Trigger workflows remotely from webhooks, cron jobs, mobile apps, or other agents. |
-| **Workflow Engine** | AI workflow automation with 41 step types — browser, git, issue tracking, LLM, shell, control flow. Define agentic workflows in YAML. |
+| **MCP Server** | AI agent tools for browser control, workflow execution, and knowledge pack access. Stdio and SSE transports. |
+| **REST API** | Trigger workflows remotely from webhooks, cron jobs, mobile apps, or other agents. |
+| **Workflow Engine** | AI workflow automation with browser, git, issue-tracking, LLM, shell, and control-flow steps. Define agentic workflows in YAML. |
 | **Knowledge Packs** | Installable domain knowledge — CSS selectors, data models, state machines. Role playbooks turn coding agents into an AI software engineer, QA, or PM. |
-| **Chrome Extension** | 40+ browser commands. Real DOM access via WebSocket, not screenshots. Recording mode. |
+| **Chrome Extension** | Browser commands with real DOM access via WebSocket, not screenshots. Recording mode. |
 | **Dashboard** | Svelte UI — workflow browser, run logs, skill pack manager, system status. |
 
 ## Quick Start
@@ -75,7 +75,7 @@ Works with **Claude Code**, **Codex**, **Cursor**, **Claude Desktop**, **VS Code
 claude mcp add sidebutton --transport http http://localhost:9876/mcp
 ```
 
-Persists to `~/.claude.json`; add `--scope project` to write `./.mcp.json` instead. Full guide: [Claude Code MCP setup](https://sidebutton.com/mcp/claude-code).
+Persists to `~/.claude.json`; add `--scope project` to write `./.mcp.json` instead. Full guide: [Claude Code SideButton MCP setup](https://sidebutton.com/mcp/claude-code).
 
 ### Codex
 
@@ -87,7 +87,7 @@ command = "sidebutton"
 args = ["serve", "--stdio"]
 ```
 
-Full guide: [OpenAI Codex MCP setup](https://sidebutton.com/mcp/codex).
+Full guide: [OpenAI Codex SideButton MCP setup](https://sidebutton.com/mcp/codex).
 
 ### Claude Desktop
 
@@ -153,7 +153,7 @@ Add to `~/.cursor/mcp.json`:
 
 ## REST API
 
-60+ JSON endpoints for external integrations. Same workflows available via MCP locally and via REST remotely.
+JSON endpoints for external integrations. The same workflows are available via MCP locally and via REST remotely.
 
 ```bash
 # Run a workflow
@@ -172,20 +172,20 @@ Trigger workflows from webhooks, cron jobs, mobile apps, or other agents on diff
 
 ## Workflow Engine
 
-YAML-first orchestration for agentic workflows. 41 step types across 8 families:
+YAML-first orchestration for agentic workflows. Step types by family:
 
 ### Step Types
 
 | Family | Steps |
 |------|-------|
-| `browser.*` (17) | navigate, click, type, fill, extract, extractAll, extractMap, snapshot, wait, exists, hover, key, scroll, scrollIntoView, select_option, injectCSS, injectJS |
-| `git.*` (5) | createPR, getPR, listPRs, getIssue, listIssues |
-| `issues.*` (6) | create, get, search, comment, attach, transition |
-| `llm.*` (3) | classify, decide, generate |
-| `control.*` (4) | if, foreach, retry, stop |
-| `shell` / `terminal` (3) | shell.run, terminal.open, terminal.run |
-| `data.*` (2) | first, get |
-| `workflow.call` (1) | Call another workflow with parameters |
+| `browser.*` | navigate, click, type, fill, extract, extractAll, extractMap, snapshot, wait, exists, hover, key, scroll, scrollIntoView, select_option, injectCSS, injectJS |
+| `git.*` | createPR, getPR, listPRs, getIssue, listIssues |
+| `issues.*` | create, get, search, comment, attach, transition |
+| `llm.*` | classify, decide, generate |
+| `control.*` | if, foreach, retry, stop |
+| `shell` / `terminal` | shell.run, terminal.open, terminal.run |
+| `data.*` | first, get |
+| `workflow.call` | Call another workflow with parameters |
 
 LLM steps work with Ollama (local), OpenAI, and Anthropic.
 
@@ -239,13 +239,13 @@ sidebutton install github.com
 sidebutton install atlassian.net
 ```
 
-11 domains, 28+ modules published. Open registry — build and share packs for any web app.
+Open registry with published packs for popular web apps. Build and share packs for any domain.
 
 ## Chrome Extension
 
 Install the **[SideButton Chrome Extension](https://chromewebstore.google.com/detail/sidebutton/odaefhmdmgijnhdbkfagnlnmobphgkij)** from the Chrome Web Store.
 
-- 40+ browser commands — navigate, click, type, extract, scroll, wait, snapshot
+- Browser commands — navigate, click, type, extract, scroll, wait, snapshot
 - Real DOM access via CSS selectors — not pixel coordinates, not screenshots
 - Recording mode — capture manual actions as workflows
 - Embed buttons — inject action buttons into any web page
@@ -288,7 +288,7 @@ SideButton handles multi-agent orchestration — from workflow execution to know
 │  │                       @sidebutton/core                              │  │
 │  │                                                                     │  │
 │  │  - Workflow types & parser (YAML)                                  │  │
-│  │  - Step executors (41 step types)                                  │  │
+│  │  - Step executors (YAML step types)                                │  │
 │  │  - Variable interpolation                                          │  │
 │  │  - Execution context & events                                      │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
