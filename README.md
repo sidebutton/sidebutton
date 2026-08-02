@@ -5,14 +5,12 @@
 [![npm](https://img.shields.io/npm/v/sidebutton)](https://www.npmjs.com/package/sidebutton)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20%2B%20FSL--1.1-blue.svg)](LICENSING.md)
 
-> **[Website](https://sidebutton.com)** · **[Documentation](https://docs.sidebutton.com)**
+> **[sidebutton.com](https://sidebutton.com)** · **[docs.sidebutton.com](https://docs.sidebutton.com)**
 
 <p align="center">
   <a href="https://sidebutton.com">
-    <img src="https://sidebutton.com/media/sidebutton-oss-stack.png" alt="SideButton open-source AI agent platform: MCP server, workflow engine, knowledge packs" width="700" />
+    <img src="https://sidebutton.com/media/sidebutton-oss-stack.png" alt="SideButton open-source AI agent platform for agentic coding: MCP server, agentic workflows, knowledge packs" width="700" />
   </a>
-  <br />
-  <sub>Release announcement: <a href="https://sidebutton.com/media/sidebutton-open-source-platform-release">SideButton: Open Source AI Agent Platform</a></sub>
 </p>
 
 AI agent platform with 28 AI agent tools and 41 workflow step types. Run AI coding agents with agentic workflows, knowledge packs, and real browser control. Connect Claude Code, Codex, Cursor, ChatGPT, or any MCP client.
