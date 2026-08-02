@@ -33,6 +33,10 @@ Thumbs.db
 # Run logs (local execution history)
 run_logs/
 
+# Local environment files (never commit credentials or local config)
+.env
+**/.env
+
 # Note: settings.json is tracked but API keys should be empty
 # Use environment variables or local config for secrets
 

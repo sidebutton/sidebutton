@@ -12,6 +12,7 @@ import type { Step } from '../types.js';
 import type { ExecutionContext } from '../context.js';
 import { WorkflowError } from '../types.js';
 import { ensureClaudeFolderTrust } from '../claude-trust.js';
+import { ensureTrackerSessionEnv } from '../tracker-session-env.js';
 
 const execAsync = promisify(exec);
 const IS_MAC = platform() === 'darwin';
@@ -263,10 +264,21 @@ export async function executeTerminalRun(
         title: ctx.terminalTitle,
       });
 
+      // Agent-resident tracker credentials (SCRUM-1830 T2): vended from the engine's in-process
+      // cache — a job launch normally costs zero portal calls. The call mirrors the values into the
+      // tmux GLOBAL env (reaches sessions created on an already-running tmux server) and the merge
+      // below seeds a server this very launch starts. Session/process env only — the script file on
+      // disk never carries a token.
+      const trackerEnv = await ensureTrackerSessionEnv({
+        log: (level, message) => ctx.emitLog(level, message),
+      });
+
       // xfce4-terminal needs DISPLAY; headless tmux does not.
-      const env = hasX
-        ? { ...process.env, DISPLAY: process.env.DISPLAY || ':10' }
-        : process.env;
+      const env = {
+        ...process.env,
+        ...(hasX ? { DISPLAY: process.env.DISPLAY || ':10' } : {}),
+        ...trackerEnv,
+      };
       const child = spawn(launch.file, launch.args, { stdio: 'ignore', detached: true, env });
       child.unref();
 
