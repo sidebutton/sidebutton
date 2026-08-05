@@ -8,12 +8,12 @@
     "url": "https://github.com/sidebutton/sidebutton",
     "source": "github"
   },
-  "version": "1.5.2",
+  "version": "1.5.3",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@sidebutton/server",
-      "version": "1.5.2",
+      "version": "1.5.3",
       "transport": {
         "type": "stdio"
       },
