@@ -29,14 +29,33 @@ A workflow that ends in a machine-matchable outcome declares it in its YAML — 
 | `agent_qa_validate` | `PASS` · `FAIL` |
 | `agent_qa_followup` | `PASS` · `FAIL` |
 | `agent_qa_regression` | `PASS` · `FAIL` |
-| `agent_se_work` | `PR_OPEN` · `WORK_CONTINUE` (step continuation — NOT-DONE handoff, token-only) · `BLOCKED` (token-only) |
-| `agent_se_rca_fix` | `PR_OPEN` · `BLOCKED` (token-only) |
+| `agent_se_work` | `PR_OPEN` · `WORK_CONTINUE` (step continuation — NOT-DONE handoff, token-only) · `BLOCKED` |
+| `agent_se_rca_fix` | `PR_OPEN` · `BLOCKED` |
 | `agent_se_review_merge` | `MERGED` · `CONFLICT` · `CI_FAIL` |
 | `agent_pm_goal_analysis` | `READY_TO_PLAN` · `NEEDS_DECISIONS` · `NO_CHANGE` |
 | `agent_pm_breakdown` | `ISSUES_CREATED` · `ISSUES_RECONCILED` |
 | `agent_ops_validate_resolution` | `VALIDATED` · `INCOMPLETE` · `UNVERIFIABLE` |
 
 Free-form workflows (`agent_se_rca`, `agent_se_plan`, `agent_se_followup`, `agent_pm_research`, `agent_sentry_triage`, `agent_sd_coverage`, `agent_pull_repos`) deliberately declare nothing. `agent_experiment_score` must NEVER declare a vocabulary — its comment is parsed as JSON and its prompt forbids verdict-looking tokens outright. The reserved engine-synthesized verdicts (`COMMENT_POSTED`, `JOB_COMPLETED`, `JOB_FAILED`, `JOB_CANCELLED`) are refused at sync and must not be declared.
+
+## Validation Verdict Comment Contract
+
+`agent_ops_validate_resolution` is the one workflow whose comment **shape** — not just its verdict token — is consumed by the portal. Two portal surfaces read it, so the prompt states the order explicitly rather than leaving the judge to invent one (it previously did, and the portal parser was written against the shapes it happened to produce).
+
+| Element | Order | Consumed by |
+|---|:--:|---|
+| `Validation verdict: <TOKEN>` | 1st line | `matchValidationVerdict` — the token must appear nowhere else |
+| Evidence lines (outcome → PR/commit/file) | 2nd | Operator read; the peek-rail validation panel renders the comment verbatim |
+| `Notes:` — reported, non-verdict-bearing items | 3rd | Operator read only |
+| `Gaps:` heading + numbered list, **last** | 4th | `extractValidationGap` — sliced heading-to-end into the re-run steering hint |
+
+Three constraints follow, and all three are load-bearing:
+
+- **The gap list must come last and nothing may follow it.** The slice runs from the heading to the end of the comment, so any closing paragraph ("Net: …", "Bottom line: …") is carried into every re-run's prompt.
+- **`Notes:` must precede `Gaps:`**, for the same reason — a Notes section after the heading would steer re-runs by exactly the items that are defined not to be gaps. No other line may begin with the word "gap" either: the heading match takes the FIRST line that opens with gap/gaps, and with no heading at all the fallback keeps the comment's tail.
+- **The comment carries no date.** The verdict's timestamp is stamped portal-side when the sweep reads the comment (`task_evaluations.created_at`) and displayed as the flag's age in the Tasks "needs you" band, where it is also the oldest-first ordering key. A self-stated date is redundant there and can disagree with the stamp.
+
+**The verdict judges delivery, not tracker hygiene.** Unfiled follow-ups, stale description text on a re-scoped ticket, operator-accepted deferrals and in-thread findings owned by other tickets go under `Notes:` — they are not gaps. The portal's own gap routing already assumes this: `deriveGapClass` biases every deps-resolved flag to `verify` (confirmation-only) precisely because over-calling a flag triggers wasteful re-implementation runs.
 
 ## Experiment Scoring
 

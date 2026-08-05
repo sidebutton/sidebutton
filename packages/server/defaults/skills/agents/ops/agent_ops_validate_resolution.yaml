@@ -1,20 +1,31 @@
 schema_version: 1
 id: agent_ops_validate_resolution
 title: "Validate Task Resolution"
-description: "Read-only: after a ticket goes Done, judge whether its acceptance criteria were actually delivered — verified against the repo, not just the comments — and post one verdict comment"
+description: "Read-only: after a ticket goes Done, judge whether the outcome it was opened to deliver actually landed — verified against the repo, not just the comments — and post one verdict comment"
 overview: |
   The post-Done resolution check (Task Validation V2, SCRUM-1634). After a ticket's playbook run has
   finished, this PM workflow re-reads the ticket — its acceptance criteria AND every comment,
   including the prior runs' own gate comments ("PASS", "merged", "QA PASS", …) — and the repository,
-  then judges one question: do the ticket's stated ACs appear DELIVERED, verified against the code and
-  not just the comments? It exists because gates judge step advancement and QA workflows test
-  behaviour, but nothing re-reads the ticket after Done against what actually landed.
+  then judges one question: was the OUTCOME this ticket was opened to deliver actually delivered,
+  verified against the code and not just the comments? It exists because gates judge step advancement
+  and QA workflows test behaviour, but nothing re-reads the ticket after Done against what landed.
+
+  It judges delivery, not tracker hygiene. Unfiled follow-ups, stale description text on a re-scoped
+  ticket, operator-accepted deferrals and in-thread findings belonging to other tickets are reported
+  under Notes and never move the verdict — the first prompt made them gaps, and the operator dismissed
+  55% of the INCOMPLETE verdicts that resulted (116 of 211 in the first three weeks of prod).
 
   It is strictly recording-only. The agent reads the ticket and the repo, confirms the PRs/commits the
   comments name really exist and really contain the claimed change, and posts ONE verdict comment:
-  VALIDATED, INCOMPLETE (with a numbered gap list + recommended next steps), or UNVERIFIABLE. It
-  recommends only — it files nothing, changes no code, merges nothing, and never transitions the
-  ticket. The engine records the verdict; a human acts on it.
+  VALIDATED, INCOMPLETE (with a numbered gap list) or UNVERIFIABLE. It recommends only — it files
+  nothing, changes no code, merges nothing, and never transitions the ticket. The engine records the
+  verdict; a human acts on it.
+
+  The comment's SHAPE is a contract with the portal, not styling — see ops/_skill.md "Validation
+  Verdict Comment Contract". The gap list is machine-sliced into the re-run steering hint
+  (`extractValidationGap`, the-assistant website/src/lib/tasks/scheduler.ts), and the verdict's
+  timestamp is stamped and displayed portal-side (`evaluated_at_ms`, Tasks band 1), so the agent must
+  not date its own comment.
 
 category:
   level: pipeline
@@ -77,24 +88,21 @@ steps:
       fi
       claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
       read the ticket with attachments and ALL comments - {{ticket_url}}. if it fails, stop and report the error.
-      this is a READ-ONLY validation pass. the ticket is already Done; your job is to judge whether its acceptance criteria were ACTUALLY delivered — verified against the repository, not just taken on the word of the comments.
-      read TWO sources and cross-check them:
-        1. THE TICKET: the description's acceptance criteria (ACs), and EVERY comment — including the delivery run's own gate comments (triage, PR, review/merge, QA). those comments are claims to be verified, not evidence to be trusted.
-        2. THE REPOSITORY: for each PR or commit named in the comments, confirm it actually exists and actually contains the claimed change (git log / git show / grep the merged code in the repo under {{entry_path}}); confirm the code the ACs require is present. if a claimed migration/deploy/config change is what closes an AC, confirm it was applied, not merely written.
-      map each AC to the concrete evidence that implements it. an AC with no code behind it is a GAP no matter what the comments say.
-      watch for the two canonical false-pass patterns:
-        - SCOPED PASS: an approval that silently covers only part of the ticket — "PASS - scoped to Slice A", "code-level only", "not closeable pending X", deferred slices with no follow-up ticket. The headline reads done; the scope line admits it is not.
-        - MASKED BLOCK: a green headline over an unresolved blocker in the same thread — a "QA PASS" over an unapplied migration or an undeployed/unmerged fix. The verdict and the body contradict each other; the body is the truth.
+      READ-ONLY pass. the ticket is already Done. judge ONE question: was the outcome this ticket was opened to deliver actually delivered?
+      start from context, not a checklist — what problem was filed, what the thread agreed to deliver (the ACs, plus any re-scope the operator accepted in-thread), what the reporter would check to call it solved. verify that in the repo under {{entry_path}}: each PR/commit named exists and contains the claimed change, and any migration/deploy/config an outcome depends on was applied, not just written. comments — the delivery run's own gate comments included — are claims to verify, not evidence to trust.
+      these ARE gaps: SCOPED PASS — an approval silently covering only part ("PASS - scoped to Slice A", "code-level only", "not closeable pending X"); MASKED BLOCK — a green headline over an unresolved blocker in the same thread. the body is the truth, not the headline.
+      these are NOT gaps: follow-up tickets nobody filed (unless filing them was itself an AC); stale description text on a re-scoped ticket; work the thread deferred, descoped, or accepted with known gaps; bugs belonging to other tickets; timing or process complaints. they go under Notes and never change the verdict.
       {{hint}}
       decide EXACTLY ONE verdict:
-        - VALIDATED: every stated AC is delivered and verified in the repo.
-        - INCOMPLETE: one or more ACs are unmet, partially met, or scoped/masked away.
-        - UNVERIFIABLE: you could not verify (repo unavailable, ACs absent/unclear, evidence inaccessible) — say precisely what blocked verification.
-      READ-ONLY GUARDRAILS: recommend only. do not change code, do not open/merge/comment on any PR, do not change the ticket status, do not create or edit any issue, do not post more than one ticket comment. you file nothing — you recommend.
-      write EXACTLY ONE comment to the ticket, as your FINAL action, shaped like this:
-        - first line EXACTLY: "Validation verdict: VALIDATED" (or INCOMPLETE / UNVERIFIABLE) — the token appears here and NOWHERE else in the comment.
-        - then a short evidence summary: which ACs you checked and the concrete repo evidence (PR/commit/file) for each.
-        - for INCOMPLETE only: a NUMBERED gap list, each item = the unmet AC -> the evidence gap you found -> the recommended next step (including any follow-up ticket you think should exist, described but NOT created).
-      TOKEN HYGIENE: state your verdict token exactly once (the lead line) and use none of VALIDATED / INCOMPLETE / UNVERIFIABLE anywhere else. quoting the delivery run's own "PASS"/"FAIL"/"merged" prose as evidence is allowed and safe — those are not this step's vocabulary — but do not invent new verdict-looking tokens.
+        - VALIDATED: the outcome is delivered and verified in the repo. unfiled follow-ups and paperwork do not block this.
+        - INCOMPLETE: something the ticket asked for is missing, broken, or unproven in the repo or the environment — the reporter would still see the original problem.
+        - UNVERIFIABLE: you could not check (repo unavailable, no stated intent, evidence inaccessible) — say what blocked you.
+      recommend only: change no code, touch no PR, change no ticket status, create no issue, post no second comment.
+      write EXACTLY ONE comment, as your FINAL action, under 400 words, in THIS order — the portal parses it:
+        1. first line EXACTLY: "Validation verdict: VALIDATED" (or INCOMPLETE / UNVERIFIABLE) — that word appears here and NOWHERE else.
+        2. evidence: one line per outcome checked -> the PR/commit/file delivering it. don't restate the thread; don't date the comment — the portal stamps and displays the verdict time.
+        3. optional "Notes:" — the not-a-gap items, one line each.
+        4. INCOMPLETE only, LAST: a line reading exactly "Gaps:", then a NUMBERED list — what is missing -> where you looked -> what would close it. no other line may begin with "gap", and nothing follows the list: the portal slices heading-to-end into the re-run hint.
+      quoting the delivery run's own "PASS"/"FAIL"/"merged" prose as evidence is fine — not this step's vocabulary — but invent no new verdict-looking tokens.
       SB_PROMPT
       )"
