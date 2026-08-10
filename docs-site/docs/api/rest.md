@@ -212,6 +212,32 @@ GET /health
 }
 ```
 
+---
+
+### Preview Passthrough
+
+```http
+ANY /api/preview/:port/*
+```
+
+Proxies to a dev server listening on loopback at `:port` on the same machine —
+HTTP and WebSocket (so hot module reload works through it). Intended for showing
+a live app running on an agent VM that a browser cannot reach directly.
+
+```bash
+curl -H "Authorization: Bearer $SIDEBUTTON_AGENT_TOKEN" \
+  http://localhost:9876/api/preview/5173/
+```
+
+- Path, query, body, method, status and headers pass through untouched; nothing
+  in the payload is rewritten. A dev server that needs to run under a path prefix
+  must be configured for it (for Vite: `base`, and `server.hmr.clientPort`).
+- `Authorization` and `Cookie` are **not** forwarded to the dev server.
+- The target host is always loopback. The port must be 1024–65535 and is refused
+  if it is the SideButton port itself or a remote-control port (3389, 5900,
+  5910); `SIDEBUTTON_PREVIEW_PORTS` narrows it further. Refused ports get `400`.
+- An unreachable port gets `502`; a dev server that never answers gets `504`.
+
 ## Error Responses
 
 ### 400 Bad Request
