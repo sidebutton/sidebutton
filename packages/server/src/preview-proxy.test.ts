@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import * as http from 'node:http';
+import * as net from 'node:net';
 import type { AddressInfo } from 'node:net';
 import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
@@ -266,8 +267,9 @@ async function startUpstream(bindHost = '127.0.0.1'): Promise<Upstream> {
   const wss = new WebSocketServer({ server });
   wss.on('connection', (socket, req) => {
     state.lastWsHeaders = req.headers;
-    if (req.url?.startsWith('/close-4001')) {
-      socket.close(4001, 'upstream done');
+    const closing = /^\/close-(\d+)/.exec(req.url ?? '');
+    if (closing) {
+      socket.close(Number(closing[1]), 'upstream done');
       return;
     }
     socket.send(`hello ${req.url}`);
@@ -642,6 +644,50 @@ describe('preview proxy — WebSocket', () => {
     const closed = await session.closed;
     expect(closed.code).toBe(4001);
     expect(closed.reason).toBe('upstream done');
+  });
+
+  it('mirrors the registered 1012-1014 codes a restarting dev server sends', async () => {
+    // ws accepts 1000-1014 minus 1004/1005/1006; a stricter filter here would
+    // silently downgrade "service restart" to a bare 1005 with no reason.
+    const { upstream, proxyPort } = await harness();
+    for (const code of [1001, 1012, 1013, 1014]) {
+      const session = await connectWs(
+        `ws://127.0.0.1:${proxyPort}${PREVIEW_PREFIX}/${upstream.port}/close-${code}`,
+      );
+      expect(await session.closed, `close code ${code}`).toEqual({ code, reason: 'upstream done' });
+    }
+  });
+
+  it('closes cleanly when `ws` refuses the upstream URL instead of crashing', async () => {
+    // A request line may carry a `#`; the HTTP lane forwards it verbatim but the
+    // WebSocket constructor throws on a fragment. That throw used to escape the
+    // dial callback as an unhandled rejection — fatal for the daemon — and left
+    // the upgraded client socket open forever.
+    const { upstream, proxyPort } = await harness();
+    const raw = net.connect(proxyPort, '127.0.0.1');
+    openSockets.push({ close: () => raw.destroy() });
+    const outcome = await new Promise<string>((resolve, reject) => {
+      const seen: Buffer[] = [];
+      raw.on('connect', () =>
+        raw.write(
+          `GET ${PREVIEW_PREFIX}/${upstream.port}/a#b HTTP/1.1\r\n` +
+            'Host: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n' +
+            'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n',
+        ),
+      );
+      raw.on('data', (chunk: Buffer) => {
+        seen.push(chunk);
+        // 0x88 = FIN + close opcode: the daemon answered rather than hanging.
+        if (Buffer.concat(seen).includes(0x88)) resolve('closed');
+      });
+      raw.on('close', () => resolve('closed'));
+      raw.on('error', reject);
+      setTimeout(() => resolve('hung'), 4000);
+    });
+    expect(outcome).toBe('closed');
+    // The process is still serving — the point of the guard.
+    const after = await send(proxyPort, `${PREVIEW_PREFIX}/${upstream.port}/still-alive`);
+    expect(after.status).toBe(200);
   });
 
   it('closes cleanly when nothing is listening on the port', async () => {

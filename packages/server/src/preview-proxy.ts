@@ -251,11 +251,16 @@ export function isPreviewAuthorized(
   return Boolean(opts.agentToken) && authHeader === `Bearer ${opts.agentToken}`;
 }
 
-/** WS close codes a server may put on the wire (1004/1005/1006/1015 are reserved). */
+/**
+ * WS close codes a server may put on the wire — the same set `ws` itself
+ * accepts (1004/1005/1006 and 1015 are reserved and never sendable). 1012-1014
+ * matter in practice: a dev server restarting sends 1012, and dropping it would
+ * relay the close as a bare 1005 with the reason stripped.
+ */
 function sanitizeCloseCode(code: number | undefined): number | undefined {
   if (typeof code !== 'number') return undefined;
   if (code >= 3000 && code <= 4999) return code;
-  if (code === 1000 || (code >= 1001 && code <= 1003) || (code >= 1007 && code <= 1011)) return code;
+  if (code >= 1000 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006) return code;
   return undefined;
 }
 
@@ -348,6 +353,7 @@ export const previewProxyPlugin: FastifyPluginAsync<PreviewProxyOptions> = async
     reply.hijack();
     const res = reply.raw;
     let upstreamReq: http.ClientRequest | null = null;
+    let upstreamSocket: net.Socket | null = null;
     let settled = false;
 
     const fail = (status: number, message: string): void => {
@@ -379,9 +385,16 @@ export const previewProxyPlugin: FastifyPluginAsync<PreviewProxyOptions> = async
       settled = true;
       upstreamReq?.destroy();
     });
+    // A write that fails mid-stream (client gone) emits on the response; with no
+    // listener node turns that into an uncaughtException and kills the daemon.
+    res.on('error', () => {
+      settled = true;
+      upstreamReq?.destroy();
+    });
 
     connectLoopback(port).then(
       (socket) => {
+        upstreamSocket = socket;
         if (settled) {
           socket.destroy();
           return;
@@ -442,7 +455,15 @@ export const previewProxyPlugin: FastifyPluginAsync<PreviewProxyOptions> = async
         const detail = err.code === 'ECONNREFUSED' ? 'no server listening' : err.message;
         fail(502, `Preview upstream ${PREVIEW_UPSTREAM_HOST}:${port} unreachable: ${detail}`);
       },
-    );
+    ).catch((err: Error) => {
+      // Neither handler above is expected to throw, but if one did the rejection
+      // would be unhandled — and an unhandled rejection takes the whole daemon
+      // down. A proxied request must never be able to do that (the WS lane has a
+      // reachable case of exactly this).
+      clearTimeout(headersTimer);
+      upstreamSocket?.destroy();
+      fail(502, `Preview upstream ${PREVIEW_UPSTREAM_HOST}:${port} failed: ${err.message}`);
+    });
   };
 
   const wsProxy = (socket: WebSocket, request: FastifyRequest): void => {
@@ -516,17 +537,30 @@ export const previewProxyPlugin: FastifyPluginAsync<PreviewProxyOptions> = async
           upstreamSocket.destroy();
           return;
         }
-        const client = new WebSocket(
-          `ws://${PREVIEW_UPSTREAM_HOST}:${port}${buildUpstreamPath(rawUrl)}`,
-          protocols,
-          {
-            headers: filterUpstreamHeaders(request.headers, { port, clientIp: request.ip, websocket: true }),
-            createConnection: () => upstreamSocket,
-            // A port that accepts TCP but never upgrades must not strand the
-            // client socket open forever.
-            handshakeTimeout: PREVIEW_HEADERS_TIMEOUT_MS,
-          },
-        );
+        let client: WebSocket;
+        try {
+          client = new WebSocket(
+            `ws://${PREVIEW_UPSTREAM_HOST}:${port}${buildUpstreamPath(rawUrl)}`,
+            protocols,
+            {
+              headers: filterUpstreamHeaders(request.headers, { port, clientIp: request.ip, websocket: true }),
+              createConnection: () => upstreamSocket,
+              // A port that accepts TCP but never upgrades must not strand the
+              // client socket open forever.
+              handshakeTimeout: PREVIEW_HEADERS_TIMEOUT_MS,
+            },
+          );
+        } catch {
+          // `ws` refuses a few targets outright — the reachable one is a request
+          // line carrying a `#` fragment, which the HTTP lane forwards verbatim
+          // but the WebSocket constructor rejects. The throw lands inside this
+          // promise callback, so without the catch it escapes as an unhandled
+          // rejection (fatal on Node's default) while the already-upgraded
+          // client socket hangs open. A refused dial is a close, never a crash.
+          upstreamSocket.destroy();
+          shutdown(1011, 'preview upstream dial failed');
+          return;
+        }
         upstream = client;
 
         client.on('open', () => {
@@ -544,7 +578,7 @@ export const previewProxyPlugin: FastifyPluginAsync<PreviewProxyOptions> = async
         client.on('error', () => shutdown(1011, 'preview upstream error'));
       },
       () => shutdown(1011, 'preview upstream unreachable'),
-    );
+    ).catch(() => shutdown(1011, 'preview upstream dial failed'));
   };
 
   // GET carries both lanes: plain HTTP and — when the request is an upgrade —
