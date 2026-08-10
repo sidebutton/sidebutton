@@ -237,6 +237,7 @@ configuration.
 | `ANTHROPIC_API_KEY` | `llm.*` steps | Anthropic API key (alternative) |
 | `SIDEBUTTON_HOST` | Wide binds | Bind address. Defaults to `127.0.0.1`; any other value also requires `SIDEBUTTON_AGENT_TOKEN` or the server refuses to start |
 | `SIDEBUTTON_AGENT_TOKEN` | Wide binds | Bearer token for `/api/*` when not bound to loopback |
+| `SIDEBUTTON_PREVIEW_PORTS` | `/api/preview/*` | Comma-separated allowlist of dev-server ports the preview passthrough may reach. Unset means any port 1024–65535 except the server's own and the remote-control ports |
 | `SIDEBUTTON_AGENT_NAME` | Fleet agents | Agent name reported to the portal |
 | `SIDEBUTTON_API_BASE` | Portal features | Portal API base URL |
 | `PORTAL_URL` | Portal features | Portal web URL used in generated links |

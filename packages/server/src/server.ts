@@ -37,6 +37,7 @@ import { matchTarget, matchRole } from './matching.js';
 import { listInstalledPacks, installSkillPack, uninstallSkillPack } from './skill-pack.js';
 import { listRegistries, addRegistry, removeRegistry, getRegistryDir, readRegistryIndex } from './registry.js';
 import { applyProjects, statusProjects, statConfigFiles, resetProject, type ApplyProject, type StatusProject } from './projects.js';
+import { previewProxyPlugin, parsePortAllowlist, PREVIEW_PREFIX } from './preview-proxy.js';
 import { writeWorkspaceInstructions } from './workspace-instructions.js';
 import { applySkills, type ApplySkill } from './skills.js';
 import { applyFiles, FILES_APPLY_BODY_LIMIT, type ApplyFile } from './files.js';
@@ -745,6 +746,19 @@ export async function startServer(config: ServerConfig): Promise<void> {
     });
     socket.on('close', () => shutdown());
     socket.on('error', () => shutdown());
+  });
+
+  // Preview passthrough: /api/preview/:port/* → http://127.0.0.1:<port> (SCRUM-1935).
+  // Lets the portal frame a dev server running on this VM — the browser can't
+  // reach the box directly, and until now only the VNC socket was bridged.
+  // Mounted under /api/ so the bearer hook above guards it (HTTP *and* upgrades,
+  // which @fastify/websocket routes through the full lifecycle), and registered
+  // via `register()` so its raw-body parser stays inside the plugin's scope.
+  await fastify.register(previewProxyPlugin, {
+    selfPort: config.port,
+    agentToken,
+    boundLoopback,
+    allowedPorts: parsePortAllowlist(process.env.SIDEBUTTON_PREVIEW_PORTS),
   });
 
   // MCP Streamable HTTP Transport
@@ -4014,6 +4028,7 @@ steps:
     console.log(`  - WebSocket:  ws://${displayHost}:${config.port}/ws`);
     console.log(`  - MCP:        http://${displayHost}:${config.port}/mcp`);
     console.log(`  - API:        http://${displayHost}:${config.port}/api`);
+    console.log(`  - Preview:    http://${displayHost}:${config.port}${PREVIEW_PREFIX}/<devPort>/`);
     console.log(`\nPress Ctrl+C to stop\n`);
   } catch (err) {
     console.error('Failed to start server:', err);
