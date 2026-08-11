@@ -1,6 +1,6 @@
 {
   "name": "@sidebutton/core",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "Core workflow automation engine for AI agents — agentic workflows in YAML",
   "keywords": [
     "workflow",
@@ -28,6 +28,7 @@
   ],
   "scripts": {
     "build": "tsup",
+    "prepublishOnly": "pnpm run build",
     "dev": "tsup --watch",
     "test": "vitest run",
     "lint": "tsc --noEmit"
