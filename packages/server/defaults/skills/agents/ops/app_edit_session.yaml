@@ -1,0 +1,90 @@
+schema_version: 1
+# Id is a CONTRACT, deliberately without the `agent_` prefix: executePipeline writes this exact
+# string into ~/.sidebutton/job-context.json (.workflow_id) on the VM, the portal floor entry keys
+# on it, and SP-D's per-turn Stop-hook branch (SCRUM-1937) will read it from there. Renaming it
+# later is a fleet-wide coordination job — treat it as frozen.
+id: app_edit_session
+title: "Open App Editing Session"
+description: "Boot a project's dev server on this VM, verify it serves, capture the ready-state screenshot, then ride the live session"
+overview: |
+  Opens a live editing session on a workspace project. The agent syncs the project, starts its own dev server on the VM, verifies the server actually answers, and captures a ready-state screenshot of the running app — the artifact whose upload is what tells the portal the session is connected. That first turn is the whole job: it completes as soon as the ready report is posted, and the user's chat then continues on the same still-alive Claude session, one turn per message.
+
+  The dev server is the live lane. It is started detached and bound to the loopback interface, so it survives the end of every turn and is reachable only through the agent daemon's authenticated preview passthrough (SP-B/SP-C) — never as an open port on the VM. Reconnecting onto the same workspace reuses a server that is still healthy instead of booting a second one, so a session can be resumed without tripping over its own port.
+
+  Durability comes from the other lane: each turn ends with a commit — the agent's own, plus the platform's autosave and debounced republish of the staged snapshot once SP-D installs them — so a reclaimed spot VM costs at most the current turn. That is also why the session rules below insist the working tree stays publishable at all times — nothing secret may ever be written into the project, and evidence files belong in the artifacts directory outside it.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: se
+  # Gate-verdict vocabulary (PLAYBOOKS.md §5). Both tokens are boot-turn outcomes: the boot report
+  # ends with SESSION_READY once the dev server serves, or BOOT_FAILED when it never does. Later
+  # chat turns emit neither — they are conversation, not a gated step result.
+  verdicts: [SESSION_READY, BOOT_FAILED]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Project directory to open the editing session on"
+  dev_port:
+    type: string
+    default: ""
+    description: "Port the dev server must listen on; empty uses the project's framework convention (Astro 4321, Vite 5173, Next 3000)"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: App Editing Session"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      you are opening a LIVE EDITING SESSION on the project in the current directory ({{entry_path}}). load the dev-session knowledge module (skill://agents/dev-session/_skill.md) before you touch anything — it carries the port conventions, the HMR-behind-two-proxies config, and the autosave rules this session runs on.
+      BOOT — this turn does the boot and nothing else. do every step in the FOREGROUND, then end the turn.
+      1. SYNC: first make sure you are IN the project checkout — the dispatch may hand you the workspace ROOT instead ({{entry_path}} is not a git repo and has no package.json). in that case `cd` into the project checkout inside it (the single repo directory, or the one the hint names) and say which you picked. then `git fetch` and `git pull --ff-only`. NEVER `git reset --hard`, `git checkout -- .` or `git clean` — on a reconnect the local branch carries autosave commits that exist nowhere else, and destroying them destroys the user's work. if the pull cannot fast-forward, keep the local tree, say so, and continue.
+      2. INSTALL: install dependencies only when they are missing or the lockfile moved since the last install (node_modules absent, or the lockfile is newer). an already-installed tree is a no-op — do not reinstall for its own sake.
+      3. START THE DEV SERVER: the port is {{dev_port}} when that is set, otherwise the project's framework convention (Astro 4321, Vite 5173, Next 3000) — read package.json to pick the actual dev script. FIRST check whether a healthy server already answers on that port: on a reconnect it usually does, and you must REUSE it rather than boot a second one (a double boot either dies on EADDRINUSE or silently lands on another port the preview cannot reach). otherwise start it DETACHED so it outlives this turn and the 60-minute session tidy — `setsid nohup <dev command> >"$HOME/dev-server.log" 2>&1 &`. PASS THE IPv4 HOST FLAG EXPLICITLY: `--host 127.0.0.1` for Astro and Vite, `-H 127.0.0.1` for Next. left to itself Astro/Vite binds the IPv6 loopback `[::1]` ONLY, and the preview passthrough dials `127.0.0.1` — the server looks perfectly healthy in its log and is unreachable. never bind 0.0.0.0 either: the VM opens no new ports, the preview arrives through the agent daemon's authenticated passthrough.
+      4. VERIFY IT SERVES: poll `curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:<port>/` until curl reports ANY http status (curl prints 000 while nothing is listening), for at most ~90 seconds. any status proves the server is up — a project with no route at `/` legitimately answers 404 while being perfectly healthy, so do NOT require 200 on `/`. do not declare readiness off a PID or a log line either. if nothing ever answers, report the failure with the last ~40 lines of ~/dev-server.log and finish the turn with BOOT_FAILED as the final line.
+      5. READY-STATE SCREENSHOT: `mkdir -p "$HOME/workspace/artifacts"` FIRST, then pick the app's real entry route (`/`, or the actual first page when `/` 404s — check src/pages or the router; it must be a route you just saw answer in step 4, chrome happily screenshots an error page) and run `google-chrome --headless=new --screenshot="$HOME/workspace/artifacts/ready-state.png" --window-size=1440,900 http://127.0.0.1:<port>/<route>` (chromium-browser is an equivalent binary). the path matters twice over. the artifacts lane uploads from exactly ONE directory — the first of `<cwd>/artifacts`, `~/workspace/artifacts`, `~/artifacts` that exists — so a screenshot dropped in `~/artifacts` is silently never uploaded on any VM that already has `~/workspace/artifacts`, and that upload is what tells the portal the session is connected. it also sits OUTSIDE the project worktree, so the per-turn autosave never publishes it into the site. then CHECK THE FILE EXISTS AND IS NON-EMPTY (`ls -l`): chrome exits 0 even when it could not write the file, so its exit status proves nothing. if no chrome binary exists, or the file never appears, skip the image and say so: ready without an image is still ready, never a boot failure.
+      6. REPORT AND STOP: finish immediately with the boot report, in this order and nothing more: (a) one status line — project and branch, the dev command and port, the local URL, and whether the screenshot was captured or skipped; (b) a SHORT kickoff analysis the user reads first — what this project already is (stack, entry route, the handful of things that exist), then the next steps worth taking ordered by value, closing with one question back to them; (c) a final block of 3-4 suggestion chips, each a short imperative the user could send back as-is (≤60 chars), formatted exactly as a `SUGGESTIONS:` line followed by one `- chip text` per line — the portal renders these as one-click chips, so nothing may follow the block except the verdict line; (d) the final line exactly SESSION_READY. keep (b) tight — a few sentences, no headings, no file dumps. this turn's end COMPLETES the job; that is correct and expected. the chat keeps running on this same live session, so do not hold the turn open, do not tail the log, and never wait on the dev server.
+      SESSION RULES — every later turn. each user message is one turn: do what it asks, then end the turn promptly so the reply reaches the user.
+      - COMMIT EARLY AND OFTEN, with real messages describing the change, and PUSH what you commit. the platform's per-turn autosave + republish (SP-D) is a safety net that may not be installed on this VM yet — a commit you did not push exists only on a VM that can be reclaimed. treat every turn end as a publish: leave the tree building and coherent.
+      - never destroy your own autosave commits — no `git reset --hard`, no force-push over the session branch. if you must undo, revert forward with a new commit.
+      - NEVER PARK CREDENTIALS: nothing secret goes into the project worktree — no .env with real values, no tokens in config or committed fixtures. the only credential this VM holds is the sb_token already in ~/.agent-env, and every turn publishes the tree.
+      - keep evidence (screenshots, reports, datasets) in ~/workspace/artifacts/ — the directory the artifacts lane actually uploads from — never inside the project.
+      - the dev server stays UP across turns: never stop or restart it at the end of a turn. if a change needs a restart, or the server died, restart it exactly as in steps 3-4 and say so in your reply.
+      - report honestly: if a change did not work, say what you saw. the user is watching the live preview and will see it too.
+      {{hint}}
+      SB_PROMPT
+      )"

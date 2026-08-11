@@ -2,6 +2,10 @@
 
 Turn Linear issues into agent work automatically. An automation watches your Linear workspace and — when a matching issue event arrives — either runs a full [**playbook**](/workflows/orchestration#playbooks-chain-workflows-into-missions) against the ticket (multi-step, gated, dependency-ordered) or dispatches a single [**workflow job**](/workflows/orchestration#run-a-workflow-on-an-agent) to an agent.
 
+> This page is the step-by-step setup guide. For what the integration does, what it asks for at
+> install, and the answers to the questions people ask before connecting, see
+> [SideButton for Linear](https://sidebutton.com/integrations/linear).
+
 ## Overview
 
 A typical setup: *every new issue labeled `Bug` in team `HOL` starts the Bug Fix playbook.* From then on, filing a bug in Linear is all it takes — the ticket lands in the Tasks pool, an agent picks it up, works the issue end-to-end, and the Linear issue receives status transitions and progress comments as the run advances.

@@ -1,0 +1,81 @@
+schema_version: 1
+id: agent_pm_landing_calls
+title: "Prepare the Calls"
+description: "Turn the delivered gates' open ends into decision calls — every option in the open, a recommended default and its one-line why — published as the user's pause; no issues, no dispatch"
+overview: |
+  The decide phase of a landing-website goal. The PM agent reads the scope job's delivered gates and
+  the type's question set from the portal goal, grounds itself in the skills the job carries and the
+  account context, and turns every open end the gates left into ONE call each: the question, every
+  option in the open, a recommended default, and a one-line why. Defaults lean on what the account
+  already runs — the existing stack, existing analytics, existing flows — before anything new is
+  proposed.
+
+  The calls are the user's pause: this job creates no issues and dispatches nothing, because locking
+  the calls is what creates the epics and tasks (through the Tasks intake). It is idempotent on
+  re-run — every call the user has already made stays theirs, and only the rest re-derive. When the
+  goal's decide pause is switched off, the published recommendations auto-apply and work continues;
+  the published result reads the same either way. Anchored on the portal goal URL, not a ticket: no
+  issue exists at this phase.
+
+category:
+  level: pipeline
+  domain: marketing
+
+metadata:
+  agent: true
+  role: pm
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # job's published result; declaring it here is what makes this workflow content-routable.
+  verdicts: [NEEDS_DECISIONS, NO_CHANGE]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  goal_url:
+    type: string
+    description: "Portal goal URL — the typed goal whose delivered gates this job turns into calls (no ticket exists at this phase)"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent (typically the scope job's summary, e.g. gate counts per arm)"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: PM Landing Calls"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # Provider clear-set (AAP-C SCRUM-1506 + AAP-17 SCRUM-1653): identical to every agents/ops/*.yaml
+      # preamble; scripts/check-ops-clearset.mjs guards this list against AGENT_APP_ENV_KEYS drift.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read the scope job's delivered gates and the type's question set - {{goal_url}}. if it fails, stop and report the error.
+      EXECUTION RULES (read first - they override any habit):
+      - Do ALL of the work in THIS session, in the FOREGROUND, and finish before your turn ends. You MAY spawn subagents (the Agent / Task tool) or run parallel searches to investigate faster - but you MUST wait for every subagent and any background task to return and fold their results in YOURSELF before ending the turn. Never move the work (or the result) into the background - no run_in_background, no background workflows, no trailing & - and then end the turn expecting to be resumed. Ending your turn is FINAL here: nothing wakes you to "resume", so a turn that ends while a spawned subagent or any background work is still pending is reported as a FAILED step, not a pause.
+      - Publish the calls YOURSELF, in the foreground, as the LAST thing you do - after every subagent and background task has returned. Never delegate it to a subagent, and never end the turn "holding", "pausing", or planning to "resume/continue later". If you genuinely cannot finish, say so in the result and stop.
+      ground yourself in the skills this job carries and the account context before recommending anything.
+      turn every open end the gates left into ONE call each: the question, every option in the open, a recommended default and a one-line why.
+      lean each default on what the account already runs - the existing stack, the existing analytics, the existing flows - before anything new.
+      create no issues and dispatch nothing: the calls are the user's pause, and locking them is what creates the epics & tasks.
+      act idempotently: on a re-run, keep every call the user has already made - re-derive only the rest.
+      {{hint}}
+      publish the calls as this job's result, as your final foreground action.
+      end with one line - "VERDICT:" followed by exactly one of NEEDS_DECISIONS (calls published, waiting on the user or on auto-apply) / NO_CHANGE (a re-run found nothing material to change) - and use these uppercase tokens nowhere else.
+      SB_PROMPT
+      )"

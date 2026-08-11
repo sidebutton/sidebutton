@@ -1969,16 +1969,47 @@ export async function startServer(config: ServerConfig): Promise<void> {
   });
 
   // System reboot endpoint — only available on agent VMs (where SIDEBUTTON_AGENT_TOKEN is set)
+  //
+  // SCRUM-1926: this used to reply ok:true and only THEN schedule `sudo reboot`
+  // a second later. Three things made that a guaranteed silent no-op that still
+  // reported success on every agent in the fleet:
+  //   1. the reply preceded the attempt, so the result could never be reported;
+  //   2. `sudo reboot` is denied — the agent user's sudoers grants exactly two
+  //      narrow wrappers and it is in no sudo group (journal: `agent : command
+  //      not allowed ; COMMAND=/usr/sbin/reboot`);
+  //   3. the failure went to fastify.log.error on an instance built `logger: false`
+  //      (see startServer above), so nothing was written anywhere at all.
+  // Now: run the wrapper FIRST, await it, and report what actually happened.
+  //
+  // sb-reboot (agent-runners base/19g) is the fleet's one privileged reboot path.
+  // It runs `systemctl reboot --no-block`, which enqueues reboot.target with systemd
+  // and returns straight away — so its exit code means "the reboot was accepted",
+  // and we still get to flush this response before the box goes down. Anything else
+  // (missing wrapper on an agent that predates the 19g refresh, sudo denial) surfaces
+  // as a real 500 with the real stderr instead of a comfortable lie.
   if (agentToken) {
     fastify.post('/api/system/reboot', async (_request, reply) => {
-      const { exec } = await import('node:child_process');
-      // Respond immediately, then schedule reboot after a short delay
-      setTimeout(() => {
-        exec('sudo reboot', (err) => {
-          if (err) fastify.log.error(`Reboot failed: ${err.message}`);
-        });
-      }, 1000);
-      return { ok: true, message: 'Reboot initiated' };
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const run = promisify(execFile);
+      try {
+        // -n: never prompt. Without it a missing NOPASSWD rule blocks on a password
+        // read that nothing will ever answer, turning the no-op into a hang.
+        // Budget stays UNDER the portal proxy's 10s AbortSignal
+        // (website/src/pages/api/agents/[agentId]/reboot.ts). If sudo/sb-reboot stalls,
+        // the proxy must receive this handler's real stderr rather than time out first
+        // and report a generic "Failed to reach agent" — surfacing the real reason is
+        // the entire point of the rewrite.
+        const { stdout } = await run('sudo', ['-n', '/usr/local/bin/sb-reboot'], { timeout: 8_000 });
+        console.info(`[reboot] accepted: ${stdout.trim() || 'sb-reboot exited 0'}`);
+        return { ok: true, message: 'Reboot initiated' };
+      } catch (err: any) {
+        // stderr carries the actionable part ("sudo: a password is required",
+        // "command not allowed", "No such file or directory").
+        const detail = String(err?.stderr || err?.message || err).trim();
+        console.error(`[reboot] FAILED: ${detail}`);
+        return reply.code(500).send({ ok: false, error: `Reboot failed: ${detail}` });
+      }
     });
   }
 

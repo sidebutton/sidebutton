@@ -1,0 +1,94 @@
+schema_version: 1
+id: agent_pm_wireframe
+title: "Gather Wireframe Requirements"
+description: "Turn an approved landing page brief into section-by-section wireframe requirements — template and component picks from the site catalogs, communication jobs, CTA plan, content slots, claims inventory, assets — precise enough to design from without a follow-up conversation"
+overview: |
+  The first step of the landing design playbook. The PM agent reads the ticket and its ENTIRE
+  comment thread — the brief, the aligned gates and confirmed calls, every decision — grounds itself
+  in the landing-website skill pack, and produces the requirements document the rest of the playbook
+  runs on: page frame (goal, audience, the one conversion action, the term to message-match), the
+  template picked by conversion pattern from the site repository's template catalog, an ordered band
+  stack carrying each band's communication job and the component id that renders it, the CTA plan,
+  per-band content slots with constraints, a claims inventory tracing every claim to an intake
+  source, assets available versus awaited, and the tone/legal constraints.
+
+  Selection is data-driven rather than freehand: the catalogs' available set is what may be picked,
+  a better-fitting planned template is settled here — named as a gap, with the closest available
+  template picked and the differences spelled out — while a planned component becomes a named gap
+  for the design-check step, and every deviation from the chosen template is a named delta, so
+  downstream inherits a diff instead of a mystery. Requirements stay grounded: a missing input becomes a named gap (which downstream becomes
+  a labelled placeholder), not a plausible guess — invented facts fail the acceptance bar's
+  claims-trace check. The pass is idempotent: re-running against an updated thread reconciles the
+  requirements to the latest decisions and states what changed rather than posting a duplicate.
+  Visual treatment is deliberately absent — sizes, color, and type treatment belong to the design step.
+
+category:
+  level: pipeline
+  domain: design
+
+metadata:
+  agent: true
+  role: pm
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # step's ticket comment; declaring it here is what makes this workflow content-routable.
+  verdicts: [REQUIREMENTS_READY, NEEDS_INPUT]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  ticket_url:
+    type: string
+    description: "Ticket URL carrying the landing page brief (and its decision thread)"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: PM Wireframe Requirements"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # Provider clear-set (AAP-C SCRUM-1506 + AAP-17 SCRUM-1653): identical to every agents/ops/*.yaml
+      # preamble; scripts/check-ops-clearset.mjs guards this list against AGENT_APP_ENV_KEYS drift.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read the ticket with attachments and ALL comments - {{ticket_url}}. if it fails, stop and report the error.
+      this pass produces WIREFRAME REQUIREMENTS only - no design, no code, no visual treatment (sizes, color and type treatment belong to the design step). the template you pick fixes the band order, so structure IS yours to decide here - where a pack file still calls stacking absent from this step, this prompt wins.
+      ground yourself in the landing-website skill pack first if installed: ~/.sidebutton/skills/landing-website/design-ux/_roles/pm.md (your playbook), ~/.sidebutton/skills/landing-website/design-ux/references/templates.md and references/components.md (the selection contracts you follow), ~/.sidebutton/skills/landing-website/best-practices/_skill.md and its references/acceptance.md (the bar the page will be judged by).
+      then locate the site repository in the workspace - the repo carrying src/templates/manifest.json and src/components/manifest.json - and read both catalogs: the contracts above are the rules, these manifests are the data. if a manifest cannot be read, say which one as a named gap and pick nothing from it - never invent a template or a component id. the document still ships without them: author SECTION STACK and CONTENT SLOTS from the communication jobs alone, leave the id fields absent, and say the catalogs were unreachable - the design-check step maps an id-less stack itself. an unreachable catalog is a named gap, not by itself a missing load-bearing input.
+      from the brief and every decision in the thread, produce the requirements document:
+        - PAGE FRAME: goal, audience, the ONE primary conversion action, traffic source and the exact term to message-match
+        - TEMPLATE PICK: the template id from the templates manifest, chosen by conversion pattern (traffic temperature x offer type x the action) out of the status available set, with the reasoning in one line; restate the template's ac_deltas as inherited, pre-approved deviations so downstream does not re-litigate them; if a status planned template fits better, name it as a gap, pick the closest available one and name the differences between the two as deltas - that substitution is settled here, not downstream
+        - SECTION STACK: the chosen template's bands in order; per band its communication job in one line (what the visitor must know, feel, or do there); every deviation from the template named as a delta - add / drop / swap, each with its reason
+        - COMPONENT PICK: the template's bands already reference component ids - per band, confirm that id against the components manifest and keep it, or swap it for another id from the status available set as a named delta; a band that wants a status planned component is a named gap for the design-check step to settle, stated with what it would render
+        - CTA PLAN: label intent, where the action repeats, what happens after submit/click - one action page-wide
+        - CONTENT SLOTS: per band, the picked component's slots are the contract - list them with constraints (e.g. "headline, <=8 words, outcome-focused") and mark which are load-bearing
+        - CLAIMS INVENTORY: every claim the page may make, each traced to its source in the intake/thread - claims with no source do not enter the inventory
+        - ASSETS: available (name + where) vs awaited (named precisely, so the design step can label placeholders)
+        - CONSTRAINTS: tone, theme, legal lines that must appear, explicit non-goals
+      never invent facts, audiences, claims, template ids or component ids - a missing load-bearing input is reported, not papered over.
+      be idempotent: if a requirements comment already exists, reconcile it to the latest thread (update, do not duplicate) and state what changed.
+      {{hint}}
+      post ONE comment: the requirements document (attach requirements.md instead if it exceeds comfortable comment length, and summarize in the comment).
+      end with one line - "VERDICT:" followed by exactly one of REQUIREMENTS_READY (complete and designable) / NEEDS_INPUT (a load-bearing input is missing - name each one and what it unblocks) - and use these uppercase tokens nowhere else in the comment.
+      your FINAL message of this session is stored as this step's summary and rides into the next step - open it with the deliverable: what you produced, the template and component ids picked, and the verdict you posted. never open it with cleanup, file-move or tooling narration.
+      SB_PROMPT
+      )"

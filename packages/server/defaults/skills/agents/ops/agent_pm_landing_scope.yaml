@@ -1,0 +1,84 @@
+schema_version: 1
+id: agent_pm_landing_scope
+title: "Align Scope Gates"
+description: "Resolve the landing type's seven alignment gates from the goal intake — user inputs, then workspace context, then the platform floor — and publish all seven together as the job's result"
+overview: |
+  The scope phase of a landing-website goal. The PM agent reads the goal and its whole intake — the
+  brief, every attached file and every link — grounds itself in the skills the job carries and the
+  workspace context (the site repo and its CI, domains and DNS control, the brand source, analytics,
+  the signup flow), then aligns the type's seven landing gates in order: conversion goal · audience
+  & offer · brand identity · content & media · domain & hosting · legal & compliance · analytics &
+  tracking. Each gate resolves from the user inputs first, then the workspace context, then the
+  platform floor — recording per gate the value, the source, and the arm used.
+
+  Gates are the job's RESULT, published all seven together with brand-extract.md and gate-report.md
+  attached — they never fill in one by one. A gate that cannot be resolved becomes a question with a
+  recommendation; nothing blocks silently. The pass is idempotent: on a re-run, a gate the user set
+  stays theirs — it is an input now — and only the rest re-derive. Anchored on the portal goal URL,
+  not a ticket: no issue exists at this phase (the breakdown happens later, when the decide phase's
+  calls lock).
+
+category:
+  level: pipeline
+  domain: marketing
+
+metadata:
+  agent: true
+  role: pm
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # job's published result; declaring it here is what makes this workflow content-routable.
+  verdicts: [GATES_ALIGNED, NEEDS_INPUTS]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  goal_url:
+    type: string
+    description: "Portal goal URL — the typed goal whose intake this job scopes (no ticket exists at this phase)"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: PM Landing Scope"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # Provider clear-set (AAP-C SCRUM-1506 + AAP-17 SCRUM-1653): identical to every agents/ops/*.yaml
+      # preamble; scripts/check-ops-clearset.mjs guards this list against AGENT_APP_ENV_KEYS drift.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read the goal and its whole intake - the brief, every attached file and every link - {{goal_url}}. if anything fails to load, stop and report the error.
+      EXECUTION RULES (read first - they override any habit):
+      - Do ALL of the work in THIS session, in the FOREGROUND, and finish before your turn ends. You MAY spawn subagents (the Agent / Task tool) or run parallel searches to investigate faster - but you MUST wait for every subagent and any background task to return and fold their results in YOURSELF before ending the turn. Never move the work (or the result) into the background - no run_in_background, no background workflows, no trailing & - and then end the turn expecting to be resumed. Ending your turn is FINAL here: nothing wakes you to "resume", so a turn that ends while a spawned subagent or any background work is still pending is reported as a FAILED step, not a pause.
+      - Publish the result YOURSELF, in the foreground, as the LAST thing you do - after every subagent and background task has returned. Never delegate it to a subagent, and never end the turn "holding", "pausing", or planning to "resume/continue later". If you genuinely cannot finish, say so in the result and stop.
+      learn the area first - ground yourself in the skills this job carries and the workspace context: the site repo and its CI, domains and DNS control, the brand source, analytics, the signup flow.
+      align the type's seven landing gates, in order - conversion goal / audience & offer / brand identity / content & media / domain & hosting / legal & compliance / analytics & tracking:
+        - resolve each from the user inputs FIRST, then the workspace context, then the platform floor
+        - write per gate: the value, the source it came from, and the arm used (aligned from an input / defaulted from context or floor / needs you)
+        - a gate you cannot resolve becomes a question with a recommendation - nothing blocks silently
+      act idempotently: on a re-run, a gate the user set stays theirs - it is an input now; re-derive only the rest.
+      create no issues and dispatch nothing: scope is alignment, not breakdown.
+      {{hint}}
+      publish all seven gates TOGETHER as this job's result - gates never fill in one by one - and attach brand-extract.md and gate-report.md as run artifacts, as your final foreground action.
+      end with one line - "VERDICT:" followed by exactly one of GATES_ALIGNED (every gate resolved or safely defaulted) / NEEDS_INPUTS (a gate needs something only the user has - name each one and what it unblocks) - and use these uppercase tokens nowhere else.
+      SB_PROMPT
+      )"

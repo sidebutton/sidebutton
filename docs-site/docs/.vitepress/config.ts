@@ -10,6 +10,22 @@ export default defineConfig({
     /localhost/
   ],
 
+  // Live agent editing sessions reach this dev server through an authenticated
+  // proxy chain (portal -> relay -> agent daemon -> 127.0.0.1), so the browser's
+  // origin is not the origin the server binds. Vite would reject the proxied Host
+  // with a 403 "Blocked request" page, and HMR would dial the dev port directly
+  // and never connect. Opt in with SB_DEV_SESSION=1; a plain `npm run dev` is
+  // unaffected.
+  vite: {
+    server: process.env.SB_DEV_SESSION
+      ? {
+          allowedHosts: ['app.sidebutton.com'],
+          hmr: { clientPort: 443, protocol: 'wss' },
+          fs: { strict: true }
+        }
+      : {}
+  },
+
   // Wrap code blocks with v-pre to prevent Vue interpolation of {{}} syntax
   markdown: {
     config: (md) => {

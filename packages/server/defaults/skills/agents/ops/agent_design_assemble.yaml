@@ -1,0 +1,95 @@
+schema_version: 1
+id: agent_design_assemble
+title: "Assemble & Publish Mock"
+description: "Build the low-fi mock — branded when a brand source resolves, grayscale when none does — honoring the requirements and the constraints report, attach wireframe + copy skeleton as artifacts, self-check AC1–AC5, and report the score"
+overview: |
+  The design step of the landing design playbook, and the phase's deliverable. The design agent
+  takes the PM's wireframe requirements and the SE's constraints report and assembles the mock the
+  approval gate reviews: a low-fi wireframe (SVG, or a single self-contained HTML file)
+  — real headlines, one primary CTA, labelled placeholders for
+  every awaited asset, scale-step annotations, the 375px fold shown — plus the copy skeleton that
+  fills it, with every claim traced to an intake source and final wording left to the writer.
+
+  Brand resolution comes first and decides the mock's treatment: with a brand source — the account
+  context's brand section, or the brand facts stated in the intake — the mock is branded, carrying
+  the real token values, the conversion accent on the one primary action, the brand faces, and
+  headings checked against the voice rules; grayscale is the fallback for a goal whose intake
+  carries no brand source, and the agent picks a side from what it can read rather than asking. The
+  reuse map is binding: where a shared component exists the mock mirrors its geometry and every
+  adaptation is logged in the spec appendix, and nothing enters the mock that would pull a
+  dependency the check step didn't clear. Before delivering, the agent self-reviews the mock, then
+  self-checks the acceptance bar (AC1–AC5) honestly — a failed check is fixed or reported as failed
+  with why, never skipped — and attaches both artifacts to the ticket with a resolution comment
+  reporting the per-check score. Rework produces wireframe-v2 beside v1, never overwriting it: the
+  approval conversation needs both.
+
+category:
+  level: pipeline
+  domain: design
+
+metadata:
+  agent: true
+  role: design
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # step's ticket comment; declaring it here is what makes this workflow content-routable.
+  verdicts: [MOCK_READY, NEEDS_INPUT]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  ticket_url:
+    type: string
+    description: "Ticket URL carrying the requirements and the constraints report"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent (typically the previous step's summary)"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: Design Assemble Mock"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # Provider clear-set (AAP-C SCRUM-1506 + AAP-17 SCRUM-1653): identical to every agents/ops/*.yaml
+      # preamble; scripts/check-ops-clearset.mjs guards this list against AGENT_APP_ENV_KEYS drift.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read the ticket with attachments and ALL comments - {{ticket_url}} - and find the wireframe requirements AND the constraints report (the two previous steps). if either is missing, stop: post a comment naming which input is absent and end with "VERDICT: NEEDS_INPUT".
+      you are the DESIGN step - your deliverable is the mock itself, not a spec about one.
+      ground yourself first, if installed: ~/.sidebutton/skills/landing-website/design-ux/_roles/design.md (your playbook), ~/.sidebutton/skills/landing-website/design-ux/_skill.md and its references/components.md (the adaptation contract), and ~/.sidebutton/skills/landing-website/best-practices/references/acceptance.md (the bar you self-check against). where one of those files still states the older grayscale-only doctrine, the brand rules below win.
+      then locate the site repository in the workspace - the repo carrying src/components/manifest.json - so you can read the components you mirror and the token file the brand section names; if it is not in the workspace, say so and mirror from the geometry the constraints report states; where it states none, build the band from its slots and mark the geometry unverified in the appendix - a path you cannot open is not a source.
+      resolve the BRAND SOURCE before you draw anything - work down this ladder and stop at the first rung that carries actual values: the account's own context (its brand-context.md or the account's private system skill, per the landing-website pack's loading order), then the brand facts stated in the intake or the ticket thread, then the site repository's own token file. ~/.sidebutton/skills/sidebutton-system/landing-website/_skill.md documents only the SHAPE to look for - identity colors, the conversion accent, the token source of truth, marks, fonts, voice rules, theme - and by design carries no account's values, so it is never itself the source. state which rung you resolved, or that none carries values - and ask no questions either way, decide from what you can read.
+      assemble the mock per these rules:
+        - a resolved brand source means a BRANDED mock: real token values from the source, the conversion accent reserved for the one primary action, the brand faces, headings checked against the voice rules. a brand face the constraints report has not cleared still goes in the mock - log it in the appendix as a font dependency the build must clear, carrying that report's fallback
+        - no brand source anywhere means grayscale - the fallback, not the default: the primary CTA is the darkest fill
+        - build wireframe-v1.svg (or wireframe-v1.html - one self-contained file, no external assets) with all required sections in order, nothing invented
+        - REAL headlines in the hero and every section head; body/media placeholders LABELLED with the asset they await
+        - exactly one primary CTA, repeated where the requirements say; scale-step annotations on key text and section padding; the 375px fold shown
+        - the reuse map is BINDING: build from the component ids the previous steps settled (on an older thread that names shared components without ids, use the ones its reuse map names); the id you mirror is always an available row - a want the check step settled as an adaptation is mirrored from the available component it adapts, with that delta applied; mirror each component's real geometry - padding, grid, type steps - read from its file, the path being that row's file entry in src/components/manifest.json, and annotate each band with its component id; beyond the brand faces above, nothing that pulls a dependency the check step did not clear
+      write copy-skeleton.md beside it: per section the slot list with constraints, the real headline or labelled placeholder per slot, final wording marked for the writer, and the claims-to-source table - every claim traced to an intake input, none invented. close it with a SPEC APPENDIX logging the brand source you used and every per-component adaptation - component id, what changed, why - so the build step inherits a checklist.
+      then self-review the mock - hierarchy readable with eyes squinted, one primary action, contrast sound in the values you actually used (brand tokens or grayscale), touch targets >=44px, the 375px fold complete - and fix what fails before delivering.
+      self-check the acceptance bar AC1-AC5 honestly, one verdict line each - a failed check is fixed, or reported as failed with why; never silently skipped. check against the bar as modified by the ac_deltas the requirements restated as pre-approved: a deviation those deltas cover passes on that basis, citing the delta on the check it covers - the template's own nav, footer or CTA placement is not a failure you can fix by breaking the binding reuse map. a deviation no delta covers is a real failure.
+      if this is rework, produce wireframe-v2 beside v1 (never overwrite) and say what changed.
+      {{hint}}
+      ATTACH both files to the ticket, then post ONE resolution comment: the section stack delivered with the component id per band, the brand treatment (branded, naming the source you resolved - or grayscale, naming what was absent), the AC1-AC5 self-check (one line per check), and any open inputs.
+      end with one line - "VERDICT:" followed by exactly one of MOCK_READY (artifacts attached, self-check complete, nothing blocks approval) / NEEDS_INPUT (a load-bearing input is absent - name each one and what it unblocks; deliver whatever partial artifact is honestly buildable) - and use these uppercase tokens nowhere else in the comment.
+      your FINAL message of this session is stored as this step's summary - open it with the deliverable: the artifacts you attached, the brand treatment used, and the verdict you posted. never open it with cleanup, file-move or tooling narration.
+      SB_PROMPT
+      )"
