@@ -17,6 +17,7 @@ Workflows that produce evidence — screenshots, logs, mocks, diagrams, datasets
 
 - **Fallback**: if `publish_artifact` is unavailable (e.g. an older sidebutton build without the tool), save each file under `~/workspace/artifacts/` — the Stop hook uploads leftovers after the session for post-run collection. The convention degrades gracefully; agents never block on the tool.
 - **By role**: QA workflows (`agent_qa_validate` / `_new_ticket` / `_regression` / `_followup`) publish evidence unconditionally. SE workflows (`agent_se_rca` / `_rca_fix` / `_work`) publish only when they produced a mock, diagram, screenshot, or report — their primary deliverable is a PR. `agent_pm_research` may publish charts/datasets/reports alongside its cited sources.
+- **Exception — `app_edit_session`**: its ready-state screenshot is written to `~/workspace/artifacts/` and left to the post-session artifacts lane on purpose. That upload is the portal's *connected* signal for the session, so it must ride the job's artifact lane rather than a comment-cited `download_url` (the session posts no ticket comment at all). The lane globs exactly ONE directory — the first of `<cwd>/artifacts`, `~/workspace/artifacts`, `~/artifacts` that exists — so the convention directory above is the only reliable drop point; `~/artifacts` is shadowed wherever `~/workspace/artifacts` already exists.
 - **Verdict-gate safety**: the pipeline string-matches the resolution comment for verdict tokens and forbidden tokens (`pass`/`fail`/`merged`/`blocked`/`conflict`). A `download_url` is inert to that gate — the share token is random hex and cannot spell a verdict word — so citing links never disturbs verdict parsing. Keep the QA `PASS`/`FAIL` token intact and last, keep evidence **filenames** free of verdict words, and note that `agent_experiment_score` (which forbids those tokens outright) does not publish and is excluded from this convention.
 
 ## Gate-Verdict Vocabulary (`metadata.verdicts`)
@@ -35,6 +36,16 @@ A workflow that ends in a machine-matchable outcome declares it in its YAML — 
 | `agent_pm_goal_analysis` | `READY_TO_PLAN` · `NEEDS_DECISIONS` · `NO_CHANGE` |
 | `agent_pm_breakdown` | `ISSUES_CREATED` · `ISSUES_RECONCILED` |
 | `agent_ops_validate_resolution` | `VALIDATED` · `INCOMPLETE` · `UNVERIFIABLE` |
+| `agent_pm_landing_scope` | `GATES_ALIGNED` · `NEEDS_INPUTS` |
+| `agent_pm_landing_calls` | `NEEDS_DECISIONS` · `NO_CHANGE` |
+| `agent_pm_wireframe` | `REQUIREMENTS_READY` · `NEEDS_INPUT` |
+| `agent_se_design_check` | `DEPS_CLEAR` · `BLOCKERS_FOUND` |
+| `agent_design_assemble` | `MOCK_READY` · `NEEDS_INPUT` |
+| `app_edit_session` | `SESSION_READY` · `BOOT_FAILED` |
+
+The five `landing`/design workflows serve the `landing-website` pack, which documents their contracts, roles and gates — the YAMLs live here because this is the one directory the default-pack sync registers workflows from. Three are ticket-anchored playbook steps (wireframe → design check → assemble); `agent_pm_landing_scope` and `agent_pm_landing_calls` anchor on `{{goal_url}}` instead of `ticket_url` — no issue exists at the goal's scope/decide phases.
+
+`app_edit_session` is the one id here **without** the `agent_` prefix, and deliberately so: `executePipeline` writes the exact string into `~/.sidebutton/job-context.json` (`.workflow_id`), the portal floor entry keys on it, and SP-D's per-turn Stop-hook branch (SCRUM-1937) will read it from there — the id is a frozen cross-repo contract. It is also the only workflow that is not ticket-anchored — it takes a project path, not a `ticket_url`, and its verdicts describe the boot turn (`SESSION_READY` once the dev server answers over HTTP — any status, since a project with no route at `/` legitimately 404s while healthy — and `BOOT_FAILED` when it never answers at all). Its later chat turns emit neither token: they are conversation on a live session, not gated step results. The session contract itself lives in the `dev-session` module.
 
 Free-form workflows (`agent_se_rca`, `agent_se_plan`, `agent_se_followup`, `agent_pm_research`, `agent_sentry_triage`, `agent_sd_coverage`, `agent_pull_repos`) deliberately declare nothing. `agent_experiment_score` must NEVER declare a vocabulary — its comment is parsed as JSON and its prompt forbids verdict-looking tokens outright. The reserved engine-synthesized verdicts (`COMMENT_POSTED`, `JOB_COMPLETED`, `JOB_FAILED`, `JOB_CANCELLED`) are refused at sync and must not be declared.
 

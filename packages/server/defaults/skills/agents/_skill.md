@@ -41,6 +41,7 @@ Backed by **agent-runners** (provisioning) + this pack's `ops/` workflows + the-
 | ops | `agents/ops/*.yaml` (this pack) | 90% | Fleet-dispatch workflow catalog (SE/QA/SD/PM/CSM + ops workflows) |
 | runners | `agent-runners` repo | 55% 🆕 | Agent-VM provisioning: variants, Create-Agent profiles, `base/` pipeline, portal metadata source-of-truth, fleet-job-client |
 | plugins | `agent-runners` `plugins.json` | 50% 🆕 | Installable MCP-tool plugin catalog (screen-record, writing-quality); loaded from `~/.sidebutton/plugins/` |
+| dev-session | `agents/ops/app_edit_session.yaml` + the-assistant portal | 55% | Live editing sessions: dev server on the VM behind the preview passthrough, HMR-behind-two-proxies config, per-turn autosave + staged publish, TTL/reconnect behavior |
 
 🆕 = added code-first 2026-06-03 from the agent-runners repo.
 

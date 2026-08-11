@@ -1,0 +1,92 @@
+schema_version: 1
+id: agent_se_design_check
+title: "Check Design Dependencies"
+description: "Cross-check wireframe requirements against the site's catalogs, design system, and dependency budget — availability verification, read-only reuse map + flagged risks, before any mock is assembled"
+overview: |
+  The middle step of the landing design playbook. Before the design job assembles anything, the SE
+  agent walks the PM's requirements band by band against the site repository: whether every picked
+  template and component id is really available (the manifest row exists, the file behind it exists,
+  and the row still matches the code), which shared component renders each band (reuse / adapt /
+  new, with file paths), whether the design tokens cover the page (palette roles, type scale,
+  spacing, themes), what would pull a NEW dependency (fonts, libraries, embeds — each flagged with
+  its weight and CLS cost), where the page lives (route, layout shell, whether a no-nav page can opt
+  out of the global chrome), and what the form must wire into.
+
+  The report exists because the two failure modes it prevents are expensive in opposite directions:
+  a mock designed against components that don't exist forces a redesign at build time, and a mock
+  that quietly pulls a new dependency ships weight nobody approved. Catalog drift belongs to the
+  same family, so it is a finding here rather than a surprise later, and every planned selection
+  leaves this step settled — as one named adaptation of an available component, or as a build ticket
+  with an owner. This is a read-and-report pass — it changes no code — and it is idempotent: a
+  re-run reconciles the previous report to the current requirements and repository state instead of
+  posting a duplicate.
+
+category:
+  level: pipeline
+  domain: design
+
+metadata:
+  agent: true
+  role: se
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # step's ticket comment; declaring it here is what makes this workflow content-routable.
+  verdicts: [DEPS_CLEAR, BLOCKERS_FOUND]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  ticket_url:
+    type: string
+    description: "Ticket URL carrying the wireframe requirements (previous step's comment)"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent (typically the previous step's summary)"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory — the site repository to check against"
+
+steps:
+  - type: terminal.open
+    title: "Agent: SE Design Check"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # Provider clear-set (AAP-C SCRUM-1506 + AAP-17 SCRUM-1653): identical to every agents/ops/*.yaml
+      # preamble; scripts/check-ops-clearset.mjs guards this list against AGENT_APP_ENV_KEYS drift.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read the ticket with attachments and ALL comments - {{ticket_url}} - and find the wireframe requirements (the previous step's comment or attachment). if the ticket read fails or no requirements exist, stop and report which.
+      this is a READ-ONLY pass over the site repository - change no code, open no PRs. locate it first: either the working directory IS that repo, or it is the workspace holding it - the repo carrying src/templates/manifest.json and src/components/manifest.json. every repo-relative path below resolves against that repo root, so resolve it once and reuse it; if no such repo is in the workspace, say so and report the availability check as unverified - absent files you never looked for are not drift and not a blocker.
+      ground yourself first: ~/.sidebutton/skills/landing-website/design-ux/_roles/se.md (your playbook) and ~/.sidebutton/skills/landing-website/design-ux/references/components.md (the availability contract you enforce) if installed; then the repository's own catalogs (src/templates/manifest.json, src/components/manifest.json) and its actual token files, shared components and layouts - report against what the code IS, not what a manifest row or a README claims.
+      walk the requirements band by band and produce the constraints report:
+        - AVAILABILITY CHECK: start with the picked template - its row exists, its bands resolve to ids that exist in the components manifest, and the ac_deltas the requirements restated match the row. then every picked component: for a status available row, the file at its manifest file path exists on disk and the row still matches the code (slots, interaction) - any drift between row and code is a finding, named with which side is wrong. read slots by what the component can actually be filled with, prop or default or named slot: a slot the code exposes under another name is a naming note, only a slot the code cannot fill at all is drift. a status planned row carries no file and is not drift: it routes to the settle rule below. if the requirements name no ids at all (they predate the catalogs), map each band to an available component id yourself and check those, saying that you did
+        - INTERACTION FLOOR: every picked component's interaction is native or absent (none, details, scroll-snap, target, sticky, form-post) - a selection needing client-side JS fails the check outright, named with the native alternative that replaces it; cost is not a way to keep it. check the behaviour the requirements ask of the band, not only the row's field - a band asked to carousel, animate, count or filter needs JS however the row is labelled, and that is the failure this floor exists to catch
+        - PLANNED SETTLEMENT: every status planned selection is settled here, never left open - either one named adaptation of an available component (state the delta the design step inherits, and the available id it adapts - that id is what the design step mirrors, since it is the row carrying a file) or a follow-up build ticket with an owner. the two branches route differently and the report says which: an adaptation is a named, accepted adaptation and leaves the check clear, while a build ticket means something the page needs does not exist yet - that is a blocker, named with what it blocks and who owns it
+        - REUSE MAP: per band - the picked component id, then reuse <component> / adapt <component> (name the exact delta) / new, with file paths
+        - TOKENS: do the design tokens cover the page (palette roles, type scale, spacing, radius, themes)? name the token file(s) and any gap
+        - NEW DEPENDENCIES: anything the requirements would pull in (fonts, JS libraries, embeds, media pipelines) - each flagged with its cost (weight, CLS, maintenance) and a recommendation: avoid / accept with fallback / needs approval
+        - ROUTE & CHROME: where the page lives, which layout shell, whether it can opt out of global nav/footer if the requirements say no-nav
+        - PERF/CLS RISKS: hero media weight, font loading, embeds, anything animating on load
+        - FORM WIRING: the existing signup/lead-capture path the form must use, its validation and analytics events - every picked form-post component wires into that path, or the gap is a blocker
+      prefer the boring answer and say so explicitly: an existing component at 90 percent fit beats a new one at 100 - name the accepted delta so the design step does not re-litigate it.
+      be idempotent: if a constraints report already exists, reconcile it to the current requirements and repository state (update, do not duplicate) and state what changed.
+      {{hint}}
+      post ONE comment: the constraints report, precise enough that the design step can treat it as binding and the build phase can treat it as a checklist.
+      end with one line - "VERDICT:" followed by exactly one of DEPS_CLEAR (everything required exists or is a named, accepted adaptation) / BLOCKERS_FOUND (something structural is missing or contradicts the requirements - each blocker names what it blocks and who owns the unblock) - and use these uppercase tokens nowhere else in the comment.
+      your FINAL message of this session is stored as this step's summary and rides into the next step - open it with the deliverable: what you checked, what the availability check settled or flagged, and the verdict you posted. never open it with cleanup, file-move or tooling narration.
+      SB_PROMPT
+      )"

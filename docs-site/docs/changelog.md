@@ -2,6 +2,13 @@
 
 All notable changes to SideButton.
 
+## [1.5.4] - Unreleased
+
+### Agent Server
+
+- **Preview passthrough** — `ANY /api/preview/:port/*` proxies HTTP and WebSocket to a dev server on the agent machine's loopback, so a live app (including hot module reload) can be viewed through the portal. Guarded by the same bearer token as the rest of `/api/*`; `SIDEBUTTON_PREVIEW_PORTS` narrows which ports are reachable.
+- **Trustworthy reboots** — `POST /api/system/reboot` now runs the privileged reboot wrapper first, awaits the result, and reports what actually happened instead of replying ok before attempting anything.
+
 ## [1.0.12] - 2026-03-28
 
 ### Highlights
