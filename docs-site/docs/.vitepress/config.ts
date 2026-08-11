@@ -108,8 +108,7 @@ export default defineConfig({
             { text: 'Hetzner Setup', link: '/cloud/hetzner-setup' },
             { text: 'GCP Setup', link: '/cloud/gcp-setup' },
             { text: 'Self-Host in Your Cloud', link: '/cloud/create-agent' },
-            { text: 'Connect Claude Subscription', link: '/cloud/claude-subscription' },
-            { text: 'Side Projects', link: '/cloud/side-projects' }
+            { text: 'Connect Claude Subscription', link: '/cloud/claude-subscription' }
           ]
         },
         {

@@ -54,5 +54,3 @@ cap is a healthy gate, not an error.
 | Best for | Getting started, trials, burst capacity | Steady fleets, compliance, custom sizing |
 
 Both kinds mix freely in one fleet — start hosted, add self-hosted agents as you scale.
-
-To point one at an app you build by chatting with it, see [Side Projects](/cloud/side-projects).

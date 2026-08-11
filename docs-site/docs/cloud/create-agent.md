@@ -35,8 +35,6 @@ Check the roles the agent should carry (SE, QA, SD, …). Roles determine which 
 
 Assign the agent to one or more workspaces. A workspace-scoped Agents page only shows agents assigned to it, and dispatched jobs resolve their repository and configuration from the workspace.
 
-> **Building an app in a chat window?** Create the workspace first and assign it here — see [Side Projects](/cloud/side-projects) for the naming convention that makes it appear at app.sidebutton.com.
-
 ## Step 4: Agents
 
 Name the agent (or the batch — the wizard can create several identical machines at once). The shared RDP password for the live desktop is auto-generated; use the regenerate button if you want a fresh one.
