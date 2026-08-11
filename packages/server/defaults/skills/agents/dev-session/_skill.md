@@ -5,9 +5,9 @@ path: /dev-session
 parent: agents
 tags: ["@dev-server", "@preview", "@hmr", "@autosave", "@sideproject"]
 learned: "2026-08-10"
-last_verified: "2026-08-10"
+last_verified: "2026-08-11"
 confidence: 0.55
-source: "code-first from docs/plans/PLAN-sideproject-core-window.md (the-assistant) + agent-runners base/ — not live-verified"
+source: "code-first from the-assistant portal + agent-runners base/; session contract v2 per SCRUM-1965 — not live-verified"
 repos:
   - name: the-assistant
     remote: https://github.com/maxsv0/the-assistant.git
@@ -23,7 +23,7 @@ repos:
 
 The contract for an agent that holds a **live editing session** on a workspace project: the project's own dev server runs on the agent VM and the user watches it through the portal while chatting with the agent. This module is what `app_edit_session` (see `ops/`) runs on — read it before booting a session and whenever a session misbehaves.
 
-Two lanes carry the work, and confusing them is the usual source of bugs. The **live lane** is the dev server: sub-second feedback, VM-local, gone when the VM is gone. The **durable lane** is the per-turn commit plus the republished staged snapshot: slower, but it survives spot reclaim and is what the user can share. The *automatic* half of it (autosave commit + debounced republish on every turn end) ships with **SP-D** (SCRUM-1937) — until that is installed on the VM, the agent's own `git commit` **and push** is the entire durable lane. The agent's job is to keep both true at every turn end.
+Two lanes carry the work, and confusing them is the usual source of bugs. The **live lane** is the dev server: sub-second feedback, VM-local, gone when the VM is gone. The **durable lane is git** — a real commit pushed to the project's branch at every turn end. It survives spot reclaim, it is what the user can share, and for a repo project it is the *only* durable lane: the landing floor's auto-republish is switched off for projects that have an origin remote (SCRUM-1965), precisely so there is one answer to "where did my work go". The platform's per-turn autosave (**SP-D**, SCRUM-1937) mirrors uncommitted work to a scratch ref as a spot-reclaim safety net; it is not a substitute for the push.
 
 ## Preview path (why localhost is not a limitation)
 
@@ -52,7 +52,7 @@ An explicit `dev_port` param always wins over the convention. Read `package.json
 
 Poll `curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:<port>/` until it prints a real status; `000` means nothing is listening yet. **Any** status proves the server is serving — a project with no route at `/` (the landing kit is one: its pages are `/example` and `/product-tour-example`) answers `404` while being perfectly healthy, and a boot that demands `200` on `/` would fail forever against it. A PID or a "ready in 250 ms" log line proves nothing: that is exactly what the IPv6-bind failure above also prints.
 
-For the ready-state screenshot, pick the app's real entry route rather than `/`, for the same reason.
+The **entry route** the boot report names follows from the same fact: `/` is not necessarily a page. Use the dispatch's `preview_path` when it is set, otherwise `/`, otherwise the real first page from `src/pages` or the router — and `curl` it before naming it, so the preview does not open on a route that 404s.
 
 ## HMR behind two proxies
 
@@ -75,12 +75,14 @@ server: {
 
 ## The boot report (what the connect card renders)
 
-The boot turn's reply is not a log line — it is the first thing the user sees, and the portal's connect card renders it verbatim (`PLAN-sideproject-core-window.md` §6.3). Its shape is a contract:
+The boot turn's reply is not a log line — it is the first thing the user sees, and the portal's connect card renders it verbatim (`PLAN-sideproject-core-window.md` §6.3). **Submitting it is the readiness signal**: the portal keys `connected` on the boot job completing plus its liveness probe, never on an artifact upload (SCRUM-1965). So the report is the boot's last act, and the boot turn takes no screenshot and needs no chrome binary. Its shape is a contract:
 
-1. **Status line** — project and branch, dev command and port, local URL, screenshot captured or skipped.
+1. **Status line** — project and branch, dev command, **port**, **entry route**, local URL.
 2. **Kickoff analysis** — a few sentences: what the project already is, the next steps worth taking ordered by value, one closing question. No headings, no file dumps.
 3. **Suggestion chips** — a final `SUGGESTIONS:` line followed by 3–4 `- ` lines, each a short imperative (≤60 chars) the user can send back as-is. The chat panel renders them as one-click chips, so nothing may follow the block except the verdict token.
 4. **`SESSION_READY`** alone on the last line (or `BOOT_FAILED` with the log tail above it). Token-only matching: the gate never reads the prose, and display surfaces strip this line.
+
+Because readiness is now the report, the window sits on the boot card for the whole boot — a cold start is 2–3 minutes — instead of flipping to a live frame while the dev server is still starting. That is the intended trade: `connected` now means the preview has something to show.
 
 The route list for the page switcher is **Phase 2**, not part of this report — Phase 1 sessions are single-page.
 
@@ -90,23 +92,25 @@ The session-open job **completes on its boot turn** — that is the design, not 
 
 | Phase | What the agent does | What the user sees |
 |---|---|---|
-| Boot | sync → install → start server → verify it answers → ready screenshot → kickoff report | "preparing your workspace" → connected |
-| Turn | one user message = one turn; edit, commit, reply, end the turn | live preview updates + the reply |
+| Boot | sync → install → start server → verify it answers → resolve entry route → kickoff report | "preparing your workspace" → connected **when the report lands** |
+| Turn | one user message = one turn; edit, commit, **push**, reply, end the turn | live preview updates + the reply + the save stamp |
 | Idle | nothing; the dev server keeps serving | live preview stays up |
-| End / reclaim | — | durable staged preview + last ready screenshot |
+| End / reclaim | — | the pushed commits on the project's branch |
 
 - **Never hold a turn open.** No tailing logs, no waiting on the server, no background work you intend to "come back to". The reply reaches the user when the turn ends.
 - **The dev server must survive turn end** and the 60-minute session tidy: start it detached (`setsid nohup … &`), never as a foreground child of the turn.
 - **Idle TTL (~15 min) and the per-account session cap** end sessions on purpose — held agents cost money. Ending is normal; the durable lane is what persists.
 - **Reconnect is a fresh dispatch onto the same worktree**, not a resurrection. A healthy server is usually still listening: probe the port and reuse it. Booting a second one either dies on `EADDRINUSE` or lands on a port the preview cannot reach.
 
-## Autosave discipline
+## Turn end: commit, push, stamp
 
-Every turn end runs an autosave commit plus a debounced republish of the staged snapshot (SP-D; see the honesty note above — commit and push yourself until it lands). Consequences the agent must internalise:
+The rule is uniform for every repo, every turn: **commit with a real message, then push.** Not a branch-per-turn, not a scratch ref — the project's own branch (`main` for a project session). Consequences the agent must internalise:
 
 - **Every turn end is a publish.** Leave the tree building and coherent; do not end a turn mid-refactor with the app broken if you can help it, and say so when you must.
-- **Commit early and often, with real messages.** Autosave is a safety net for the current turn, not a substitute for describing the change.
-- **Never destroy autosave commits.** No `git reset --hard`, no `git checkout -- .`, no force-push over the session branch — on a reconnect those commits are the only copy of the work. Undo by reverting forward.
+- **A rejected push is rebased once, retried once, then reported.** Concurrent sessions can share one `main`. `git pull --rebase` and push again — *once*. If it is still rejected, stop: say it in the reply, keep the commit local, and push it at the start of the next turn's push. **Never `git push --force`**, and never reset to `origin` to "fix" a rejection — the rejection means someone else's commits are on that branch.
+- **Commit early and often, with real messages.** `wip` / `autosave` tell the user nothing, and the message is what the save stamp and the ship surface show back to them.
+- **The user sees the outcome as a stamp.** `Saved · <sha7> · pushed` when the push landed, `Saved (local)` when it was rejected and the commit is riding into the next turn, `not saved` when the turn committed nothing. The reply should agree with the stamp — never claim a push that was rejected.
+- **Never destroy commits.** No `git reset --hard`, no `git checkout -- .`, no force-push — on a reconnect the local branch may carry commits that exist nowhere else. Undo by reverting forward.
 - **Pull with `--ff-only`.** A hard reset to `origin` at session start is exactly how a reconnect eats the previous turn's work.
 - **Artifacts live outside the worktree, in the directory the lane reads.** Screenshots, reports and datasets go in `~/workspace/artifacts/`. The Stop hook's artifacts lane uploads from exactly ONE directory — the first of `<cwd>/artifacts`, `~/workspace/artifacts`, `~/artifacts` that exists — so `~/artifacts` is silently skipped on any VM that already has `~/workspace/artifacts` (most of them do: it is the pack-wide evidence convention). A screenshot written into the *project* instead rides the staged publish into the site.
 
@@ -122,6 +126,6 @@ Every turn end runs an autosave commit plus a debounced republish of the staged 
 - **The IPv6-only bind.** The single most likely reason a "healthy" session shows a dead preview. Check `ss -ltn | grep <port>`: `[::1]` is broken, `127.0.0.1` is right.
 - **`npm run preview` instead of `dev`.** It serves a build — no HMR, and the user's edits appear to do nothing.
 - **A second dev server on a reconnect.** Probe first; reuse a healthy one.
-- **Screenshot inside the project.** It gets published with the site. Use `~/workspace/artifacts/` — and note chrome exits 0 even when it could not write the file, so check the file exists before reporting the capture.
-- **No chrome binary.** Ready-without-image is still ready — say the image was skipped; do not fail the boot over it.
+- **Screenshotting in the boot turn.** There is no screenshot step any more, and readiness never waits on chrome. Evidence captured *later* in a session still belongs in `~/workspace/artifacts/`, never inside the worktree — the worktree is pushed.
+- **Committing without pushing.** The commit dies with the spot VM. A turn that ends with an unpushed commit must say so.
 - **`allowedHosts` forgotten.** The preview renders Vite's "Blocked request" page, which reads like an app error rather than a config gap.
