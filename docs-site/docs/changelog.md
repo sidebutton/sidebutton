@@ -2,12 +2,19 @@
 
 All notable changes to SideButton.
 
-## [1.5.4] - Unreleased
+## [1.5.5] - Unreleased
+
+> **Note on 1.5.4:** the 1.5.4 npm packages shipped with a stale server build that did not contain the changes below, despite reporting version 1.5.4 at runtime. 1.5.5 is the corrected release — if you installed 1.5.4, update.
 
 ### Agent Server
 
 - **Preview passthrough** — `ANY /api/preview/:port/*` proxies HTTP and WebSocket to a dev server on the agent machine's loopback, so a live app (including hot module reload) can be viewed through the portal. Guarded by the same bearer token as the rest of `/api/*`; `SIDEBUTTON_PREVIEW_PORTS` narrows which ports are reachable.
 - **Trustworthy reboots** — `POST /api/system/reboot` now runs the privileged reboot wrapper first, awaits the result, and reports what actually happened instead of replying ok before attempting anything.
+- **Build verification on publish** — the npm packages now rebuild themselves at publish time (`prepublishOnly`), so a release can no longer ship a stale compiled output.
+
+### Default skills
+
+- **Agents pack 1.22.0** — the dev-session boot report gains an optional `ROUTES:` block (the app's pages, read off the router) and a `[viewing /path]` context line on user turns, and the ops playbook's `app_edit_session` workflow carries the full per-project app contract.
 
 ## [1.0.12] - 2026-03-28
 

@@ -79,12 +79,29 @@ The boot turn's reply is not a log line — it is the first thing the user sees,
 
 1. **Status line** — project and branch, dev command, **port**, **entry route**, local URL.
 2. **Kickoff analysis** — a few sentences: what the project already is, the next steps worth taking ordered by value, one closing question. No headings, no file dumps.
-3. **Suggestion chips** — a final `SUGGESTIONS:` line followed by 3–4 `- ` lines, each a short imperative (≤60 chars) the user can send back as-is. The chat panel renders them as one-click chips, so nothing may follow the block except the verdict token.
-4. **`SESSION_READY`** alone on the last line (or `BOOT_FAILED` with the log tail above it). Token-only matching: the gate never reads the prose, and display surfaces strip this line.
+3. **Route list** — optional, and described below.
+4. **Suggestion chips** — a final `SUGGESTIONS:` line followed by 3–4 `- ` lines, each a short imperative (≤60 chars) the user can send back as-is. The chat panel renders them as one-click chips, so nothing may follow the block except the verdict token.
+5. **`SESSION_READY`** alone on the last line (or `BOOT_FAILED` with the log tail above it). Token-only matching: the gate never reads the prose, and display surfaces strip this line.
 
 Because readiness is now the report, the window sits on the boot card for the whole boot — a cold start is 2–3 minutes — instead of flipping to a live frame while the dev server is still starting. That is the intended trade: `connected` now means the preview has something to show.
 
-The route list for the page switcher is **Phase 2**, not part of this report — Phase 1 sessions are single-page.
+### The route list (`ROUTES:`)
+
+Every site worth previewing has more than one page, and the portal's page switcher is a combobox over whatever this block reports. Its grammar mirrors `SUGGESTIONS:` — a `ROUTES:` line, then one `- /path Optional label` per line — and it goes **after the kickoff analysis and before `SUGGESTIONS:`**, because the suggestions block must stay the last thing in the reply.
+
+```
+ROUTES:
+- /  Homepage
+- /pricing  Pricing
+- /blog  Blog
+- /blog/:slug  Blog post
+```
+
+Read the routes off the router — `src/pages` for Astro/Next, the route table for everything else — not off the nav bar, which is a subset. Roughly 30 is the ceiling; past that, report the ones a user would ask to see. A dynamic route is reported as its template (`/blog/:slug`): the switcher shows it, and picking it prefills the box for the user to complete rather than navigating to a path that does not exist.
+
+The block is **optional and re-emittable**. Leave it out and the switcher degrades to free-text path entry — never a dead control — so a session that never reports routes still works. Emit it again, in the same shape, in the reply of **any later turn that adds, removes or renames a route**: the portal renders the latest block it can see, and a page you just created is invisible in the switcher until you say so.
+
+The portal talks back on the same channel. A user's turn arrives with one leading context line — `[viewing /pricing]` — naming the page they had open in the preview. It is there on **every** turn, not only when they moved: a session that never touches the switcher still reports the page it opened on, so the line's presence says nothing and only its value carries information. Treat that value as the subject of the message: "make this heading bigger" means the heading on that page.
 
 ## Session lifecycle
 
