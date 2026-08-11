@@ -33,11 +33,41 @@ params:
   entry_path:
     type: string
     default: "~/workspace"
-    description: "Project directory to open the editing session on"
+    description: "Workspace directory the dispatch targets; force-injected by executePipeline and used as the workspace_slug match"
+  # --- App contract (SCRUM-1964 / SP2-B) ---
+  # Resolved per project from workspace_projects and passed through by the portal's dispatch, so a
+  # session no longer guesses which directory of a monorepo is the app or how to start it. Every one
+  # defaults to "" — a project that declares no contract boots exactly as it did before these existed.
+  # NOTE: an absent param resolves to "" on the VM, NOT to the default below, so any value used as a
+  # path must be joined portal-side (that is what app_path is) rather than templated from two params.
+  project_path:
+    type: string
+    default: "~/workspace"
+    description: "The project checkout — the git root the session commits and pushes from"
+  app_dir:
+    type: string
+    default: ""
+    description: "Directory INSIDE the checkout that holds the app; empty means the checkout root"
+  app_path:
+    type: string
+    default: "~/workspace"
+    description: "project_path joined with app_dir — the directory the session's terminal opens in"
+  dev_cmd:
+    type: string
+    default: ""
+    description: "Command that starts the dev server, run from app_path; empty means read package.json and pick the dev script"
   dev_port:
     type: string
     default: ""
     description: "Port the dev server must listen on; empty uses the project's framework convention (Astro 4321, Vite 5173, Next 3000)"
+  dev_env:
+    type: string
+    default: ""
+    description: "Space-separated non-secret KEY=VALUE flags to export before the dev command, e.g. SB_DEV_SESSION=1"
+  preview_path:
+    type: string
+    default: ""
+    description: "Route the preview should open on when / is not the app's entry, e.g. /portal"
   hint:
     type: string
     default: ""
@@ -46,7 +76,10 @@ params:
 steps:
   - type: terminal.open
     title: "Agent: App Editing Session"
-    cwd: "{{entry_path}}"
+    # The APP directory, not the workspace root (SCRUM-1964). Portal-joined into one param on
+    # purpose: "{{project_path}}/{{app_dir}}" would resolve to a bare "/" on any run that carries
+    # no project, and terminal.open would open the session at the filesystem root.
+    cwd: "{{app_path}}"
   - type: terminal.run
     cmd: |
       source ~/.agent-env
@@ -70,13 +103,13 @@ steps:
         source "$HOME/.agent-env.d/{{agentic_app}}"
       fi
       claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
-      you are opening a LIVE EDITING SESSION on the project in the current directory ({{entry_path}}). load the dev-session knowledge module (skill://agents/dev-session/_skill.md) before you touch anything — it carries the port conventions, the HMR-behind-two-proxies config, and the autosave rules this session runs on.
+      you are opening a LIVE EDITING SESSION on the app in the current directory ({{app_path}}). the project checkout — the git root you commit and push from — is {{project_path}}, and the app itself lives in {{app_dir}} inside it (empty means the app IS the checkout root). load the dev-session knowledge module (skill://agents/dev-session/_skill.md) before you touch anything — it carries the port conventions, the HMR-behind-two-proxies config, and the autosave rules this session runs on.
       BOOT — this turn does the boot and nothing else. do every step in the FOREGROUND, then end the turn.
-      1. SYNC: first make sure you are IN the project checkout — the dispatch may hand you the workspace ROOT instead ({{entry_path}} is not a git repo and has no package.json). in that case `cd` into the project checkout inside it (the single repo directory, or the one the hint names) and say which you picked. then `git fetch` and `git pull --ff-only`. NEVER `git reset --hard`, `git checkout -- .` or `git clean` — on a reconnect the local branch carries autosave commits that exist nowhere else, and destroying them destroys the user's work. if the pull cannot fast-forward, keep the local tree, say so, and continue.
+      1. SYNC: git commands belong at the checkout root, so `cd {{project_path}}` for this step and come back to {{app_path}} after. if that is not a git repo either, the dispatch handed you a workspace root — `cd` into the project checkout inside it (the single repo directory, or the one the hint names) and say which you picked. then `git fetch` and `git pull --ff-only`. NEVER `git reset --hard`, `git checkout -- .` or `git clean` — on a reconnect the local branch carries autosave commits that exist nowhere else, and destroying them destroys the user's work. if the pull cannot fast-forward, keep the local tree, say so, and continue.
       2. INSTALL: install dependencies only when they are missing or the lockfile moved since the last install (node_modules absent, or the lockfile is newer). an already-installed tree is a no-op — do not reinstall for its own sake.
-      3. START THE DEV SERVER: the port is {{dev_port}} when that is set, otherwise the project's framework convention (Astro 4321, Vite 5173, Next 3000) — read package.json to pick the actual dev script. FIRST check whether a healthy server already answers on that port: on a reconnect it usually does, and you must REUSE it rather than boot a second one (a double boot either dies on EADDRINUSE or silently lands on another port the preview cannot reach). otherwise start it DETACHED so it outlives this turn and the 60-minute session tidy — `setsid nohup <dev command> >"$HOME/dev-server.log" 2>&1 &`. PASS THE IPv4 HOST FLAG EXPLICITLY: `--host 127.0.0.1` for Astro and Vite, `-H 127.0.0.1` for Next. left to itself Astro/Vite binds the IPv6 loopback `[::1]` ONLY, and the preview passthrough dials `127.0.0.1` — the server looks perfectly healthy in its log and is unreachable. never bind 0.0.0.0 either: the VM opens no new ports, the preview arrives through the agent daemon's authenticated passthrough.
+      3. START THE DEV SERVER: the project may declare a contract — USE IT WHEN IT IS SET, it is the operator telling you what this repo actually needs, and only fall back to guessing when a field is empty. the dev command is `{{dev_cmd}}` when that is non-empty, otherwise read package.json and pick the dev script. export `{{dev_env}}` first when that is non-empty (space-separated KEY=VALUE flags — `export {{dev_env}}` works as written, and they are non-secret by construction). the port is {{dev_port}} when that is set, otherwise the project's framework convention (Astro 4321, Vite 5173, Next 3000). FIRST check whether a healthy server already answers on that port: on a reconnect it usually does, and you must REUSE it rather than boot a second one (a double boot either dies on EADDRINUSE or silently lands on another port the preview cannot reach). otherwise start it DETACHED so it outlives this turn and the 60-minute session tidy — `setsid nohup <dev command> >"$HOME/dev-server.log" 2>&1 &`. PASS THE IPv4 HOST FLAG EXPLICITLY: `--host 127.0.0.1` for Astro and Vite, `-H 127.0.0.1` for Next. left to itself Astro/Vite binds the IPv6 loopback `[::1]` ONLY, and the preview passthrough dials `127.0.0.1` — the server looks perfectly healthy in its log and is unreachable. never bind 0.0.0.0 either: the VM opens no new ports, the preview arrives through the agent daemon's authenticated passthrough.
       4. VERIFY IT SERVES: poll `curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:<port>/` until curl reports ANY http status (curl prints 000 while nothing is listening), for at most ~90 seconds. any status proves the server is up — a project with no route at `/` legitimately answers 404 while being perfectly healthy, so do NOT require 200 on `/`. do not declare readiness off a PID or a log line either. if nothing ever answers, report the failure with the last ~40 lines of ~/dev-server.log and finish the turn with BOOT_FAILED as the final line.
-      5. READY-STATE SCREENSHOT: `mkdir -p "$HOME/workspace/artifacts"` FIRST, then pick the app's real entry route (`/`, or the actual first page when `/` 404s — check src/pages or the router; it must be a route you just saw answer in step 4, chrome happily screenshots an error page) and run `google-chrome --headless=new --screenshot="$HOME/workspace/artifacts/ready-state.png" --window-size=1440,900 http://127.0.0.1:<port>/<route>` (chromium-browser is an equivalent binary). the path matters twice over. the artifacts lane uploads from exactly ONE directory — the first of `<cwd>/artifacts`, `~/workspace/artifacts`, `~/artifacts` that exists — so a screenshot dropped in `~/artifacts` is silently never uploaded on any VM that already has `~/workspace/artifacts`, and that upload is what tells the portal the session is connected. it also sits OUTSIDE the project worktree, so the per-turn autosave never publishes it into the site. then CHECK THE FILE EXISTS AND IS NON-EMPTY (`ls -l`): chrome exits 0 even when it could not write the file, so its exit status proves nothing. if no chrome binary exists, or the file never appears, skip the image and say so: ready without an image is still ready, never a boot failure.
+      5. READY-STATE SCREENSHOT: `mkdir -p "$HOME/workspace/artifacts"` FIRST, then pick the app's real entry route — `{{preview_path}}` when that is non-empty, otherwise `/`, or the actual first page when `/` 404s (check src/pages or the router; it must be a route you just saw answer in step 4, chrome happily screenshots an error page) and run `google-chrome --headless=new --screenshot="$HOME/workspace/artifacts/ready-state.png" --window-size=1440,900 http://127.0.0.1:<port>/<route>` (chromium-browser is an equivalent binary). the path matters twice over. the artifacts lane uploads from exactly ONE directory — the first of `<cwd>/artifacts`, `~/workspace/artifacts`, `~/artifacts` that exists — so a screenshot dropped in `~/artifacts` is silently never uploaded on any VM that already has `~/workspace/artifacts`, and that upload is what tells the portal the session is connected. it also sits OUTSIDE the project worktree, so the per-turn autosave never publishes it into the site. then CHECK THE FILE EXISTS AND IS NON-EMPTY (`ls -l`): chrome exits 0 even when it could not write the file, so its exit status proves nothing. if no chrome binary exists, or the file never appears, skip the image and say so: ready without an image is still ready, never a boot failure.
       6. REPORT AND STOP: finish immediately with the boot report, in this order and nothing more: (a) one status line — project and branch, the dev command and port, the local URL, and whether the screenshot was captured or skipped; (b) a SHORT kickoff analysis the user reads first — what this project already is (stack, entry route, the handful of things that exist), then the next steps worth taking ordered by value, closing with one question back to them; (c) a final block of 3-4 suggestion chips, each a short imperative the user could send back as-is (≤60 chars), formatted exactly as a `SUGGESTIONS:` line followed by one `- chip text` per line — the portal renders these as one-click chips, so nothing may follow the block except the verdict line; (d) the final line exactly SESSION_READY. keep (b) tight — a few sentences, no headings, no file dumps. this turn's end COMPLETES the job; that is correct and expected. the chat keeps running on this same live session, so do not hold the turn open, do not tail the log, and never wait on the dev server.
       SESSION RULES — every later turn. each user message is one turn: do what it asks, then end the turn promptly so the reply reaches the user.
       - COMMIT EARLY AND OFTEN, with real messages describing the change, and PUSH what you commit. the platform's per-turn autosave + republish (SP-D) is a safety net that may not be installed on this VM yet — a commit you did not push exists only on a VM that can be reclaimed. treat every turn end as a publish: leave the tree building and coherent.
