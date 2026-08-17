@@ -300,15 +300,23 @@ Writing requires an **admin** portal user, and the usual trial limits apply.
 
 A **portal-provided** pack repo (the default the portal provisions for you) is always writable — it is portal infrastructure, so there is nothing to opt into.
 
-If you pointed your account at your **own** GitHub or Bitbucket repo, portal writes are **opt-in**. Pick a write mode in **Settings → Skill Pack Repository**:
+If you pointed your account at your **own** GitHub, GitLab or Bitbucket repo, portal writes are **opt-in**. Pick a write mode in **Settings → Skill Pack Repository**:
 
 | Mode | A save… |
 |------|---------|
 | **Read-only** (`off`, default) | is disabled — the editor links out to your host's own web editor. This is the previous "the portal never pushes" behavior, now an explicit choice. |
 | **Commit** (`commit`) | commits directly to your default branch — the same access your agents already have. |
-| **Pull request** (`pr`) | pushes an edit branch and opens a pull request. *Rolling out — not yet selectable in Settings.* |
+| **Pull request** (`pr`) | pushes an edit branch and opens a pull request — a **merge request** on GitLab. Available on hosts whose API can open one: **GitHub and GitLab**. On Bitbucket the radio is disabled and a save in this mode is refused — choose **Commit** there instead. |
 
-Turning on **Commit** runs a one-time capability probe against your stored git credential and refuses, with a reason, if it is read-only (GitHub needs `repo` scope; Bitbucket needs *Repositories: Write*).
+Turning on a write mode runs a one-time capability probe against your stored git credential and refuses, with a reason, if it cannot write:
+
+| Host | What the probe does | What the credential needs |
+|------|---------------------|---------------------------|
+| **GitHub** | reads the scopes recorded when you connected the token — no network call for a classic PAT | `repo` (a fine-grained token reports no scopes, so it is probed by push instead) |
+| **GitLab** | an actual `--dry-run` push to your default branch | `write_repository` to commit, plus `api` for **Pull request** mode — `api` alone covers both |
+| **Bitbucket** | an actual `--dry-run` push to your default branch | *Repositories: Write* (and *Pull requests: Write*, though `pr` mode is not offered here) |
+
+Where the probe pushes rather than reads scopes, the refusal quotes your host's own message (GitLab's `You are not allowed to upload code.`, for instance) rather than a message the portal wrote.
 
 ### Saving: conflicts and validation
 
@@ -329,7 +337,10 @@ A successful save returns the new commit and any non-fatal notes:
 }
 ```
 
-`pull_request_url` is present only in **Pull request** mode.
+`pull_request_url` is present only in **Pull request** mode, and it carries whatever the host calls
+that object — a GitHub pull request (`…/pull/42`) or a GitLab merge request
+(`https://gitlab.com/your-group/your-pack/-/merge_requests/7`, numbered per project, so a subgroup
+path stays intact in the link).
 
 ### How fast changes propagate
 
