@@ -312,7 +312,7 @@ Turning on a write mode runs a one-time capability probe against your stored git
 
 | Host | What the probe does | What the credential needs |
 |------|---------------------|---------------------------|
-| **GitHub** | reads the scopes recorded when you connected the token — no network call for a classic PAT | `repo` (a fine-grained token reports no scopes, so it is probed by push instead) |
+| **GitHub** | reads the scopes recorded when you connected the token — no network call for a classic PAT | `repo` and `read:user` — the same pair the connection itself asks for (a fine-grained token reports no scopes, so it is probed by push instead) |
 | **GitLab** | an actual `--dry-run` push to your default branch | `write_repository` to commit, plus `api` for **Pull request** mode — `api` alone covers both |
 | **Bitbucket** | an actual `--dry-run` push to your default branch | *Repositories: Write* (and *Pull requests: Write*, though `pr` mode is not offered here) |
 
