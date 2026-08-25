@@ -542,8 +542,16 @@ export interface HealthResponse {
   last_tool_use?: string | null;
   workflows_running?: number;
   cooldown?: { until_ms: number; workflow_id: string } | null;
+  /**
+   * Live-Claude evidence. BOTH fields are omitted when the `pgrep` probe itself failed
+   * (SCRUM-1983) — an absent answer means "we don't know", which the orchestrator has a safe
+   * documented path for, whereas an empty `claude_sessions` is read as positive evidence of an
+   * idle box and reaps running work. `claude_probe_error` then carries the reason.
+   */
   claude_running?: boolean;
   claude_sessions?: { pid: number; cmd: string }[];
+  /** Why the `pgrep` probe could not answer this cycle; absent when it did. */
+  claude_probe_error?: string;
   compactions?: { count: number; last_at?: string } | null;
   dependency_versions?: {
     claude_code?: string;
@@ -557,6 +565,24 @@ export interface HealthResponse {
    * without inspecting the VM. `tools` lists the MCP tool names each exposes.
    */
   plugins?: { name: string; version: string; description?: string; tools: string[] }[];
+  /**
+   * SCRUM-1982 — the result of installing Claude Code's OWN plugins
+   * (`claude plugin install name@marketplace` into ~/.claude/plugins), read
+   * from the ~/.sidebutton/claude-plugins.json ledger that agent-runners
+   * `base/19i-claude-plugins.sh` writes. A DIFFERENT plugin system from
+   * `plugins` directly above; crossing the two wires fails silently, which is
+   * why both are spelled out. `marketplace` is the alias the operator REQUESTED
+   * (what the portal stored), not necessarily the manifest name the CLI
+   * installed under. Absent ⇒ the agent reported nothing, which is not the same
+   * as reporting an empty set — every pre-1982 agent omits the key.
+   */
+  claude_plugins?: {
+    name: string;
+    marketplace: string | null;
+    status: 'installed' | 'failed' | 'rejected';
+    version: string | null;
+    error: string | null;
+  }[];
   system_metrics?: {
     cpu_pct: number;
     mem_used_mb: number;

@@ -46,14 +46,14 @@ All notable changes to SideButton.
 - Sidebar count badges for Jobs and Queue
 - Clickable navigation across all dashboard tables
 - Removed collapsibles and Steps section from job detail for cleaner UX
-- Mobile-responsive Fleet Control pages (SCRUM-356)
-- "All agents" targeting option for automations (SCRUM-353)
+- Mobile-responsive Fleet Control pages
+- "All agents" targeting option for automations
 
 ### MCP & Agent Infrastructure
 
 - MCP OAuth 2.1 discovery and `/register` endpoint for Claude Code compatibility
 - Fixed OAuth discovery returning HTML 404 to Bun-based clients
-- Agent 10-minute inactivity timeout for Claude Code busy status (SCRUM-322)
+- Agent 10-minute inactivity timeout for Claude Code busy status
 - Default LLM model updated to gpt-5.4-nano
 
 ### New Step Types

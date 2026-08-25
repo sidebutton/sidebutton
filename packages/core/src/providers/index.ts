@@ -7,6 +7,7 @@ export { JiraProvider, getJiraAuth } from './jira.js';
 export { LinearProvider } from './linear.js';
 export { AcliJiraProvider } from './jira-acli.js';
 export { GhCliProvider } from './github.js';
+export { GlabCliProvider } from './gitlab.js';
 export {
   getIssuesProvider,
   getChatProvider,

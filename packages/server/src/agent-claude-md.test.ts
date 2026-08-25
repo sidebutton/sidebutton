@@ -32,12 +32,19 @@ describe('the shipped canonical file', () => {
     for (const v of [
       '$JIRA_URL', '$JIRA_USER_EMAIL', '$JIRA_API_TOKEN',
       '$JIRA_BEARER_TOKEN', '$JIRA_BASE_URL', '$JIRA_SITE_URL', '$LINEAR_ACCESS_TOKEN',
+      // SCRUM-2025 / N14: Notion's delivered token, plus the operator's reserved name so the block
+      // never tells an agent to hand-manage the portal-owned one.
+      '$NOTION_TOKEN', '$NOTION_API_KEY',
     ]) {
       expect(canonical).toContain(v);
     }
     // The zh_CN lesson must never be dropped in a rewrite: both headers, explicitly.
     expect(canonical).toContain('Accept-Language: en-US');
     expect(canonical).toContain('X-Force-Accept-Language: true');
+    // The Notion-Version pin is the equivalent lesson on the Notion lane: an unpinned (or older)
+    // version 404s data-source reads and the Views API, so it must survive a rewrite too. Tracks the
+    // portal-side NOTION_VERSION (lib/trackers/notion-client.ts) — the version every live probe ran.
+    expect(canonical).toContain('Notion-Version: 2026-03-11');
   });
 });
 

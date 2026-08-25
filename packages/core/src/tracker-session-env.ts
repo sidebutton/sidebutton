@@ -80,11 +80,16 @@ export interface TrackerSessionEnvOptions {
   applyTmux?: boolean;
 }
 
-function portalBase(): string {
+/**
+ * Portal base + agent token, the env contract every agent-side portal caller in
+ * this package shares (exported so terminal-window-watch.ts doesn't grow a
+ * drifting private copy — precedence here is the package's single answer).
+ */
+export function portalBase(): string {
   return (process.env.PORTAL_URL || 'https://sidebutton.com').replace(/\/+$/, '');
 }
 
-function agentToken(): string {
+export function agentToken(): string {
   return process.env.SIDEBUTTON_AGENT_TOKEN || process.env.AGENT_TOKEN || '';
 }
 

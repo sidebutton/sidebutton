@@ -138,6 +138,7 @@ export type { IssuesProvider, ChatProvider, GitProvider, Attachment, AttachmentR
 export { JiraProvider, getJiraAuth } from './providers/jira.js';
 export { AcliJiraProvider } from './providers/jira-acli.js';
 export { GhCliProvider } from './providers/github.js';
+export { GlabCliProvider } from './providers/gitlab.js';
 export {
   getIssuesProvider,
   getChatProvider,

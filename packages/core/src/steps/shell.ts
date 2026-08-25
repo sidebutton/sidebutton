@@ -13,6 +13,7 @@ import type { ExecutionContext } from '../context.js';
 import { WorkflowError } from '../types.js';
 import { ensureClaudeFolderTrust } from '../claude-trust.js';
 import { ensureTrackerSessionEnv } from '../tracker-session-env.js';
+import { watchTerminalWindow, defaultWindowWatchDeps } from '../terminal-window-watch.js';
 
 const execAsync = promisify(exec);
 const IS_MAC = platform() === 'darwin';
@@ -281,6 +282,58 @@ export async function executeTerminalRun(
       };
       const child = spawn(launch.file, launch.args, { stdio: 'ignore', detached: true, env });
       child.unref();
+
+      if (hasX) {
+        // Close-window ⇒ kill: an operator closing the xfce4-terminal window is a
+        // deliberate stop — the watcher resolves the step, then kills the tmux
+        // session. Full rationale, the verified exit-code contract, the
+        // grace/report/kill ordering, and the decided edge semantics (detach in
+        // the job's own window, tidy-closes, computer-use) live in
+        // terminal-window-watch.ts. Windowed branch ONLY: the headless tmux
+        // client below exits 0 by design and must never arm the close handler.
+        // The watcher outlives this run by hours, and emitLog events after the
+        // run log is persisted land nowhere durable — so it logs straight to
+        // the server journal and captures no ExecutionContext.
+        const watchLog = (level: 'info' | 'warn' | 'error', message: string) => {
+          const line = `[terminal-window-watch] ${message}`;
+          if (level === 'info') console.log(line);
+          else console.error(line);
+        };
+        watchTerminalWindow(
+          child,
+          {
+            sessionName: launch.sessionName,
+            sessionId: ctx.claudeSessionId,
+            // Same script, same env, the launcher's own headless shape — used
+            // when the window dies before its tmux client ever creates the
+            // session. Racing a late window client is safe: `-A` on the window
+            // side attaches instead of duplicating, and a duplicate `-d` loses
+            // with "duplicate session" without re-running the script.
+            headlessFallback: () => {
+              const fb = buildTerminalLaunch({ hasX: false, sessionName: launch.sessionName, scriptPath });
+              const fbChild = spawn(fb.file, fb.args, { stdio: 'ignore', detached: true, env });
+              fbChild.once('error', (err) =>
+                watchLog('error', `headless fallback tmux spawn failed for ${launch.sessionName}: ${err}`));
+              fbChild.unref();
+            },
+          },
+          defaultWindowWatchDeps(probeX11Display, watchLog),
+        );
+      } else {
+        // Headless launch: no close semantics (the detached client exits 0 by
+        // design the moment the session exists), but a spawn 'error' with no
+        // listener is an unhandled event that would crash the whole server —
+        // the same latent failure the windowed branch's watcher guards.
+        child.once('error', (err) => {
+          const message = `headless tmux spawn failed for ${launch.sessionName}: ${err}`;
+          console.error(`[terminal-window-watch] ${message}`);
+          try {
+            ctx.emitLog('error', message);
+          } catch {
+            // run sink may already be closed
+          }
+        });
+      }
 
       ctx.emitLog(
         'info',

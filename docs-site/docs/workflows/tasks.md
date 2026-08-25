@@ -66,7 +66,7 @@ After **Add**, the batch sits in the **Active tasks** band under *"N need action
 
 **Add a blocker.** The blocked-by chips show dependencies carried over from the tracker. Use **＋ blocked by** to add one by hand — search the pool and pick the ticket(s) this one should wait for. A task never starts while any of its blockers is unfinished.
 
-![The "Block SCRUM-1506 by — pick ticket(s)" popover with a search box and a scrollable list of pooled tickets to choose as blockers](/tasks/05-add-blockers.png)
+![The "Block by — pick ticket(s)" popover for the selected task, with a search box and a scrollable list of pooled tickets to choose as blockers](/tasks/05-add-blockers.png)
 
 **Approve.** Approve a row on its own with **Approve →**, or clear the whole batch with **Approve all**. Approving flips a task from *Pending* to *Waiting*; a ticket with no playbook cannot be approved until you pick one. Remove anything you did not mean to add with the **✕**.
 
@@ -103,5 +103,6 @@ Everything you have ever pooled lives in the **All tasks** ledger below the band
 - [Working with Playbooks](/workflows/playbooks) — run one ticket end-to-end and watch every step
 - [Orchestrating Agents](/workflows/orchestration) — workflows, playbooks and gates explained
 - [Linear Automations](/linear-automations) — pool tickets automatically from issue events
+- [Notion Boards](/notion-setup) — pool cards automatically from a Notion kanban board
 - [Jira Integration](/jira-setup) — connect the tracker your tickets come from
 - [Cloud Agents: AWS](/cloud/aws-setup) · [Hetzner](/cloud/hetzner-setup) · [GCP](/cloud/gcp-setup)

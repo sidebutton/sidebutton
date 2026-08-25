@@ -77,7 +77,8 @@ domain: sidebutton.com
 confidence: 0.90
 workspaces: ["main"]          # slug(s) of the portal workspace(s) targeting this host
 repos:
-  - repo: owner/name          # owner/repo of a git project in that workspace
+  - repo: owner/name          # the git project's full path after the host, as in its repo URL
+                              # (GitLab groups nest: group/subgroup/name)
     subpath: the-assistant    # that project's subpath as registered in the workspace
 ---
 ```
@@ -85,7 +86,7 @@ repos:
 Per-page module `{host}/{page}/_skill.md`: same `confidence`, plus `repos:` for the repo(s) implementing *that page* (omit to inherit the host's repos).
 
 - `workspaces` resolves by **slug** — use the slug of the workspace this discovery job runs for (operator-provided via the job's workspace / `entry_path` context).
-- `repos[].repo` is matched as `owner/name` against the workspace's git projects; `repos[].subpath` must equal the project's registered subpath. Unresolved refs are skipped silently — after publishing, confirm the host shows its workspace + repo in the portal's **Account Domains** table.
+- `repos[].repo` is matched against the workspace's git projects on the repo URL's **whole path after the host** — `owner/name` on GitHub and Bitbucket, but `group/subgroup/name` for a GitLab project nested in subgroups, which is what its URL says. Writing only the last two segments of a nested path matches nothing. `repos[].subpath` must equal the project's registered subpath. Unresolved refs are skipped silently — after publishing, confirm the host shows its workspace + repo in the portal's **Account Domains** table.
 
 ## Environment
 

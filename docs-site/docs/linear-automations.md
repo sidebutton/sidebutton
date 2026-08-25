@@ -8,7 +8,7 @@ Turn Linear issues into agent work automatically. An automation watches your Lin
 
 ## Overview
 
-A typical setup: *every new issue labeled `Bug` in team `HOL` starts the Bug Fix playbook.* From then on, filing a bug in Linear is all it takes — the ticket lands in the Tasks pool, an agent picks it up, works the issue end-to-end, and the Linear issue receives status transitions and progress comments as the run advances.
+A typical setup: *every new issue labeled `Bug` in your engineering team starts the Bug Fix playbook.* From then on, filing a bug in Linear is all it takes — the ticket lands in the Tasks pool, an agent picks it up, works the issue end-to-end, and the Linear issue receives status transitions and progress comments as the run advances.
 
 What happens on a matching event:
 
@@ -51,7 +51,7 @@ Every filter you set must match at once (AND); a filter left at "Any" matches ev
 
 | Filter | Matches | Notes |
 |--------|---------|-------|
-| **Team** | The Linear team key (e.g. `HOL`) | One automation per team is the typical setup. |
+| **Team** | The Linear team key (e.g. `ENG`) | One automation per team is the typical setup. |
 | **Label** | The issue's **first** label | Linear has no issue types, so a single label stands in (e.g. `Bug`). *Comment added* events carry no labels — a label filter never matches them. |
 | **Assignee** | A Linear user | Pick a name from the suggestion list so it resolves to a real Linear user — free-typed text can never match. |
 | **Status** | The workflow state name (e.g. `Todo`) | |
@@ -95,9 +95,9 @@ The new rule appears in the list with a **Linear** badge and an enable toggle. U
 
 ## Step 7: Trigger it from Linear
 
-Create (or update) an issue that matches your filters — for example, an issue in team `HOL` with the `Bug` label in state `Todo`:
+Create (or update) an issue that matches your filters — for example, an issue in the team you selected, with the `Bug` label in state `Todo`:
 
-![Linear issue in the Holaris team with the Bug label just added, in state Todo](/linear-automations/07-linear-issue-trigger.png)
+![Linear issue in the selected team with the Bug label just added, in state Todo](/linear-automations/07-linear-issue-trigger.png)
 
 Then verify in the portal:
 
@@ -137,3 +137,4 @@ Then verify in the portal:
 - [Create a cloud agent (AWS)](./cloud/aws-setup.md) · [Hetzner](./cloud/hetzner-setup.md) · [GCP](./cloud/gcp-setup.md)
 - [Connect your agents to your Claude subscription](./cloud/claude-subscription.md)
 - [Jira Integration](./jira-setup.md)
+- [Notion Boards](./notion-setup.md) — the same trigger model on a Notion kanban board
