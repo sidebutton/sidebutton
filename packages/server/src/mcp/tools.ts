@@ -335,7 +335,10 @@ export const MCP_TOOLS: McpTool[] = [
         },
       },
     },
-    annotations: { title: 'Take Screenshot', readOnlyHint: true, openWorldHint: true },
+    // No readOnlyHint: with `path` set this tool creates directories and overwrites a file on
+    // the agent machine. Clients auto-approve read-only tools, so the hint has to go now that
+    // one argument turns the call into a write.
+    annotations: { title: 'Take Screenshot', openWorldHint: true },
   },
   {
     name: 'select_option',

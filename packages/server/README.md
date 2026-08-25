@@ -147,8 +147,8 @@ workspace has to stay intact.
 
 | Profile | Target | Size | Tools | Needs |
 | --- | --- | --- | --- | --- |
-| **browser** (default) | `browser` | ~1.5 GB | all 28 | egress to the Chrome Web Store |
-| **server-only** | `runner` | ~580 MB | 7 of 28 | nothing |
+| **browser** (default) | `browser` | ~1.5 GB | all 29 | egress to the Chrome Web Store |
+| **server-only** | `runner` | ~580 MB | 7 of 29 | nothing |
 
 ```bash
 # browser — bundles Chromium, installs the extension itself, all 29 tools

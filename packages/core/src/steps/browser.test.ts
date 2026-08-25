@@ -131,6 +131,26 @@ describe('browser.screenshot', () => {
     expect(fs.existsSync(outside)).toBe(false);
   });
 
+  it('refuses to inject an unresolved placeholder as CSS, so a capture is never silently unredacted', async () => {
+    const injected: string[] = [];
+    const ctx = makeCtx();
+    (ctx.extensionClient as unknown as { injectCSS: (css: string) => Promise<void> }).injectCSS =
+      async (css: string) => { injected.push(css); };
+
+    // A literal "{{redact_css}}" is non-empty, so the empty-CSS skip does not catch it: the
+    // step would style nothing, report success, and let the next screenshot capture the page
+    // unredacted — the one failure this recipe exists to prevent.
+    await expect(
+      executeStep({ type: 'browser.injectCSS', css: '{{redact_css}}', id: 'sb-redact' } as Step, ctx)
+    ).rejects.toThrow(/was not provided/);
+    expect(injected).toEqual([]);
+
+    // An explicit empty string still means "no redaction" and stays a no-op.
+    ctx.params.redact_css = '';
+    await executeStep({ type: 'browser.injectCSS', css: '{{redact_css}}' } as Step, ctx);
+    expect(injected).toEqual([]);
+  });
+
   it('surfaces EXTENSION_ERROR when no browser is connected', async () => {
     const ctx = new ExecutionContext('run-1');
 
@@ -138,6 +158,42 @@ describe('browser.screenshot', () => {
 
     expect(err).toBeInstanceOf(WorkflowError);
     expect((err as WorkflowError).code).toBe('EXTENSION_ERROR');
+  });
+
+  it('rejects a step with no path instead of writing a file named "undefined"', async () => {
+    const ctx = makeCtx();
+
+    // parseWorkflow validates step types, not required fields, and interpolate() stringifies
+    // undefined — so without this guard the PNG lands at ~/workspace/undefined and the run
+    // reports success.
+    const err = await executeStep({ type: 'browser.screenshot' } as Step, ctx).catch((e) => e);
+
+    expect(err).toBeInstanceOf(WorkflowError);
+    expect((err as WorkflowError).code).toBe('PATH_ERROR');
+    expect(fs.existsSync(path.join(fakeHome, 'workspace', 'undefined'))).toBe(false);
+  });
+
+  it('tightens the mode to 0600 when overwriting a looser existing file', async () => {
+    const ctx = makeCtx();
+    const out = path.join(fakeHome, 'preexisting.png');
+    fs.writeFileSync(out, 'stale', { mode: 0o644 });
+
+    await executeStep(shot({ path: out }), ctx);
+
+    expect(fs.statSync(out).mode & 0o777).toBe(0o600);
+  });
+
+  it('creates no directories outside home when the escape is through a symlink', async () => {
+    const ctx = makeCtx();
+    const outsideDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'sb-core-mk-')));
+    fs.symlinkSync(outsideDir, path.join(fakeHome, 'link'));
+
+    await expect(
+      executeStep(shot({ path: path.join(fakeHome, 'link', 'a', 'b.png') }), ctx)
+    ).rejects.toThrow(/outside the home directory/i);
+    expect(fs.readdirSync(outsideDir)).toEqual([]);
+
+    fs.rmSync(outsideDir, { recursive: true, force: true });
   });
 
   it('rejects empty image data rather than writing a 0-byte PNG', async () => {

@@ -5,12 +5,12 @@
  *             browser.hover, browser.key, browser.snapshot
  */
 
-import { writeFileSync } from 'node:fs';
 import type { Step } from '../types.js';
 import type { ExecutionContext } from '../context.js';
 import { WorkflowError } from '../types.js';
 import { resolveDelay } from '../delay.js';
-import { resolveContainedPath } from '../contained-path.js';
+import { findUnresolvedPlaceholder } from '../interpolate.js';
+import { resolveContainedPath, writeCapturedImage } from '../contained-path.js';
 
 type BrowserNavigate = Extract<Step, { type: 'browser.navigate' }>;
 type BrowserClick = Extract<Step, { type: 'browser.click' }>;
@@ -216,15 +216,25 @@ export async function executeBrowserScreenshot(
 ): Promise<void> {
   const ext = requireExtension(ctx);
 
+  // parseWorkflow validates step *types*, not required fields, so a step written without a
+  // `path` reaches here with undefined — and interpolate() would stringify it into a file
+  // literally named "undefined" under ~/workspace, reported as a success.
+  if (typeof step.path !== 'string' || !step.path.trim()) {
+    throw new WorkflowError(
+      'browser.screenshot requires a "path" to write the PNG to.',
+      'PATH_ERROR'
+    );
+  }
+
   // interpolate() leaves an unknown {{placeholder}} untouched rather than blanking it. For a
   // path that would silently create a directory literally named "{{path}}"; for a selector it
   // could only ever fail to match. Both mean a param was not passed — say so plainly.
   const resolved = (field: 'path' | 'selector', raw: string): string => {
     const value = ctx.interpolate(raw);
-    const unresolved = value.match(/\{\{\s*\w+\s*\}\}/);
+    const unresolved = findUnresolvedPlaceholder(value);
     if (unresolved) {
       throw new WorkflowError(
-        `browser.screenshot ${field} still contains ${unresolved[0]} — that parameter was not provided. ` +
+        `browser.screenshot ${field} still contains ${unresolved} — that parameter was not provided. ` +
         `Pass it, or pass an empty string to skip.`,
         'PATH_ERROR'
       );
@@ -243,17 +253,8 @@ export async function executeBrowserScreenshot(
   ctx.emitLog('info', `Capturing screenshot (${target}) → ${outPath}`);
 
   const imageData = await ext.screenshot({ ref: step.ref, selector, region: step.region });
-
-  // The extension may send a bare base64 payload or a full data URL; keeping the prefix
-  // yields a corrupt PNG that still reports success.
-  const base64 = imageData.replace(/^data:image\/png;base64,/, '');
-  const bytes = Buffer.from(base64, 'base64');
-  if (bytes.length === 0) {
-    throw new WorkflowError('Screenshot returned empty image data', 'EXTENSION_ERROR');
-  }
-
-  writeFileSync(outPath, bytes, { mode: 0o600 });
-  ctx.emitLog('info', `Wrote ${bytes.length} bytes to ${outPath}`);
+  const written = writeCapturedImage(imageData, outPath);
+  ctx.emitLog('info', `Wrote ${written} bytes to ${outPath}`);
 
   // The path, never the base64: run logs are persisted to disk as JSON and get_run_log
   // truncates results at 100 chars, so a base64 payload here is pure size and leakage.
@@ -274,6 +275,19 @@ export async function executeBrowserInjectCSS(
   if (!css.trim()) {
     ctx.emitLog('info', `Skipping empty CSS injection${id ? ` (id: ${id})` : ''}`);
     return;
+  }
+
+  // A literal "{{redact_css}}" is non-empty, so the skip above does not catch it: the step
+  // would inject a placeholder that styles nothing, report success, and let the screenshot
+  // that follows capture the page UNREDACTED. Pass "" to mean "no redaction" — silence here
+  // is the one failure mode the redaction recipe cannot tolerate.
+  const unresolved = findUnresolvedPlaceholder(css);
+  if (unresolved) {
+    throw new WorkflowError(
+      `browser.injectCSS css still contains ${unresolved} — that parameter was not provided. ` +
+      `Pass it, or pass an empty string to inject nothing.`,
+      'PARSE_ERROR'
+    );
   }
 
   ctx.emitLog('info', `Injecting CSS${id ? ` (id: ${id})` : ''}`);

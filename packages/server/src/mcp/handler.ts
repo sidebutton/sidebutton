@@ -34,6 +34,7 @@ import {
   loadWorkflow,
   buildRunLogUsage,
   resolveContainedPath,
+  writeCapturedImage,
   hasBrowserSteps,
 } from '@sidebutton/core';
 import type { ExtensionClientImpl } from '../extension.js';
@@ -894,7 +895,11 @@ export class McpHandler {
     const rawPath = typeof args.path === 'string' ? args.path.trim() : '';
     if (!rawPath) return err('publish_artifact requires a "path" to the file to upload.');
 
-    const resolved = path.isAbsolute(rawPath) ? path.resolve(rawPath) : path.resolve(workspaceRoot, rawPath);
+    // `~/…` expands, matching resolveContainedPath: the screenshot tool hands back a path in
+    // that form, and the docs tell agents to publish exactly the string they were given.
+    // Without this, "~/shots/x.png" resolved to "$HOME/workspace/~/shots/x.png" — not found.
+    const expanded = rawPath === '~' ? home : rawPath.startsWith('~/') ? home + rawPath.slice(1) : rawPath;
+    const resolved = path.isAbsolute(expanded) ? path.resolve(expanded) : path.resolve(workspaceRoot, expanded);
     let realPath: string;
     try {
       realPath = fs.realpathSync(resolved);
@@ -1243,7 +1248,6 @@ export class McpHandler {
     const outPath = rawPath ? resolveContainedPath(rawPath) : undefined;
 
     const imageData = await this.extensionClient.screenshot({ ref, selector, region });
-    const base64 = imageData.replace(/^data:image\/png;base64,/, '');
 
     // No path: byte-for-byte the behaviour this tool has always had. mcp-browser-probe.mjs
     // asserts an image block comes back, and callers rely on it.
@@ -1251,19 +1255,18 @@ export class McpHandler {
       return {
         content: [{
           type: 'image',
-          data: base64,
+          data: imageData.replace(/^data:image\/png;base64,/, ''),
           mimeType: 'image/png',
         }],
       };
     }
 
-    const bytes = Buffer.from(base64, 'base64');
-    if (bytes.length === 0) throw new Error('Screenshot returned empty image data');
-    fs.writeFileSync(outPath, bytes, { mode: 0o600 });
+    // Shared with the browser.screenshot step: same data-URL strip, same 0600 enforcement.
+    const written = writeCapturedImage(imageData, outPath);
     return {
       content: [{
         type: 'text',
-        text: `Wrote ${bytes.length} bytes to ${outPath}`,
+        text: `Wrote ${written} bytes to ${outPath}`,
       }],
     };
   }

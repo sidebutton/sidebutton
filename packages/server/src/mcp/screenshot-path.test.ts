@@ -117,6 +117,33 @@ describe('screenshot tool — path option', () => {
     expect(fs.statSync(out).mode & 0o777).toBe(0o600);
   });
 
+  it('tightens the mode to 0600 even when overwriting a looser existing file', async () => {
+    const handler = makeHandler();
+    const out = path.join(fakeHome, 'preexisting.png');
+    // writeFileSync's `mode` applies only on create, so an existing 0644 file would silently
+    // keep 0644 — and a shot can hold pre-redaction pixels.
+    fs.writeFileSync(out, 'stale', { mode: 0o644 });
+
+    await callTool(handler, 'screenshot', { path: out });
+
+    expect(fs.statSync(out).mode & 0o777).toBe(0o600);
+    expect(fs.readFileSync(out)).toEqual(PNG_BYTES);
+  });
+
+  it('creates no directories outside home when the escape is through a symlink', async () => {
+    const handler = makeHandler();
+    const outsideDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'sb-shot-mk-')));
+    fs.symlinkSync(outsideDir, path.join(fakeHome, 'link'));
+
+    // A recursive mkdir would follow the symlink and really create outsideDir/a/b before the
+    // realpath check rejected the path — containment has to hold before any mkdir.
+    const res = await callTool(handler, 'screenshot', { path: path.join(fakeHome, 'link', 'a', 'b', 'x.png') });
+
+    expect(res.error?.message ?? JSON.stringify(res.result)).toMatch(/outside the home directory/i);
+    expect(fs.readdirSync(outsideDir)).toEqual([]);
+    fs.rmSync(outsideDir, { recursive: true, force: true });
+  });
+
   it('resolves ~ and a relative path the same way publish_artifact does', async () => {
     const handler = makeHandler();
 

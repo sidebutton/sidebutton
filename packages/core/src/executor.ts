@@ -122,7 +122,9 @@ async function executeStepWithRetry(
           error.code === 'NESTED_ERROR' ||
           error.code === 'LLM_ERROR' || // API key missing or provider misconfigured
           error.code === 'EXTENSION_ERROR' || // Browser extension not connected
-          error.code === 'TERMINAL_ERROR' // Terminal not available
+          error.code === 'TERMINAL_ERROR' || // Terminal not available
+          error.code === 'PATH_ERROR' || // Output path rejected — retrying re-runs the same mkdir
+          error.code === 'PARSE_ERROR' // Malformed step config — a retry cannot fix it
         ) {
           throw error;
         }
