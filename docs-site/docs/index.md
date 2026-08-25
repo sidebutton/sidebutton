@@ -36,6 +36,8 @@ The portal is honest about prerequisites — pick the Notion trigger before a wo
 
 SideButton agents now work GitLab end to end. Connect **gitlab.com** with a personal access token, attach projects to your workspaces — including ones nested in subgroups — and agents branch, push and open **merge requests** the same way they open pull requests, with the delivery gate verifying the merge request's real state. Agent VMs ship with `glab` preinstalled, and the connection card warns ahead of your token's expiry.
 
+![GitLab connect dialog on the Integrations page: personal access token field, required scopes hint, Test and Save actions](/releases/03-gitlab-connect.png)
+
 ### Workspace setup that tells the truth
 
 The workspace edit page now walks new workspaces through setup — assign agents, connect code, route tracker work — with a state ledger that reflects what is actually configured. The apply flow reports all three of its states honestly: idle shows what would change, in-flight shows progress, done collapses to a result you can check.
@@ -49,6 +51,8 @@ The role registry is now **pack-driven end to end**: besides the built-ins, any 
 ### Claude Code plugins, picked and verified
 
 Creating a cloud agent now offers a typed **Claude Code plugin picker**, kept separate from SideButton's own plugin catalog. Picked plugins install at first boot, and each agent reports the install result on its health endpoint and detail page — a failed plugin is visible state, not a silent gap.
+
+![Claude Code plugins block in the create-agent wizard: marketplace picker and a plugin combobox, up to 20 installed at provision](/releases/04-claude-code-plugins.png)
 
 ### Jira app: working from the first handover
 
