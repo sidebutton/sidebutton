@@ -11,6 +11,7 @@ import { JiraProvider } from './jira.js';
 import { LinearProvider } from './linear.js';
 import { AcliJiraProvider } from './jira-acli.js';
 import { GhCliProvider } from './github.js';
+import { GlabCliProvider } from './gitlab.js';
 
 // ============================================================================
 // Provider Definitions (with connector arrays)
@@ -101,6 +102,84 @@ export const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
         stepTypes: [],
         setupInstructions: 'Set GITHUB_BROWSER_URL to your GitHub URL (e.g. https://github.com). Make sure you are logged in to GitHub in the browser.',
         usageFile: '_provider-github-browser.md',
+      },
+    ],
+  },
+  {
+    id: 'gitlab',
+    name: 'GitLab',
+    // git only, deliberately: `getIssuesProvider` has no gitlab case, so advertising issues.* here
+    // would be the same phantom capability SCRUM-1189 removed. The glab CLI does have issue
+    // commands — GlabCliProvider exposes them as the git.listIssues / git.getIssue reads.
+    type: 'git',
+    connectors: [
+      {
+        id: 'cli',
+        name: 'CLI (glab)',
+        featureLevel: 'full',
+        requiredEnvVars: [],
+        optionalEnvVars: [],
+        detectCommand: 'glab --version',
+        stepTypes: ['git.listPRs', 'git.getPR', 'git.createPR', 'git.listIssues', 'git.getIssue'],
+        setupInstructions: 'Install the GitLab CLI (glab) and authenticate it — set GITLAB_TOKEN and run `glab auth login`. Provisioned agent VMs install glab and authenticate it automatically when GITLAB_TOKEN is present (SCRUM-1952).',
+        usageFile: '_provider-gitlab-cli.md',
+      },
+      {
+        id: 'browser',
+        name: 'Browser',
+        featureLevel: 'basic',
+        requiredEnvVars: ['GITLAB_BROWSER_URL'],
+        optionalEnvVars: [],
+        stepTypes: [],
+        setupInstructions: 'Set GITLAB_BROWSER_URL to your GitLab URL (e.g. https://gitlab.com). Make sure you are logged in to GitLab in the browser.',
+        usageFile: '_provider-gitlab-browser.md',
+      },
+    ],
+  },
+  {
+    id: 'notion',
+    name: 'Notion',
+    // 'issues' is the TYPE this provider documents, but note the empty `stepTypes` below: there is
+    // no NotionProvider class in @sidebutton/core, so `getIssuesProvider` has no notion case and
+    // `detectIssuesProvider` deliberately does NOT look at NOTION_TOKEN — a detection hit would
+    // fall through to `default:` and throw "No issues provider detected"/"Unknown issues provider".
+    // The definition exists to advertise the CONNECTOR DOCS (SCRUM-2025 / N14, SCRUM-2022 / N11): the
+    // target sync (packages/server) only copies `_provider-*` files a connector names, so without this
+    // entry the agent's only Notion reference would never reach a session. Same shape as the jira and
+    // gitlab browser connectors — real documentation, zero advertised steps. Agent-side `issues.*` over
+    // Notion is a separate ticket, and it must add the provider class, the factory case and the
+    // detection rule together with its step types.
+    type: 'issues',
+    connectors: [
+      {
+        id: 'api',
+        name: 'REST API',
+        featureLevel: 'basic',
+        requiredEnvVars: ['NOTION_TOKEN'],
+        optionalEnvVars: [],
+        // The operator's reserved name (website/src/lib/cloud/notion-agent-env.ts): the portal never
+        // writes or strips NOTION_API_KEY, so a self-managed integration lives there. Either name on
+        // its own is a working credential — Linear's LINEAR_ACCESS_TOKEN precedent — and without this
+        // a self-managed setup would read as "Missing: NOTION_TOKEN" and never sync its usage file.
+        altCredentialEnvVars: ['NOTION_API_KEY'],
+        stepTypes: [],
+        setupInstructions: 'Connect Notion in Settings → Integrations: the portal delivers the connection\'s token to the agent as NOTION_TOKEN. Self-managed setups can instead set NOTION_TOKEN (or NOTION_API_KEY, which the portal never writes) in Settings → Environment Variables. The token identifies the workspace — no URL is needed — and each database must be shared with the connection.',
+        usageFile: '_provider-notion-api.md',
+      },
+      {
+        id: 'browser',
+        name: 'Browser',
+        featureLevel: 'basic',
+        requiredEnvVars: ['NOTION_BROWSER_URL'],
+        optionalEnvVars: [],
+        // Zero steps, like every other browser connector — but the reason is sharper here. This lane
+        // exists for the ONE Notion operation that has no API at all: creating a webhook subscription
+        // and pasting its one-time verification token back (SCRUM-2022 / N11). Everything else about
+        // Notion is better done over REST, and the doc says so rather than letting an agent drive a
+        // database through the UI because the browser connector happened to be the active one.
+        stepTypes: [],
+        setupInstructions: 'Set NOTION_BROWSER_URL to your Notion workspace URL (e.g. https://www.notion.so). Make sure you are logged in to Notion in the browser. This connector covers webhook-subscription setup, which Notion offers in the connection-settings UI only — use the REST API connector for reading and writing pages.',
+        usageFile: '_provider-notion-browser.md',
       },
     ],
   },
@@ -249,9 +328,11 @@ export function getGitProvider(
   switch (name) {
     case 'github':
       return new GhCliProvider();
+    case 'gitlab':
+      return new GlabCliProvider();
     default:
       throw new Error(
-        `Unknown git provider: "${name}". Supported: github`,
+        `Unknown git provider: "${name}". Supported: github, gitlab`,
       );
   }
 }

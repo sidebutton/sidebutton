@@ -16,10 +16,24 @@ export default defineConfig({
   // with a 403 "Blocked request" page, and HMR would dial the dev port directly
   // and never connect. Opt in with SB_DEV_SESSION=1; a plain `npm run dev` is
   // unaffected.
+  //
+  // The Host is per session — `p-<agentId>-<port>.sidebutton.com` — so the check
+  // has to be the suffix rather than one literal name. A leading dot is Vite's
+  // "this domain and every subdomain" form, so it still covers the legacy
+  // `app.sidebutton.com` path lane, and it stays a real check: anything outside
+  // the domain is still refused.
+  //
+  // The bind moves to the IPv4 loopback for the same reason the website config
+  // pins it: a bare `vitepress dev` binds whatever `localhost` resolves to, which
+  // on these VMs is `[::1]` only, and the session boot contract declares the
+  // server ready by probing `http://127.0.0.1:<port>/` — which is refused while
+  // every log line says the server is fine. (The daemon itself dials both
+  // loopbacks, so the preview survives either way; the readiness probe does not.)
   vite: {
     server: process.env.SB_DEV_SESSION
       ? {
-          allowedHosts: ['app.sidebutton.com'],
+          host: '127.0.0.1',
+          allowedHosts: ['.sidebutton.com'],
           hmr: { clientPort: 443, protocol: 'wss' },
           fs: { strict: true }
         }
@@ -69,14 +83,15 @@ export default defineConfig({
           { text: 'AGENTS.md Support', link: '/agents-md' },
           { text: 'Jira Integration', link: '/jira-setup' },
           { text: 'Linear Automations', link: '/linear-automations' },
+          { text: 'Notion Boards', link: '/notion-setup' },
           { text: 'Embed Buttons', link: '/features/embed' },
           { text: 'Recording Mode', link: '/features/recording' }
         ]
       },
-      // { text: 'API', link: '/api/rest' }, // Hidden until Phase 2
       {
-        text: 'v1.0.12',
+        text: 'v1.5.5',
         items: [
+          { text: 'Release Posts', link: '/releases/' },
           { text: 'Changelog', link: '/changelog' },
           { text: 'Contributing', link: '/contributing' }
         ]
@@ -109,6 +124,9 @@ export default defineConfig({
             { text: 'GCP Setup', link: '/cloud/gcp-setup' },
             { text: 'Self-Host in Your Cloud', link: '/cloud/create-agent' },
             { text: 'Connect Claude Subscription', link: '/cloud/claude-subscription' }
+            // Side Projects (/cloud/side-projects) is excluded from the OSS sync (sync-oss.sh);
+            // keep it out of the nav so the synced config never links a page the mirror doesn't have.
+            // Reachable by direct URL in local dev. Re-list when/if the page goes public (D4).
           ]
         },
         {
@@ -149,6 +167,7 @@ export default defineConfig({
             { text: 'LLM Integration', link: '/features/llm' },
             { text: 'Jira Integration', link: '/jira-setup' },
             { text: 'Linear Automations', link: '/linear-automations' },
+            { text: 'Notion Boards', link: '/notion-setup' },
             { text: 'Embed Buttons', link: '/features/embed' },
             { text: 'Recording Mode', link: '/features/recording' }
           ]
@@ -161,16 +180,11 @@ export default defineConfig({
             { text: 'Browser Tools', link: '/mcp/browser' }
           ]
         },
-        // API section hidden until Phase 2
-        // {
-        //   text: 'API',
-        //   items: [
-        //     { text: 'REST API', link: '/api/rest' }
-        //   ]
-        // },
         {
-          text: 'Reference',
+          text: 'Releases & Reference',
           items: [
+            { text: 'Release Posts', link: '/releases/' },
+            { text: 'Notion, Roles & Workspace Setup', link: '/releases/2026-08-week34' },
             { text: 'Changelog', link: '/changelog' },
             { text: 'Contributing', link: '/contributing' }
           ]

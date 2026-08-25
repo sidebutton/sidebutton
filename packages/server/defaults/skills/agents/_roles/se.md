@@ -18,6 +18,7 @@ Picks issues from the tracker, writes production code on a feature branch, opens
 | SideButton | `http://localhost:9876/` |
 | Issue tracker | *(set by operator — Jira, GitHub Issues, Linear, etc.)* |
 | CI/CD | *(set by operator — GitHub Actions, GitLab CI, etc.)* |
+| Git host CLI | `gh` on GitHub remotes, `glab` on GitLab remotes — check `git remote get-url origin` |
 
 ## Issue-to-PR Lifecycle
 
@@ -34,7 +35,7 @@ Every SE session follows the same pattern:
    - No placeholders, no TODOs, no "will implement later"
    - Run existing tests before and after changes
    - Add tests for new behavior where the repo has test infrastructure
-5. **Submit** — create a PR:
+5. **Submit** — create a PR with the origin host's CLI (`gh pr create` on GitHub, `glab mr create` on GitLab — there it is a *merge request*, numbered per project as an iid):
    - Title: imperative mood, include ticket ID (`Fix login redirect loop (SCRUM-42)`)
    - Body: what changed, why, how to test
    - Link the issue (Closes/Fixes #N)

@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { parseWorkflow } from './parser.js';
 import { getAllStepTypes } from './steps/index.js';
 import { PROVIDER_DEFINITIONS, getGitProvider, getChatProvider, getIssuesProvider, getProviderStatuses } from './providers/registry.js';
-import { JiraProvider, LinearProvider } from './providers/index.js';
+import { JiraProvider, LinearProvider, GhCliProvider, GlabCliProvider } from './providers/index.js';
 import { WorkflowError } from './types.js';
 
 /** Run `fn`, return the error it throws (fails the test if it does not throw). */
@@ -50,6 +50,7 @@ describe('PROVIDER_DEFINITIONS catalogue is honest', () => {
     const ids = PROVIDER_DEFINITIONS.map((d) => d.id);
     expect(ids).toContain('jira');
     expect(ids).toContain('github');
+    expect(ids).toContain('gitlab');
     expect(ids).not.toContain('slack');
     expect(ids).not.toContain('bitbucket');
   });
@@ -123,6 +124,125 @@ describe('Linear provider (SCRUM-1425) is wired honestly', () => {
   });
 });
 
+describe('GitLab provider (SCRUM-1955) is wired honestly', () => {
+  const gitlab = () => PROVIDER_DEFINITIONS.find((d) => d.id === 'gitlab')!;
+
+  it('is advertised as a git provider with a glab cli connector and a usage file', () => {
+    expect(gitlab()).toBeDefined();
+    expect(gitlab().type).toBe('git');
+    const cli = gitlab().connectors.find((c) => c.id === 'cli');
+    expect(cli?.detectCommand).toBe('glab --version');
+    expect(cli?.requiredEnvVars).toEqual([]);
+    expect(cli?.usageFile).toBe('_provider-gitlab-cli.md');
+    expect(cli?.stepTypes).toEqual([
+      'git.listPRs', 'git.getPR', 'git.createPR', 'git.listIssues', 'git.getIssue',
+    ]);
+  });
+
+  it('has a browser connector gated on GITLAB_BROWSER_URL that advertises no steps', () => {
+    const browser = gitlab().connectors.find((c) => c.id === 'browser');
+    expect(browser?.requiredEnvVars).toEqual(['GITLAB_BROWSER_URL']);
+    expect(browser?.stepTypes).toEqual([]);
+    expect(browser?.usageFile).toBe('_provider-gitlab-browser.md');
+  });
+
+  it('advertises NO issues.* steps — getIssuesProvider has no gitlab case and would throw', () => {
+    for (const conn of gitlab().connectors) {
+      expect(conn.stepTypes.filter((s) => s.startsWith('issues.'))).toEqual([]);
+    }
+    expect(() => getIssuesProvider({}, 'gitlab')).toThrow(/Unknown issues provider/);
+  });
+
+  it('adds NO new step types — every gitlab step is already executable, count stays 42', () => {
+    const executable = new Set(getAllStepTypes());
+    for (const conn of gitlab().connectors) {
+      for (const st of conn.stepTypes) expect(executable.has(st)).toBe(true);
+    }
+    expect(getAllStepTypes().length).toBe(42);
+  });
+
+  it('getGitProvider resolves a GlabCliProvider and names gitlab in the unknown-provider error', () => {
+    expect(getGitProvider('gitlab')).toBeInstanceOf(GlabCliProvider);
+    expect(getGitProvider('GitLab')).toBeInstanceOf(GlabCliProvider);
+    expect(() => getGitProvider('bitbucket')).toThrow(/Supported: github, gitlab/);
+  });
+
+  it('reports the cli connector as CLI-not-detected rather than Missing (no env vars to miss)', () => {
+    const cli = getProviderStatuses({ envVars: {}, cliChecks: { 'glab --version': false } })
+      .find((p) => p.id === 'gitlab')!
+      .connectorStatuses.find((c) => c.id === 'cli')!;
+    expect(cli.available).toBe(false);
+    expect(cli.error).toBe('CLI not detected: glab');
+  });
+
+  it('reports the cli connector Ready once glab is detected', () => {
+    const cli = getProviderStatuses({ envVars: {}, cliChecks: { 'glab --version': true } })
+      .find((p) => p.id === 'gitlab')!
+      .connectorStatuses.find((c) => c.id === 'cli')!;
+    expect(cli.available).toBe(true);
+  });
+});
+
+describe('Notion provider (SCRUM-2025 / N14) is advertised as documentation only', () => {
+  const notion = () => PROVIDER_DEFINITIONS.find((d) => d.id === 'notion')!;
+
+  it('has an api connector gated on NOTION_TOKEN, with the connector doc and NO step types', () => {
+    expect(notion()).toBeDefined();
+    expect(notion().type).toBe('issues');
+    const api = notion().connectors.find((c) => c.id === 'api');
+    expect(api?.requiredEnvVars).toEqual(['NOTION_TOKEN']);
+    // The operator's reserved name satisfies the connector on its own (the portal never writes it).
+    expect(api?.altCredentialEnvVars).toEqual(['NOTION_API_KEY']);
+    expect(api?.featureLevel).toBe('basic');
+    expect(api?.usageFile).toBe('_provider-notion-api.md');
+    expect(api?.stepTypes).toEqual([]);
+  });
+
+  it('has a browser connector gated on NOTION_BROWSER_URL that advertises no steps', () => {
+    // SCRUM-2022 / N11. It exists to advertise ONE doc for the one Notion operation with no API at
+    // all — creating a webhook subscription. Same zero-step shape as the jira/gitlab browser
+    // connectors, and the usage file must keep matching the name or the target sync copies nothing
+    // (the sync skips a missing source silently — see provider-usage-files.test.ts).
+    const browser = notion().connectors.find((c) => c.id === 'browser');
+    expect(browser?.requiredEnvVars).toEqual(['NOTION_BROWSER_URL']);
+    expect(browser?.featureLevel).toBe('basic');
+    expect(browser?.stepTypes).toEqual([]);
+    expect(browser?.usageFile).toBe('_provider-notion-browser.md');
+  });
+
+  it('advertises NO issues.* steps — getIssuesProvider has no notion case and would throw', () => {
+    // The trap this guards: adding a step type here (or a NOTION_TOKEN rule to detectIssuesProvider)
+    // without a NotionProvider class makes every issues.* run fall through to `default:` and throw.
+    for (const conn of notion().connectors) {
+      expect(conn.stepTypes.filter((s) => s.startsWith('issues.'))).toEqual([]);
+    }
+    expect(() => getIssuesProvider({}, 'notion')).toThrow(/Unknown issues provider/);
+  });
+
+  it('NOTION_TOKEN alone never auto-detects an issues provider (the delivered env must stay inert)', () => {
+    // Every agent on a Notion-connected account carries NOTION_TOKEN in ~/.agent-env, so detection
+    // must ignore it: a hit would turn a Jira-less account's issues.* steps into a hard error.
+    expect(() => getIssuesProvider({ NOTION_TOKEN: 'ntn_x' })).toThrow(/No issues provider detected/);
+    // …and it must not shadow a real provider on a dual-connected account either.
+    expect(getIssuesProvider({ NOTION_TOKEN: 'ntn_x', LINEAR_API_KEY: 'lin_x' })).toBeInstanceOf(LinearProvider);
+  });
+
+  it('adds NO new step types — the executable count stays 42', () => {
+    expect(getAllStepTypes().length).toBe(42);
+  });
+
+  it('reports the api connector Ready with either credential name, so its usage file can sync', () => {
+    const status = (envVars: Record<string, string>) =>
+      getProviderStatuses({ envVars })
+        .find((p) => p.id === 'notion')!
+        .connectorStatuses.find((c) => c.id === 'api')!;
+    expect(status({ NOTION_TOKEN: 'ntn_x' }).available).toBe(true);
+    expect(status({ NOTION_API_KEY: 'ntn_operator' }).available).toBe(true);
+    expect(status({}).available).toBe(false);
+    expect(status({}).error).toBe('Missing: NOTION_TOKEN');
+  });
+});
+
 describe('getProviderStatuses honors alternative credentials (SCRUM-1583 D1)', () => {
   const linearApiStatus = (envVars: Record<string, string>) =>
     getProviderStatuses({ envVars })
@@ -161,6 +281,10 @@ describe('provider factories', () => {
     expect(() => getGitProvider()).not.toThrow();
     expect(() => getGitProvider('github')).not.toThrow();
     expect(() => getGitProvider('bitbucket')).toThrow(/Unknown git provider/);
+  });
+
+  it('the no-arg default stays github — YAML git.* steps omit `provider:` (SCRUM-1955)', () => {
+    expect(getGitProvider()).toBeInstanceOf(GhCliProvider);
   });
 
   it('getChatProvider throws (not implemented), even with SLACK_BOT_TOKEN set', () => {

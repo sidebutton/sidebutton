@@ -167,9 +167,16 @@ async function checkoutAndFastForward(repoDir: string, branch: string): Promise<
 
 /**
  * Apply one project — clone if missing, otherwise fetch + checkout + ff-pull.
- * Clone authentication is handled by the local `gh auth git-credential` helper
- * configured by `setup-autostart.sh`; the website never injects tokens into the
- * URL, so `.git/config` stays clean.
+ * Clone authentication is handled by whichever per-host git credential helper
+ * answers for the remote — `gh auth git-credential` for github.com, a stateless
+ * `GITLAB_TOKEN` reader for gitlab.com, and so on — all registered on the VM by
+ * agent-runners `base/12b-git-credential-helpers.sh`. The website never injects
+ * tokens into the URL, so `.git/config` stays clean and no host needs a special
+ * clone path here.
+ *
+ * A clone that fails with "could not read Username for 'https://<host>'" means NO
+ * helper answered for that host (the helper is missing, or its token is unset) —
+ * not that the token is wrong. A wrong-or-unauthorized token fails as a 401.
  */
 export async function applyProject(workspace_path: string, project: ApplyProject): Promise<ApplyResult> {
   const sub = (project.subpath ?? '').trim();

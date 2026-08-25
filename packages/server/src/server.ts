@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { ExtensionClientImpl } from './extension.js';
 import { McpHandler } from './mcp/handler.js';
 import { reportRunLog } from './services/report.js';
+import { SessionWatcher, isSessionWatcherEnabled } from './services/session-watcher.js';
 import { newRunId } from './run-id.js';
 import { VERSION } from './version.js';
 import {
@@ -42,6 +43,7 @@ import { writeWorkspaceInstructions } from './workspace-instructions.js';
 import { applySkills, type ApplySkill } from './skills.js';
 import { applyFiles, FILES_APPLY_BODY_LIMIT, type ApplyFile } from './files.js';
 import { applyAgentAppEnv } from './agent-app-env.js';
+import { readClaudePluginLedger } from './claude-plugins-ledger.js';
 import {
   applyComponentConfig,
   COMPONENT_CONFIG_APPLY_BODY_LIMIT,
@@ -53,8 +55,8 @@ import {
   findClaudeSessionPid,
   buildInputCommands,
   SESSION_INPUT_BODY_LIMIT,
-  type ClaudeSession,
 } from './session-input.js';
+import { parseClaudeSessions, classifyProbeFailure, type ClaudeSessionProbe } from './claude-probe.js';
 import * as yaml from 'js-yaml';
 import type { WebSocket } from 'ws';
 import type {
@@ -562,20 +564,17 @@ function getAllWorkflowStats(runLogsDir: string): Record<string, WorkflowStats> 
 }
 
 /**
- * Enumerate live Claude Code processes (pid + full command line) via
- * `pgrep -a claude`. Shared by /health (`claude_sessions`) and the
- * POST /api/session/input liveness gate. Returns [] on any failure (no matches,
- * pgrep missing, timeout).
+ * Enumerate live Claude Code processes (pid + full command line) via `pgrep -a claude`.
+ * Shared by /health (`claude_sessions`) and the POST /api/session/input liveness gate.
+ *
+ * Returns `{ sessions: null }` when the probe itself could not run, which is NOT the same as an
+ * empty list — see claude-probe.ts for why that distinction reaped running jobs (SCRUM-1983).
  */
-function listClaudeSessions(): ClaudeSession[] {
+function probeClaudeSessions(): ClaudeSessionProbe {
   try {
-    const pgrepOut = execSync('pgrep -a claude', { encoding: 'utf8', timeout: 3000 }).trim();
-    return pgrepOut.split('\n').filter(Boolean).map((line) => {
-      const spaceIdx = line.indexOf(' ');
-      return { pid: parseInt(line.substring(0, spaceIdx), 10), cmd: line.substring(spaceIdx + 1) };
-    });
-  } catch {
-    return [];
+    return { sessions: parseClaudeSessions(execSync('pgrep -a claude', { encoding: 'utf8', timeout: 3000 })) };
+  } catch (err) {
+    return classifyProbeFailure(err);
   }
 }
 
@@ -964,9 +963,25 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
   }, CLEANUP_INTERVAL_MS);
 
+  /**
+   * App-chat streaming producer (SCRUM-1972, SP2-K). Tails each live Claude session's JSONL and
+   * POSTs projected chat deltas to the portal, so the project window can render a turn as the agent
+   * writes it instead of after the Stop-hook upload. Off unless this box has the outbound hook
+   * credentials — a dev machine running the daemon locally has nowhere to send them, and every
+   * consumer degrades to today's behaviour when no deltas arrive.
+   */
+  // A failed probe degrades to "no sessions this tick" here, exactly as before SCRUM-1983: the
+  // watcher re-enumerates every tick and only drops tails it can re-open, so a blind tick costs
+  // nothing. The dispatch/reaper path is the one that must not guess — see probeClaudeSessions.
+  const sessionWatcher = isSessionWatcherEnabled()
+    ? new SessionWatcher({ listSessions: () => probeClaudeSessions().sessions ?? [] })
+    : null;
+  sessionWatcher?.start();
+
   // Clean up interval on server shutdown
   fastify.addHook('onClose', async () => {
     clearInterval(cleanupInterval);
+    await sessionWatcher?.stop();
     // Stop persistent service-plugin children so they don't outlive the server (e.g. on a
     // systemd restart) and leak desktop-automation subprocesses.
     await mcpHandler.shutdownServicePlugins();
@@ -1597,7 +1612,18 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
     // Liveness gate (AC4): the session must have a live `claude --session-id <id>`
     // process. No match ⇒ pane/session gone ⇒ 410 (stable contract for SCRUM-1385).
-    const pid = findClaudeSessionPid(listClaudeSessions(), sessionId);
+    //
+    // A probe that could not RUN is not a match failure (SCRUM-1983). 410 is terminal — the
+    // portal maps it to `session_gone` and flips the composer to "session ended — not
+    // delivered" — so answering it from a timed-out `pgrep` tears down a session whose Claude
+    // is alive, on the same loaded box where the probe is least likely to answer. 503 is the
+    // honest code: the caller already maps 5xx to `unreachable`, which keeps the window open
+    // and the send retryable.
+    const probe = probeClaudeSessions();
+    if (probe.sessions === null) {
+      return reply.code(503).send({ error: 'session liveness unknown', detail: probe.error, session_id: sessionId });
+    }
+    const pid = findClaudeSessionPid(probe.sessions, sessionId);
     if (pid === undefined) {
       return reply.code(410).send({ error: 'session not live', session_id: sessionId });
     }
@@ -1673,9 +1699,17 @@ export async function startServer(config: ServerConfig): Promise<void> {
     // Enumerate Claude Code processes with PIDs and command lines.
     // This lets the orchestrator track individual sessions, distinguish dispatched
     // jobs from operator debugging sessions, and detect zombie/stalled PIDs.
-    const sessions = listClaudeSessions();
-    response.claude_sessions = sessions;
-    response.claude_running = sessions.length > 0;
+    // A failed probe reports NOTHING (SCRUM-1983): omitting both fields is the wire shape a
+    // pre-`claude_sessions` runtime already produces, and the orchestrator's handling of it is
+    // "no evidence, change nothing, reap nothing". Reporting `[]` instead claimed a loaded box
+    // was idle and cost a 60 s dispatch outage — or a reaped, still-running job.
+    const probe = probeClaudeSessions();
+    if (probe.sessions === null) {
+      response.claude_probe_error = probe.error;
+    } else {
+      response.claude_sessions = probe.sessions;
+      response.claude_running = probe.sessions.length > 0;
+    }
 
     if (cooldownState && cooldownState.until_ms > Date.now()) {
       response.cooldown = { until_ms: cooldownState.until_ms, workflow_id: cooldownState.workflow_id };
@@ -1685,6 +1719,16 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
     response.dependency_versions = getDependencyVersions();
     response.plugins = mcpHandler.getLoadedPluginSummaries();
+
+    // Claude Code's OWN plugin store (SCRUM-1982) — a different system from
+    // `plugins` directly above, which is the SideButton MCP plugin list. Written
+    // by agent-runners base/19i-claude-plugins.sh at provision and on every
+    // refresh tick, so it is read per request rather than cached at boot: a
+    // reinstall must show up without restarting this server. Absent ⇒ the key is
+    // omitted entirely, which is how the portal tells "not reported" (every
+    // pre-1982 agent) apart from "reported nothing installed".
+    const claudePlugins = readClaudePluginLedger(sidebuttonDir);
+    if (claudePlugins) response.claude_plugins = claudePlugins;
 
     // Collect live system metrics (Linux only — agents run on Ubuntu VMs)
     // All /proc reads are near-instant; single execSync keeps latency under ~200ms

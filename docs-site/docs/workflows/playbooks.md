@@ -70,5 +70,6 @@ Editing opens the two-lane flow canvas described in [Orchestrating Agents](/work
 - [Orchestrating Agents](/workflows/orchestration) — workflows, gates and dispatch, the machinery under every step
 - [Working with Tasks](/workflows/tasks) — batch many tickets into the pool and run them in dependency order
 - [Linear Automations](/linear-automations) — start playbooks automatically from issue events
+- [Notion Boards](/notion-setup) — start playbooks automatically from a Notion kanban board
 - [Jira Integration](/jira-setup) — connect the tracker your tickets live in
 - [Cloud Agents: AWS](/cloud/aws-setup) · [Hetzner](/cloud/hetzner-setup) · [GCP](/cloud/gcp-setup)
