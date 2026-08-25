@@ -164,6 +164,33 @@ try {
       `screenshot returns image bytes (got ${image?.data?.length ?? 0})`,
     );
 
+    check(
+      textOf(await callTool('inject_css', { css: 'h1 { filter: blur(6px); }', id: 'sb-probe' }))
+        .includes('sb-probe'),
+      'inject_css applies a rule to the live page',
+    );
+
+    // With `path` the bytes go to a file inside the container and only text comes back.
+    // The host cannot read that file, so assert the reported write instead: a non-image
+    // response naming the path with a plausible byte count proves the write executed.
+    const toFile = await callTool('screenshot', { path: '~/probe-shot.png' });
+    const fileText = textOf(toFile);
+    const written = Number(fileText.match(/Wrote (\d+) bytes/)?.[1] ?? 0);
+    check(
+      !toFile.some(c => c.type === 'image') && fileText.includes('probe-shot.png') && written > 0,
+      `screenshot path= writes a file and returns text only (got ${written} bytes)`,
+    );
+
+    // Containment must hold on a real server too, not just in unit tests: callTool turns the
+    // JSON-RPC error into a throw, so a rejection is the pass here.
+    let contained = false;
+    try {
+      await callTool('screenshot', { path: '/etc/sb-escape.png' });
+    } catch (err) {
+      contained = /home directory/i.test(err.message);
+    }
+    check(contained, 'screenshot path= refuses to write outside the home directory');
+
     const evaluated = textOf(await callTool('evaluate', { js: 'location.href' }));
     check(evaluated.includes(TARGET_URL), 'evaluate runs JavaScript in the page context');
   }

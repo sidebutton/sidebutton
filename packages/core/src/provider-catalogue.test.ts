@@ -39,9 +39,9 @@ describe('getAllStepTypes()', () => {
     }
   });
 
-  it('has no duplicates and the expected count (45 - 3 chat = 42)', () => {
+  it('has no duplicates and the expected count (46 - 3 chat = 43)', () => {
     expect(new Set(types).size).toBe(types.length);
-    expect(types.length).toBe(42);
+    expect(types.length).toBe(43);
   });
 });
 
@@ -97,11 +97,11 @@ describe('Linear provider (SCRUM-1425) is wired honestly', () => {
     ]);
   });
 
-  it('adds NO new step types — every linear step is already executable, count stays 42', () => {
+  it('adds NO new step types — every linear step is already executable, count stays 43', () => {
     const executable = new Set(getAllStepTypes());
     const api = PROVIDER_DEFINITIONS.find((d) => d.id === 'linear')!.connectors[0];
     for (const st of api.stepTypes) expect(executable.has(st)).toBe(true);
-    expect(getAllStepTypes().length).toBe(42);
+    expect(getAllStepTypes().length).toBe(43);
   });
 
   it('getIssuesProvider resolves a LinearProvider (auto-detected and explicit)', () => {
@@ -153,12 +153,12 @@ describe('GitLab provider (SCRUM-1955) is wired honestly', () => {
     expect(() => getIssuesProvider({}, 'gitlab')).toThrow(/Unknown issues provider/);
   });
 
-  it('adds NO new step types — every gitlab step is already executable, count stays 42', () => {
+  it('adds NO new step types — every gitlab step is already executable, count stays 43', () => {
     const executable = new Set(getAllStepTypes());
     for (const conn of gitlab().connectors) {
       for (const st of conn.stepTypes) expect(executable.has(st)).toBe(true);
     }
-    expect(getAllStepTypes().length).toBe(42);
+    expect(getAllStepTypes().length).toBe(43);
   });
 
   it('getGitProvider resolves a GlabCliProvider and names gitlab in the unknown-provider error', () => {
@@ -227,8 +227,8 @@ describe('Notion provider (SCRUM-2025 / N14) is advertised as documentation only
     expect(getIssuesProvider({ NOTION_TOKEN: 'ntn_x', LINEAR_API_KEY: 'lin_x' })).toBeInstanceOf(LinearProvider);
   });
 
-  it('adds NO new step types — the executable count stays 42', () => {
-    expect(getAllStepTypes().length).toBe(42);
+  it('adds NO new step types — the executable count stays 43', () => {
+    expect(getAllStepTypes().length).toBe(43);
   });
 
   it('reports the api connector Ready with either credential name, so its usage file can sync', () => {

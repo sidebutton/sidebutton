@@ -1,6 +1,6 @@
 # Step Types
 
-Complete reference for all 45 step types available in SideButton (42 implemented, 3 chat types pending).
+Complete reference for all 46 step types available in SideButton (43 implemented, 3 chat types pending).
 
 ## Browser Steps
 
@@ -216,6 +216,50 @@ Capture an accessibility snapshot of the page. Returns a structured YAML represe
 |-----------|------|----------|-------------|
 | `as` | string | Yes | Variable name to store snapshot |
 | `includeContent` | boolean | No | Include visible text content (default: false) |
+
+### browser.screenshot
+
+Capture the page — or a crop of it — and write a PNG to a file on the machine running SideButton. The image bytes never enter the agent's context; the step returns only the path it wrote.
+
+```yaml
+- type: browser.screenshot
+  selector: "#app"
+  path: "~/shots/01-dashboard.png"
+  as: shot_path
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | Yes | Where to write the PNG. `~/…`, absolute, or relative to `~/workspace` |
+| `selector` | string | No | CSS selector to crop to. Empty or omitted = full viewport |
+| `ref` | number | No | Element reference from a prior `browser.snapshot` |
+| `region` | object | No | Manual crop: `{x, y, width, height}` in CSS pixels |
+| `as` | string | No | Variable name to store the written path |
+
+Parent directories are created as needed, the file is written `0600`, and an existing file at the same path is overwritten — so a retried step lands on the same file rather than leaving a numbered trail.
+
+::: warning Paths are contained to the home directory
+`path` must resolve inside the home directory of the user running SideButton; `..` traversal and symlinks that escape it are rejected. This matches the rule `publish_artifact` enforces, so anything this step writes can be published directly.
+:::
+
+::: tip Redact before you capture
+Pair it with `browser.injectCSS` to blur sensitive elements *before* the shot, so no unredacted image is ever written:
+
+```yaml
+- type: browser.navigate
+  url: "{{url}}"
+- type: browser.injectCSS
+  id: sb-redact
+  css: ".user-email, .invoice-total { filter: blur(6px); }"
+- type: browser.wait
+  ms: 400
+- type: browser.screenshot
+  selector: "#app"
+  path: "~/shots/01-dashboard.png"
+```
+
+This is exactly the bundled `docs_screenshot` workflow.
+:::
 
 ### browser.injectCSS
 

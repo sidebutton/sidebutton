@@ -122,7 +122,9 @@ async function executeStepWithRetry(
           error.code === 'NESTED_ERROR' ||
           error.code === 'LLM_ERROR' || // API key missing or provider misconfigured
           error.code === 'EXTENSION_ERROR' || // Browser extension not connected
-          error.code === 'TERMINAL_ERROR' // Terminal not available
+          error.code === 'TERMINAL_ERROR' || // Terminal not available
+          error.code === 'PATH_ERROR' || // Output path rejected — retrying re-runs the same mkdir
+          error.code === 'PARSE_ERROR' // Malformed step config — a retry cannot fix it
         ) {
           throw error;
         }
@@ -258,6 +260,10 @@ function getStepDetails(step: Step, ctx: ExecutionContext): string | undefined {
       return undefined;
     case 'browser.exists':
       return `${ctx.interpolate(step.selector)} → $${step.as}`;
+    case 'browser.screenshot': {
+      const crop = step.selector ? ctx.interpolate(step.selector) : (step.region ? 'region' : 'viewport');
+      return `${crop} → ${ctx.interpolate(step.path)}`;
+    }
     case 'browser.hover':
       return ctx.interpolate(step.selector);
     case 'browser.key': {

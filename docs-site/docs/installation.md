@@ -52,8 +52,8 @@ so the build context cannot be narrowed to `packages/server`:
 
 | Profile | Target | Size | Tools |
 | --- | --- | --- | --- |
-| **browser** (default) | `browser` | ~1.5 GB | all 28 |
-| **server-only** | `runner` | ~580 MB | 7 of 28 |
+| **browser** (default) | `browser` | ~1.5 GB | all 29 |
+| **server-only** | `runner` | ~580 MB | 7 of 29 |
 
 ```bash
 # browser — bundles Chromium and installs the extension itself

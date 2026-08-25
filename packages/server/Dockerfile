@@ -14,7 +14,7 @@
 #
 # Two profiles, selected with --target:
 #
-#   browser (default, all 28 tools) — bundles Chromium and force-installs the
+#   browser (default, all 29 tools) — bundles Chromium and force-installs the
 #     published extension from the Chrome Web Store, so the browser tools work
 #     with no host involvement. ~1.6 GB.
 #
@@ -115,7 +115,7 @@ ENTRYPOINT ["node", "/app/packages/server/bin/sidebutton.js"]
 CMD ["serve", "--stdio"]
 
 # ---------------------------------------------------------------------------
-# browser — runner + Chromium + the extension, so all 28 tools work in-container
+# browser — runner + Chromium + the extension, so all 29 tools work in-container
 #
 # The extension is NOT copied in. It is FSL-1.1-Apache-2.0 and ships only
 # through the Chrome Web Store (sync-oss.sh keeps extension/ out of the public

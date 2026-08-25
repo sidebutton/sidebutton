@@ -115,6 +115,10 @@ export { executeWorkflow, executeSteps } from './executor.js';
 // Context utilities
 export { getContextSource, getSkillDomain } from './context-utils.js';
 
+// Output-path containment + the contained write (shared by the browser.screenshot step and
+// the screenshot MCP tool)
+export { resolveContainedPath, writeCapturedImage } from './contained-path.js';
+
 // Claude Code folder-trust pre-seeding
 export { ensureClaudeFolderTrust } from './claude-trust.js';
 export type { TrustSeedResult } from './claude-trust.js';

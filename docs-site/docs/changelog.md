@@ -12,6 +12,17 @@ All notable changes to SideButton.
 - **Trustworthy reboots** — `POST /api/system/reboot` now runs the privileged reboot wrapper first, awaits the result, and reports what actually happened instead of replying ok before attempting anything.
 - **Build verification on publish** — the npm packages now rebuild themselves at publish time (`prepublishOnly`), so a release can no longer ship a stale compiled output.
 
+### Workflows & MCP
+
+- **`browser.screenshot` step** — captures the page (or a `selector` / `ref` / `region` crop) straight to a PNG file on the agent machine, so an agent can produce a docs screenshot without image bytes entering its context. Brings the step count to 46 (43 implemented).
+- **`screenshot` MCP tool takes `path`** — same file output from the tool. With no `path` it behaves exactly as before and still returns image bytes, so existing callers are unaffected.
+- **`inject_css` MCP tool** — injects a CSS rule into the page. Combined with the above, `browser_batch` can run navigate → blur the sensitive selectors → wait → screenshot-to-file in a single call, so no unredacted image ever reaches disk.
+- **`docs_screenshot` workflow** — bundled single-shot recipe wiring that sequence together.
+- Output paths for both writers are contained to the home directory — `..` traversal and escaping symlinks are rejected, and nothing is created on disk until the path is cleared — matching the rule `publish_artifact` already applies, so a captured shot can be published directly. `publish_artifact` now expands `~/…` too, so the path the screenshot tool hands back can be published verbatim.
+- **A step whose `{{param}}` was never passed fails loudly** — `browser.screenshot` and `browser.injectCSS` refuse an unresolved placeholder instead of treating it as a value. Previously a missing `redact_css` injected the literal text as a stylesheet, which styles nothing: the run reported success and the screenshot that followed was unredacted. Pass an empty string to mean "no redaction".
+- **Browser pre-flight gate is recursive** — `run_workflow` now detects browser steps nested inside `control.foreach` / `control.if`. Previously only top-level steps were checked, so a nested browser step skipped the friendly "browser not connected" error and failed mid-run instead.
+- Running an unrecognised step type on an older server still fails fast at parse time with `PARSE_ERROR: Unknown step type`, so a workflow using `browser.screenshot` against a pre-1.5.5 server reports a clear error rather than silently skipping the capture.
+
 ### Default skills
 
 - **Agents pack 1.22.0** — the dev-session boot report gains an optional `ROUTES:` block (the app's pages, read off the router) and a `[viewing /path]` context line on user turns, and the ops playbook's `app_edit_session` workflow carries the full per-project app contract.

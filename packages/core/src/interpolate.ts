@@ -27,6 +27,25 @@ export function interpolate(
 }
 
 /**
+ * Return the first `{{…}}` placeholder still present in an already-interpolated string,
+ * or undefined if there are none.
+ *
+ * interpolate() deliberately leaves an unknown placeholder as-is rather than blanking it,
+ * which is right for free text but dangerous for a step whose parameter is load-bearing:
+ * a literal "{{path}}" becomes a real filename, and a literal "{{redact_css}}" is a
+ * non-empty stylesheet that blurs nothing while the step reports success. Steps where the
+ * placeholder cannot be a legitimate value use this to fail loudly instead.
+ *
+ * The pattern is wider than interpolate()'s own `[a-zA-Z_]\w*` key syntax on purpose:
+ * `{{item.path}}` is never substitutable, so leaving it in place is still a caller error.
+ * `{{_repo:…}}` never survives ExecutionContext.interpolate (it falls back to `~`), so it
+ * cannot trip this.
+ */
+export function findUnresolvedPlaceholder(value: string): string | undefined {
+  return value.match(/\{\{[^{}]*\}\}/)?.[0];
+}
+
+/**
  * Truncate text for display, adding ellipsis if too long
  */
 export function truncateForDisplay(text: string, maxLen: number): string {

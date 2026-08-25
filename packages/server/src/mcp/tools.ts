@@ -306,7 +306,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: 'screenshot',
-    description: 'Capture a screenshot of the current page. Prefer cropping to a specific area instead of capturing the full viewport — use ref (from snapshot), selector (CSS), or region (manual rect) to save context tokens. Full viewport is fine for first visit to a new page; after that, crop to the relevant section.',
+    description: 'Capture a screenshot of the current page. Prefer cropping to a specific area instead of capturing the full viewport — use ref (from snapshot), selector (CSS), or region (manual rect) to save context tokens. Full viewport is fine for first visit to a new page; after that, crop to the relevant section. Pass path to write the PNG to a file instead of returning image bytes — that is what you want for docs screenshots and QA evidence, since the file can then be published with publish_artifact and never enters your context.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -329,9 +329,16 @@ export const MCP_TOOLS: McpTool[] = [
           },
           required: ['x', 'y', 'width', 'height'],
         },
+        path: {
+          type: 'string',
+          description: 'Write the PNG here instead of returning image bytes; returns the path and byte count as text. Accepts ~/... or an absolute path; a relative path resolves against ~/workspace. Must stay inside the home directory. Parent directories are created, and an existing file is overwritten.',
+        },
       },
     },
-    annotations: { title: 'Take Screenshot', readOnlyHint: true, openWorldHint: true },
+    // No readOnlyHint: with `path` set this tool creates directories and overwrites a file on
+    // the agent machine. Clients auto-approve read-only tools, so the hint has to go now that
+    // one argument turns the call into a write.
+    annotations: { title: 'Take Screenshot', openWorldHint: true },
   },
   {
     name: 'select_option',
@@ -506,6 +513,25 @@ export const MCP_TOOLS: McpTool[] = [
     annotations: { title: 'Hover Element', destructiveHint: true, openWorldHint: true },
   },
   {
+    name: 'inject_css',
+    description: 'Inject a CSS rule into the current page. The main use is pre-capture redaction: blur or hide sensitive elements, then screenshot to a file, so no unredacted image ever exists. Pass an id to make the injection replaceable — injecting the same id again swaps the rule rather than stacking a second one.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        css: {
+          type: 'string',
+          description: 'CSS to inject, e.g. ".user-email { filter: blur(6px); }"',
+        },
+        id: {
+          type: 'string',
+          description: 'Optional identifier for the injected style element, so it can be replaced or removed later.',
+        },
+      },
+      required: ['css'],
+    },
+    annotations: { title: 'Inject CSS', destructiveHint: true, openWorldHint: true },
+  },
+  {
     name: 'evaluate',
     description: 'Execute JavaScript in the browser page context and return the result. Useful for reading page state, checking values, or performing calculations.',
     inputSchema: {
@@ -537,7 +563,9 @@ export const MCP_TOOLS: McpTool[] = [
       '- Add "optional": true to a step whose failure should not halt the batch.\n' +
       '- Add "return": "drop" to a side-effect-only step you do not need echoed back (e.g. a screenshot taken only to trigger lazy-load).\n\n' +
       'Batchable cmds: navigate, wait, exists, click, type, fill, press_key, select_option, scroll, scroll_into_view, hover, ' +
-      'extract, extract_all, extract_map, snapshot, screenshot, evaluate.\n\n' +
+      'extract, extract_all, extract_map, snapshot, screenshot, inject_css, evaluate.\n\n' +
+      'To capture a redacted screenshot in one call: navigate → inject_css (blur the sensitive selectors) → wait → ' +
+      'screenshot with a "path". The shot lands on disk already redacted and no image bytes come back.\n\n' +
       'Example — log in then land on the dashboard in one call:\n' +
       '{ "steps": [ { "cmd": "navigate", "url": "https://app.example.com/login" }, ' +
       '{ "cmd": "wait", "selector": "#user" }, { "cmd": "fill", "selector": "#user", "value": "alice" }, ' +

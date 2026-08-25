@@ -230,6 +230,27 @@ Crop to a CSS selector or manual region:
 
 Cropped screenshots are 10-100x smaller, saving context tokens. Returns base64-encoded PNG.
 
+### Screenshots to a file
+
+Pass `path` and the PNG is written to disk instead of coming back as image bytes:
+
+```json
+{ "name": "screenshot", "arguments": { "selector": "#app", "path": "~/shots/01-dashboard.png" } }
+```
+
+The response is a line of text naming the file and its size — nothing enters your context. Use this for docs screenshots and QA evidence, then hand the file to `publish_artifact`. The path must resolve inside your home directory.
+
+To redact before capturing, inject CSS first so no unredacted image is ever written. `browser_batch` runs the whole recipe in one call:
+
+```json
+{ "name": "browser_batch", "arguments": { "steps": [
+  { "cmd": "navigate", "url": "https://app.example.com/dashboard" },
+  { "cmd": "inject_css", "css": ".user-email { filter: blur(6px); }", "id": "sb-redact" },
+  { "cmd": "wait", "selector": "#app" },
+  { "cmd": "screenshot", "selector": "#app", "path": "~/shots/01-dashboard.png" }
+] } }
+```
+
 ## Example: Research Task
 
 **User:** Find the top 3 trending Python repositories on GitHub

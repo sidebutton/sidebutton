@@ -21,7 +21,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 
-const EXPECTED_TOOL_COUNT = 28;
+const EXPECTED_TOOL_COUNT = 29;
 const PROTOCOL_VERSION = '2025-06-18';
 const TIMEOUT_MS = 60_000;
 

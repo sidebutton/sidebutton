@@ -9,6 +9,8 @@ import type { Step } from '../types.js';
 import type { ExecutionContext } from '../context.js';
 import { WorkflowError } from '../types.js';
 import { resolveDelay } from '../delay.js';
+import { findUnresolvedPlaceholder } from '../interpolate.js';
+import { resolveContainedPath, writeCapturedImage } from '../contained-path.js';
 
 type BrowserNavigate = Extract<Step, { type: 'browser.navigate' }>;
 type BrowserClick = Extract<Step, { type: 'browser.click' }>;
@@ -22,6 +24,7 @@ type BrowserExists = Extract<Step, { type: 'browser.exists' }>;
 type BrowserHover = Extract<Step, { type: 'browser.hover' }>;
 type BrowserKey = Extract<Step, { type: 'browser.key' }>;
 type BrowserSnapshot = Extract<Step, { type: 'browser.snapshot' }>;
+type BrowserScreenshot = Extract<Step, { type: 'browser.screenshot' }>;
 type BrowserInjectCSS = Extract<Step, { type: 'browser.injectCSS' }>;
 type BrowserInjectJS = Extract<Step, { type: 'browser.injectJS' }>;
 type BrowserSelectOption = Extract<Step, { type: 'browser.select_option' }>;
@@ -193,6 +196,74 @@ export async function executeBrowserSnapshot(
   ctx.variables[step.as] = snapshot;
 }
 
+/**
+ * Capture the page (or a crop of it) straight to a file on the agent machine.
+ *
+ * The image bytes never leave this process: the base64 comes back from the extension inside
+ * Node, is written to disk here, and only the path is surfaced. That is the point of the step
+ * — an agent can produce a docs screenshot without the image entering the model's context.
+ *
+ * Composes with browser.injectCSS for pre-capture redaction: navigate → inject blur → wait →
+ * screenshot means no unredacted original ever exists on disk.
+ *
+ * The write is a full overwrite of a fixed path, never a timestamped name, because every
+ * non-control step is retried up to MAX_RETRIES times — a retry must land on the same file
+ * rather than leaving a numbered trail.
+ */
+export async function executeBrowserScreenshot(
+  step: BrowserScreenshot,
+  ctx: ExecutionContext
+): Promise<void> {
+  const ext = requireExtension(ctx);
+
+  // parseWorkflow validates step *types*, not required fields, so a step written without a
+  // `path` reaches here with undefined — and interpolate() would stringify it into a file
+  // literally named "undefined" under ~/workspace, reported as a success.
+  if (typeof step.path !== 'string' || !step.path.trim()) {
+    throw new WorkflowError(
+      'browser.screenshot requires a "path" to write the PNG to.',
+      'PATH_ERROR'
+    );
+  }
+
+  // interpolate() leaves an unknown {{placeholder}} untouched rather than blanking it. For a
+  // path that would silently create a directory literally named "{{path}}"; for a selector it
+  // could only ever fail to match. Both mean a param was not passed — say so plainly.
+  const resolved = (field: 'path' | 'selector', raw: string): string => {
+    const value = ctx.interpolate(raw);
+    const unresolved = findUnresolvedPlaceholder(value);
+    if (unresolved) {
+      throw new WorkflowError(
+        `browser.screenshot ${field} still contains ${unresolved} — that parameter was not provided. ` +
+        `Pass it, or pass an empty string to skip.`,
+        'PATH_ERROR'
+      );
+    }
+    return value;
+  };
+
+  // An empty selector means "no crop" (full viewport) — this is what lets a caller leave the
+  // crop parameter blank rather than needing a separate workflow.
+  const interpolated = step.selector ? resolved('selector', step.selector) : '';
+  const selector = interpolated.trim() ? interpolated : undefined;
+  const outPath = resolveContainedPath(resolved('path', step.path));
+
+  const target = selector ?? (step.ref !== undefined ? `ref=${step.ref}` : undefined)
+    ?? (step.region ? `region ${step.region.width}x${step.region.height}` : 'viewport');
+  ctx.emitLog('info', `Capturing screenshot (${target}) → ${outPath}`);
+
+  const imageData = await ext.screenshot({ ref: step.ref, selector, region: step.region });
+  const written = writeCapturedImage(imageData, outPath);
+  ctx.emitLog('info', `Wrote ${written} bytes to ${outPath}`);
+
+  // The path, never the base64: run logs are persisted to disk as JSON and get_run_log
+  // truncates results at 100 chars, so a base64 payload here is pure size and leakage.
+  ctx.lastStepResult = outPath;
+  if (step.as) {
+    ctx.variables[step.as] = outPath;
+  }
+}
+
 export async function executeBrowserInjectCSS(
   step: BrowserInjectCSS,
   ctx: ExecutionContext
@@ -204,6 +275,19 @@ export async function executeBrowserInjectCSS(
   if (!css.trim()) {
     ctx.emitLog('info', `Skipping empty CSS injection${id ? ` (id: ${id})` : ''}`);
     return;
+  }
+
+  // A literal "{{redact_css}}" is non-empty, so the skip above does not catch it: the step
+  // would inject a placeholder that styles nothing, report success, and let the screenshot
+  // that follows capture the page UNREDACTED. Pass "" to mean "no redaction" — silence here
+  // is the one failure mode the redaction recipe cannot tolerate.
+  const unresolved = findUnresolvedPlaceholder(css);
+  if (unresolved) {
+    throw new WorkflowError(
+      `browser.injectCSS css still contains ${unresolved} — that parameter was not provided. ` +
+      `Pass it, or pass an empty string to inject nothing.`,
+      'PARSE_ERROR'
+    );
   }
 
   ctx.emitLog('info', `Injecting CSS${id ? ` (id: ${id})` : ''}`);

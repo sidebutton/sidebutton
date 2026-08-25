@@ -50,7 +50,7 @@ SideButton supports 27 step types in 5 categories:
 
 | Category | Steps | Use For |
 |----------|-------|---------|
-| **Browser** | navigate, click, type, scroll, hover, wait, extract, extractAll, extractMap, exists, key, snapshot, injectCSS, injectJS, select_option, scrollIntoView, fill | Web automation |
+| **Browser** | navigate, click, type, scroll, hover, wait, extract, extractAll, extractMap, exists, key, snapshot, screenshot, injectCSS, injectJS, select_option, scrollIntoView, fill | Web automation |
 | **Shell** | shell.run, terminal.open, terminal.run | System commands |
 | **LLM** | llm.classify, llm.generate | AI-powered decisions |
 | **Control** | control.if, control.retry, control.stop | Logic and flow |

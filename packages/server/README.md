@@ -98,7 +98,7 @@ Add to `~/.cursor/mcp.json`:
 
 ## MCP Tools
 
-28 tools, plus every installed knowledge pack as a `skill://` MCP resource.
+29 tools, plus every installed knowledge pack as a `skill://` MCP resource.
 
 Seven need no browser:
 
@@ -112,7 +112,7 @@ Seven need no browser:
 | `publish_artifact` | Publish a file and return a shareable download link |
 | `get_browser_status` | Check extension connection |
 
-The other 21 drive your real Chrome through the SideButton extension:
+The other 22 drive your real Chrome through the SideButton extension:
 
 | Tool | Description |
 |------|-------------|
@@ -132,7 +132,8 @@ The other 21 drive your real Chrome through the SideButton extension:
 | `exists` | Check if element exists |
 | `wait` | Wait for element or delay |
 | `hover` | Hover over element |
-| `screenshot` | Capture screenshot |
+| `screenshot` | Capture screenshot, or write a PNG file with `path` |
+| `inject_css` | Inject CSS (blur elements before a screenshot) |
 | `evaluate` | Execute JavaScript in browser |
 | `browser_batch` | Run several browser steps in one round trip |
 | `set_basic_auth` | Set HTTP basic-auth credentials for an origin |
@@ -146,11 +147,11 @@ workspace has to stay intact.
 
 | Profile | Target | Size | Tools | Needs |
 | --- | --- | --- | --- | --- |
-| **browser** (default) | `browser` | ~1.5 GB | all 28 | egress to the Chrome Web Store |
-| **server-only** | `runner` | ~580 MB | 7 of 28 | nothing |
+| **browser** (default) | `browser` | ~1.5 GB | all 29 | egress to the Chrome Web Store |
+| **server-only** | `runner` | ~580 MB | 7 of 29 | nothing |
 
 ```bash
-# browser — bundles Chromium, installs the extension itself, all 28 tools
+# browser — bundles Chromium, installs the extension itself, all 29 tools
 docker build -f packages/server/Dockerfile -t sidebutton .
 docker run -i --rm sidebutton
 
@@ -228,7 +229,7 @@ node packages/server/scripts/mcp-stdio-probe.mjs -- docker run -i --rm mcp/sideb
 
 ## Environment Variables
 
-None are required. The server starts and enumerates all 28 tools with no
+None are required. The server starts and enumerates all 29 tools with no
 configuration.
 
 | Variable | Required For | Description |

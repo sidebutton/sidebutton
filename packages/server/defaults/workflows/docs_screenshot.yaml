@@ -1,0 +1,39 @@
+schema_version: 1
+version: "1.0.0"
+last_verified: "2026-08-25"
+id: docs_screenshot
+title: "Docs: Capture Screenshot"
+description: "Navigate to a page, blur any sensitive elements, and write a cropped PNG to a file on this machine. The image never enters the model's context — only the path comes back. Pass an empty string for crop (whole viewport) or redact_css (no redaction) to skip either."
+category:
+  level: workflow
+  domain: research
+  reusable: true
+params:
+  url: string
+  path: string
+  crop: string          # CSS selector to crop to; "" for the whole viewport
+  redact_css: string    # CSS applied before capture, e.g. ".user-email { filter: blur(6px); }"; "" for none
+steps:
+  # 1. Open the page to shoot
+  - type: browser.navigate
+    url: "{{url}}"
+
+  # 2. Redact BEFORE capturing, so no unredacted image is ever written to disk.
+  #    An empty redact_css is skipped by the step, so "" is safe to pass.
+  - type: browser.injectCSS
+    id: sb-redact
+    css: "{{redact_css}}"
+
+  # 3. Let the page settle — fonts, images, and the blur above — before the shot.
+  #    Literal, not a param: browser.wait does not interpolate ms.
+  - type: browser.wait
+    ms: 400
+
+  # 4. Capture straight to a file. Contained to the home directory by the step.
+  - type: browser.screenshot
+    selector: "{{crop}}"
+    path: "{{path}}"
+    as: shot_path
+
+  - type: control.stop
+    message: "Screenshot written to {{shot_path}}"

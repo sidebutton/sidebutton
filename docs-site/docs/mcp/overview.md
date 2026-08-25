@@ -68,10 +68,11 @@ Direct browser automation:
 | `type` | Type into an element |
 | `scroll` | Scroll the page |
 | `extract` | Get text from element |
-| `screenshot` | Capture page image |
+| `screenshot` | Capture page image, or write a PNG file with `path` |
 | `hover` | Position cursor |
 | `capture_page` | Get all selectors |
 | `select_option` | Select from dropdown |
+| `inject_css` | Inject CSS (blur elements before a screenshot) |
 | `evaluate` | Execute JavaScript in browser |
 
 ## How It Works

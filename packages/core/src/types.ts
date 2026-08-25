@@ -108,6 +108,7 @@ export type Step =
   | { type: 'data.get'; input: string; separator?: string; index: string; as: string }
   | { type: 'browser.injectCSS'; css: string; id?: string }
   | { type: 'browser.injectJS'; js: string; id?: string; as?: string }
+  | { type: 'browser.screenshot'; path: string; ref?: number; selector?: string; region?: { x: number; y: number; width: number; height: number }; as?: string }
   | { type: 'browser.select_option'; selector: string; value?: string; label?: string }
   | { type: 'browser.scrollIntoView'; selector: string; block?: 'start' | 'center' | 'end' | 'nearest' }
   | { type: 'browser.fill'; selector: string; value: string }
@@ -735,6 +736,7 @@ export class WorkflowError extends Error {
       | 'NESTED_ERROR'
       | 'PARSE_ERROR'
       | 'PROVIDER_ERROR'
+      | 'PATH_ERROR'
   ) {
     super(message);
     this.name = 'WorkflowError';
