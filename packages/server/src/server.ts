@@ -80,7 +80,7 @@ import type {
   AgentJob,
   SkillRegistry,
 } from '@sidebutton/core';
-import { ExecutionContext, executeWorkflow, JiraProvider, PROVIDER_DEFINITIONS, getProviderStatuses, getActiveUsageFile, detectCli, getContextSource, buildRunLogUsage, ensureClaudeFolderTrust } from '@sidebutton/core';
+import { ExecutionContext, executeWorkflow, JiraProvider, PROVIDER_DEFINITIONS, getProviderStatuses, getActiveUsageFile, detectCli, getContextSource, buildRunLogUsage, ensureClaudeFolderTrust, hasBrowserSteps } from '@sidebutton/core';
 import type { ConnectorType } from '@sidebutton/core';
 import {
   isLoopbackHost,
@@ -2098,9 +2098,9 @@ export async function startServer(config: ServerConfig): Promise<void> {
       throw { statusCode: 404, message: 'Workflow not found' };
     }
 
-    // Check browser connection for browser workflows
-    const hasBrowserSteps = workflow.steps.some((s) => s.type.startsWith('browser.'));
-    if (hasBrowserSteps && !(await extensionClient.isConnected())) {
+    // Check browser connection for browser workflows (recursive: catches browser steps
+    // nested inside control.foreach / control.if, which a top-level scan misses).
+    if (hasBrowserSteps(workflow.steps) && !(await extensionClient.isConnected())) {
       throw { statusCode: 400, message: 'Browser not connected' };
     }
 

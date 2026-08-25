@@ -34,6 +34,7 @@ export interface ExtensionClient {
   fill(selector: string, value: string): Promise<void>;
   scrollIntoView(selector: string, block?: string): Promise<void>;
   ariaSnapshot(options?: { includeContent?: boolean }): Promise<string>;
+  screenshot(options?: { ref?: number; selector?: string; region?: { x: number; y: number; width: number; height: number } }): Promise<string>;
   injectCSS(css: string, id?: string): Promise<void>;
   injectJS(js: string, id?: string): Promise<{ executed: boolean; result?: unknown; error?: string }>;
   setBasicAuth(origin: string | undefined, username: string, password: string): Promise<void>;

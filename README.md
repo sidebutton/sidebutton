@@ -137,7 +137,7 @@ Add to `~/.cursor/mcp.json`:
 | `press_key` | Send keyboard keys |
 | `scroll` | Scroll the page |
 | `extract` | Extract text from element |
-| `screenshot` | Capture page screenshot |
+| `screenshot` | Capture page screenshot (pass `path` to write a PNG file instead of returning image bytes) |
 | `select_option` | Select dropdown option |
 | `fill` | Fill input value (React-compatible) |
 | `wait` | Wait for element or delay |
@@ -146,6 +146,7 @@ Add to `~/.cursor/mcp.json`:
 | `extract_map` | Extract structured data from repeated elements |
 | `scroll_into_view` | Scroll element into viewport |
 | `hover` | Hover over element |
+| `inject_css` | Inject CSS into the page (blur/hide elements before a screenshot) |
 | `evaluate` | Execute JavaScript in browser |
 | `browser_batch` | Run a sequence of browser actions in one call |
 | `set_basic_auth` | Set HTTP Basic Auth credentials for the connected tab |
@@ -178,7 +179,7 @@ YAML-first orchestration for agentic workflows. Step types by family:
 
 | Family | Steps |
 |------|-------|
-| `browser.*` | navigate, click, type, fill, extract, extractAll, extractMap, snapshot, wait, exists, hover, key, scroll, scrollIntoView, select_option, injectCSS, injectJS |
+| `browser.*` | navigate, click, type, fill, extract, extractAll, extractMap, snapshot, screenshot, wait, exists, hover, key, scroll, scrollIntoView, select_option, injectCSS, injectJS |
 | `git.*` | createPR, getPR, listPRs, getIssue, listIssues |
 | `issues.*` | create, get, search, comment, attach, transition |
 | `llm.*` | classify, decide, generate |

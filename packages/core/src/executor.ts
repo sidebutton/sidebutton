@@ -258,6 +258,10 @@ function getStepDetails(step: Step, ctx: ExecutionContext): string | undefined {
       return undefined;
     case 'browser.exists':
       return `${ctx.interpolate(step.selector)} → $${step.as}`;
+    case 'browser.screenshot': {
+      const crop = step.selector ? ctx.interpolate(step.selector) : (step.region ? 'region' : 'viewport');
+      return `${crop} → ${ctx.interpolate(step.path)}`;
+    }
     case 'browser.hover':
       return ctx.interpolate(step.selector);
     case 'browser.key': {

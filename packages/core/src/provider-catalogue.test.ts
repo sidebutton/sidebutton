@@ -39,9 +39,9 @@ describe('getAllStepTypes()', () => {
     }
   });
 
-  it('has no duplicates and the expected count (45 - 3 chat = 42)', () => {
+  it('has no duplicates and the expected count (46 - 3 chat = 43)', () => {
     expect(new Set(types).size).toBe(types.length);
-    expect(types.length).toBe(42);
+    expect(types.length).toBe(43);
   });
 });
 
@@ -96,11 +96,11 @@ describe('Linear provider (SCRUM-1425) is wired honestly', () => {
     ]);
   });
 
-  it('adds NO new step types — every linear step is already executable, count stays 42', () => {
+  it('adds NO new step types — every linear step is already executable, count stays 43', () => {
     const executable = new Set(getAllStepTypes());
     const api = PROVIDER_DEFINITIONS.find((d) => d.id === 'linear')!.connectors[0];
     for (const st of api.stepTypes) expect(executable.has(st)).toBe(true);
-    expect(getAllStepTypes().length).toBe(42);
+    expect(getAllStepTypes().length).toBe(43);
   });
 
   it('getIssuesProvider resolves a LinearProvider (auto-detected and explicit)', () => {

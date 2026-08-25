@@ -20,6 +20,7 @@ import {
   executeBrowserHover,
   executeBrowserKey,
   executeBrowserSnapshot,
+  executeBrowserScreenshot,
   executeBrowserInjectCSS,
   executeBrowserInjectJS,
   executeBrowserSelectOption,
@@ -103,6 +104,8 @@ export async function executeStep(
       return executeBrowserKey(step, ctx);
     case 'browser.snapshot':
       return executeBrowserSnapshot(step, ctx);
+    case 'browser.screenshot':
+      return executeBrowserScreenshot(step, ctx);
     case 'browser.injectCSS':
       return executeBrowserInjectCSS(step, ctx);
     case 'browser.injectJS':
@@ -222,7 +225,7 @@ export function getAllStepTypes(): string[] {
     'browser.navigate', 'browser.click', 'browser.type', 'browser.scroll',
     'browser.extract', 'browser.extractAll', 'browser.extractMap',
     'browser.wait', 'browser.exists', 'browser.hover', 'browser.key',
-    'browser.snapshot', 'browser.injectCSS', 'browser.injectJS',
+    'browser.snapshot', 'browser.screenshot', 'browser.injectCSS', 'browser.injectJS',
     'browser.select_option', 'browser.scrollIntoView', 'browser.fill',
     'shell.run', 'terminal.open', 'terminal.run',
     'llm.classify', 'llm.generate', 'llm.decide',

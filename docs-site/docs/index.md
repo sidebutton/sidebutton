@@ -15,7 +15,7 @@ Open source platform for AI agents with structured roles, skills, and domain kno
 SideButton is an **open-source platform that packages domain knowledge for AI agents**. Install knowledge packs for web apps, automate with YAML workflows, and give AI agents real browser control via MCP.
 
 - **Install knowledge packs** — pre-built bundles of domain knowledge, workflows, and role playbooks for specific web apps
-- **Define reusable workflows** in YAML with 45 step types (browser, shell, LLM, issues, git, control flow)
+- **Define reusable workflows** in YAML with 46 step types (browser, shell, LLM, issues, git, control flow)
 - **Orchestrate cloud agents** — [chain workflows into playbooks](/workflows/orchestration) that work tickets end-to-end behind verdict gates
 - **Connect AI agents via MCP** — Claude Code, Cursor, or any MCP client gets real browser control
 - **Extend with plugins** — add custom MCP tools in any language (bash, Node.js, Python)

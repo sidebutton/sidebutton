@@ -33,6 +33,8 @@ import {
   loadWorkflowsFromDir,
   loadWorkflow,
   buildRunLogUsage,
+  resolveContainedPath,
+  hasBrowserSteps,
 } from '@sidebutton/core';
 import type { ExtensionClientImpl } from '../extension.js';
 import { newRunId } from '../run-id.js';
@@ -504,6 +506,8 @@ export class McpHandler {
         return this.toolScrollIntoView(args);
       case 'hover':
         return this.toolHover(args);
+      case 'inject_css':
+        return this.toolInjectCss(args);
       case 'evaluate':
         return this.toolEvaluate(args);
       case 'browser_batch':
@@ -586,12 +590,11 @@ export class McpHandler {
       throw new Error(`Workflow not found: ${workflowId}`);
     }
 
-    // Check browser connection for browser workflows
-    const hasBrowserSteps = workflow.steps.some((s) =>
-      s.type.startsWith('browser.')
-    );
-
-    if (hasBrowserSteps && !(await this.extensionClient.isConnected())) {
+    // Check browser connection for browser workflows. Uses core's recursive walk rather
+    // than a top-level scan: a browser step nested in a control.foreach (the shape the
+    // screenshot-registry lane wants) would otherwise skip this friendly gate and fail
+    // mid-run as an EXTENSION_ERROR instead.
+    if (hasBrowserSteps(workflow.steps) && !(await this.extensionClient.isConnected())) {
       throw new Error(BROWSER_NOT_CONNECTED);
     }
 
@@ -1234,12 +1237,33 @@ export class McpHandler {
       height: toNum(rawRegion.height) ?? 0,
     } : undefined;
 
+    // Resolve the output path BEFORE capturing: a rejected path should cost nothing, and
+    // failing after the capture would leave a redacted-but-unsaved shot with no file.
+    const rawPath = typeof args.path === 'string' ? args.path.trim() : '';
+    const outPath = rawPath ? resolveContainedPath(rawPath) : undefined;
+
     const imageData = await this.extensionClient.screenshot({ ref, selector, region });
+    const base64 = imageData.replace(/^data:image\/png;base64,/, '');
+
+    // No path: byte-for-byte the behaviour this tool has always had. mcp-browser-probe.mjs
+    // asserts an image block comes back, and callers rely on it.
+    if (!outPath) {
+      return {
+        content: [{
+          type: 'image',
+          data: base64,
+          mimeType: 'image/png',
+        }],
+      };
+    }
+
+    const bytes = Buffer.from(base64, 'base64');
+    if (bytes.length === 0) throw new Error('Screenshot returned empty image data');
+    fs.writeFileSync(outPath, bytes, { mode: 0o600 });
     return {
       content: [{
-        type: 'image',
-        data: imageData.replace(/^data:image\/png;base64,/, ''),
-        mimeType: 'image/png',
+        type: 'text',
+        text: `Wrote ${bytes.length} bytes to ${outPath}`,
       }],
     };
   }
@@ -1365,6 +1389,21 @@ export class McpHandler {
     return { content: [{ type: 'text', text: `Hovered over: ${selector}` }] };
   }
 
+  private async toolInjectCss(args: Record<string, unknown>): Promise<unknown> {
+    if (!(await this.extensionClient.isConnected())) {
+      throw new Error(BROWSER_NOT_CONNECTED);
+    }
+
+    const css = args.css as string;
+    if (!css) {
+      throw new Error('css parameter is required');
+    }
+    const id = typeof args.id === 'string' ? args.id : undefined;
+
+    await this.extensionClient.injectCSS(css, id);
+    return { content: [{ type: 'text', text: `Injected CSS${id ? ` (id: ${id})` : ''}` }] };
+  }
+
   private async toolEvaluate(args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.extensionClient.isConnected())) {
       throw new Error(BROWSER_NOT_CONNECTED);
@@ -1395,6 +1434,7 @@ export class McpHandler {
     'navigate', 'snapshot', 'click', 'type', 'press_key', 'scroll',
     'select_option', 'extract', 'screenshot', 'fill', 'wait', 'exists',
     'extract_all', 'extract_map', 'scroll_into_view', 'hover', 'evaluate',
+    'inject_css',
   ]);
 
   /**

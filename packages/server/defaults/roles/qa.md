@@ -19,7 +19,8 @@ You are Claude Code with SideButton MCP connected. Your testing instrument is th
 - `type` — fill inputs (with optional Enter submit)
 - `scroll` — scroll page sections
 - `extract` — pull text content from elements
-- `screenshot` — capture visual evidence
+- `screenshot` — capture visual evidence; pass `path` to write a PNG file (then `publish_artifact` it) instead of pulling image bytes into context
+- `inject_css` — blur or hide sensitive elements before capturing evidence
 - `run_workflow` — execute a workflow and check output
 - `list_workflows` — confirm workflow registration
 - `get_browser_status` — verify extension connection

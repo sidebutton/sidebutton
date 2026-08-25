@@ -297,10 +297,36 @@ Capture a screenshot of the current page. Optionally crop to a specific element 
 | `ref` | `number` | Element reference from `snapshot` (e.g., 42 from `[ref=42]`). Crops to that element. |
 | `selector` | `string` | CSS selector. Crops to the matched element. |
 | `region` | `object` | Manual crop: `{x, y, width, height}` in CSS pixels. |
+| `path` | `string` | Write the PNG here instead of returning image bytes. `~/…`, absolute, or relative to `~/workspace`. |
 
-All optional, mutually exclusive. No params = full viewport.
+All optional. The three crop params are mutually exclusive; no crop param = full viewport.
 
-**Response:** Base64-encoded PNG image.
+**Response:** Base64-encoded PNG image — or, when `path` is given, a line of text naming the file written and its size.
+
+Writing to a file is what you want for docs screenshots and QA evidence: the image never enters your context, and the file can be handed straight to `publish_artifact`. `path` must resolve inside your home directory (`..` traversal and escaping symlinks are rejected); parent directories are created, and an existing file is overwritten.
+
+```json
+{ "name": "screenshot", "arguments": { "selector": "#app", "path": "~/shots/01-dashboard.png" } }
+```
+
+---
+
+### inject_css
+
+Inject a CSS rule into the current page. The main use is pre-capture redaction: blur or hide sensitive elements, then `screenshot` to a file, so no unredacted image ever exists.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `css` | string | Yes | CSS to inject, e.g. `.user-email { filter: blur(6px); }` |
+| `id` | string | No | Identifier for the injected style element, so it can be replaced later |
+
+**Response:** Confirmation text.
+
+::: tip Idempotent injection
+Injecting again with the same `id` replaces the rule instead of stacking a second one.
+:::
 
 ---
 

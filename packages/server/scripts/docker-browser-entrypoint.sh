@@ -1,6 +1,6 @@
 #!/bin/sh
 # Entrypoint for the `browser` container profile: Xvfb + Chromium + the MCP
-# server, all in one container, so that all 28 tools work without a host.
+# server, all in one container, so that all 29 tools work without a host.
 #
 # Three things here are load-bearing and easy to get wrong:
 #
