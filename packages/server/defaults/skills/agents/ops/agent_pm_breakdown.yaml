@@ -79,8 +79,9 @@ steps:
         - TITLE: outcome-focused
         - ACCEPTANCE CRITERIA: testable, one line each
         - WORKSPACE: the workspace / area it belongs to
-        - SUGGESTED PLAYBOOK: the workflow that would deliver it (e.g. bug-fix, feature-impl)
+        - SUGGESTED PLAYBOOK: the playbook that would deliver it (e.g. bug-fix, feature-impl). a documentation-page child - one that creates or refreshes a page on a docs site - always takes docs-page, and takes the board's documentation issue type where it has one.
         - SIZE: S / M / L
+      a documentation-page child ALSO carries its page contract in the description, as a yaml block the delivery workflows read: site (target site id), mode (audit / skill-refresh / drift-fix / page-refresh / new-page / post-deploy-verify), routes (the pages), sources (the pack/module content sources to write from), elements (element numbers, on drift-fix), decisions (open decision flags it depends on). without that block the write step cannot resolve the page and stops for a decision.
       set blocked-by / blocks links so the issues form parallel WAVES (wave 1 = no blockers).
       be idempotent and reconcile to the latest decisions and answers: create what is missing, update issues that changed, and delete or close issues that are no longer needed or that the thread asked to drop - never create duplicates.
       {{hint}}

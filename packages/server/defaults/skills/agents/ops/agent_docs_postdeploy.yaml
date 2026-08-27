@@ -1,0 +1,106 @@
+schema_version: 1
+id: agent_docs_postdeploy
+title: "Verify Docs Went Live"
+description: "Re-walk the goal's changed docs routes on the published site and answer LIVE_OK / DEPLOY_PENDING / DRIFT_FOUND from a mechanical source → publish-intermediate → live diff"
+overview: |
+  The launch phase of a docs-site goal. Merged is not live: the pages a docs goal wrote sit in the
+  source repo until a publish hop carries them to whatever actually serves the site, and how many
+  hops there are — and who triggers them — differs per target. This job is the live half of the
+  delivery: it re-walks the goal's changed routes on the PUBLISHED site using that site's own audit
+  pack QA playbooks, and answers one question per route — is the thing being served the thing the
+  goal merged?
+
+  The answer is a diff across the publish chain, never a prose judgement. Every hop is read-only and
+  credential-free: SOURCE (the merged markdown in the repo the goal worked), the optional PUBLISH
+  INTERMEDIATE the deploy actually builds from (an OSS mirror, a release branch — read raw over HTTP,
+  plus its deploy run's outcome), and LIVE (the served page). A route that has not reached the
+  intermediate yet is DEPLOY_PENDING — the expected, non-failing answer on a target whose publish hop
+  is batched and release-driven, where it holds the phase until the next sync. A route that HAS
+  reached the intermediate and disagrees with it — or a retired route still answering, or a
+  source-only route that is live — is DRIFT_FOUND, and stays a finding even when its cause is a known
+  publish-chain limitation.
+
+  Dual-anchored on purpose: Launch runs it against the portal goal, while a per-page delivery step
+  runs it against that page's ticket. Exactly one of goal_url / ticket_url is set per dispatch.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: qa
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the job's
+  # single result; declaring it here is what makes this workflow content-routable. DEPLOY_PENDING is
+  # a hold, not a failure: on a batched publish chain it is the correct pre-sync answer.
+  verdicts: [LIVE_OK, DEPLOY_PENDING, DRIFT_FOUND]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  goal_url:
+    type: string
+    default: ""
+    description: "Portal goal URL — set when Launch dispatches this job goal-anchored; leave empty when anchoring on a ticket"
+  ticket_url:
+    type: string
+    default: ""
+    description: "Jira ticket URL — set when a per-page delivery step dispatches this job ticket-anchored; leave empty when anchoring on a goal"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: QA Docs Post-Deploy"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # Provider clear-set (AAP-C SCRUM-1506 + AAP-17 SCRUM-1653): identical to every agents/ops/*.yaml
+      # preamble; scripts/check-ops-clearset.mjs guards this list against AGENT_APP_ENV_KEYS drift.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read the anchor this job carries - the portal goal at {{goal_url}} when that is set, otherwise the Jira ticket with attachments and all comments at {{ticket_url}}. exactly one of the two is set and the empty one is not an error. if the anchor fails to load, stop and report the error.
+      EXECUTION RULES (read first - they override any habit):
+      - Do ALL of the work in THIS session, in the FOREGROUND, and finish before your turn ends. You MAY spawn subagents (the Agent / Task tool) or run parallel probes to work faster - but you MUST wait for every subagent and any background task to return and fold their results in YOURSELF before ending the turn. Never move the work (or the result) into the background - no run_in_background, no background workflows, no trailing & - and then end the turn expecting to be resumed. Ending your turn is FINAL here: nothing wakes you to "resume", so a turn that ends while a spawned subagent or any background work is still pending is reported as a FAILED step, not a pause.
+      - Publish the result YOURSELF, in the foreground, as the LAST thing you do - after every subagent and background task has returned. Never delegate it to a subagent, and never end the turn "holding", "pausing", or planning to "resume/continue later". If you genuinely cannot finish, say so in the result and stop.
+      learn the site first, top-down: load the site's knowledge pack - the host `_skill.md`, the host `qa` role file, then the `_skill.md` and any `qa` file of every module you will walk (for our own docs that is `skill://docs.sidebutton.com/_skill.md`, `skill://docs.sidebutton.com/qa.md`, then per module). also read the site's docs instruction instance in the repo - it carries the route inventory table with each route's source-vs-live status. THE PACK PLAYBOOKS DEFINE WHAT CORRECT MEANS PER PAGE; do not invent your own assertions.
+      resolve THE ROUTE SET before probing: the routes this goal or ticket changed (from the delivered pages and the merged PR), PLUS every route the instruction inventory marks retired, redirected or source-only - those are the assertions that catch a publish hop which copies but never deletes.
+      resolve THE PUBLISH CHAIN from the pack and the repo and name every hop: source repo -> (optional publish intermediate the deploy builds from, e.g. an OSS mirror) -> the served site. a target with no intermediate is a two-hop chain - do not invent one.
+      probe every route at EVERY hop, read-only and credential-free:
+      - source: the merged markdown in the repo clone, at the commit the goal delivered.
+      - intermediate (only when the chain has one): the raw file over HTTP on the intermediate's default branch, AND the deploy run that builds from it - has the run for the intermediate's CURRENT head finished, and did it succeed.
+      - live: plain HTTP against the published URL.
+      compare mechanically and never trust a single signal:
+      - route-shape traps: `/page` and `/page.html` both resolve; a trailing slash on a section 404s; retire and redirect stubs answer 200, NOT 3xx. ASSERT CONTENT, never status alone.
+      - the served page carries no provenance stamp and its raw markdown is not fetchable, so diff live against the INTERMEDIATE's source (against the repo source on a two-hop chain) - never against a local build, which misses deploy-only theme chrome.
+      - there is no sitemap: the instruction inventory IS the route list, and a nav-only crawl misses unlisted-but-live routes.
+      - cheap generation oracle first - the site's hard-coded version badge at each hop tells you in ONE probe whether the intermediate is even carrying this release yet.
+      call each route, then reduce to ONE verdict for the walk:
+      - a route whose merged content has not reached the intermediate, or whose deploy run for the intermediate head has not finished or did not succeed, is `pending` - it CANNOT also be drift, because nothing claiming to serve it has run yet.
+      - a route that HAS reached the intermediate and whose live page disagrees with it, or a retired route still answering with content, or a source-only route that is live (its condition is a 404), is `drift`.
+      - any `drift` => DRIFT_FOUND. otherwise any `pending` => DEPLOY_PENDING. otherwise LIVE_OK.
+      DEPLOY_PENDING is the EXPECTED answer on a target whose publish hop is batched and release-driven - it is a hold, not a failure: name the hop that is behind and what releases it. DRIFT_FOUND stays a real finding even when its cause is a known publish-chain limitation - name the cause, do not soften the call.
+      {{hint}}
+      save the walk and the hop comparison as evidence files (route-walk.md and publish-chain.md - keep verdict words out of filenames), publish each via the publish_artifact tool, and cite the returned download links inline in your single result; if publish_artifact is unavailable, save under ~/workspace/artifacts/ for post-run collection.
+      publish the outcome on this job's anchor as your final foreground action - the goal's phase result when goal-anchored, ONE ticket comment when ticket-anchored - carrying a per-route table (route / source / intermediate / live / call) and the cited evidence links.
+      end with one line - "VERDICT:" followed by exactly one of LIVE_OK (every route served and matching) / DEPLOY_PENDING (a hop is behind - say which, and what releases it) / DRIFT_FOUND (live disagrees with the intermediate, or a retired or source-only route is answering) - and use these uppercase tokens nowhere else.
+      SB_PROMPT
+      )"

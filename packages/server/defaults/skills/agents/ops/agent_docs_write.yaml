@@ -1,0 +1,122 @@
+schema_version: 1
+id: agent_docs_write
+title: "Write Product Docs"
+description: "Transform fresh skill-pack knowledge into the ticket's documentation page(s), stamp provenance, open the PR — refuses stale or below-floor sources"
+overview: |
+  The authoring half of per-page documentation delivery. The agent reads a Docs ticket, resolves its
+  page contract (site, mode, routes, sources, elements, decisions), loads the target site's own
+  instruction instance plus every skill module the ticket maps as a content source, and only then
+  writes. Pages are derived from the skill packs and the live product source — never from the agent's
+  own recollection of the product — so the freshness of the mapped modules is what bounds the pass.
+
+  Before writing a line it runs the freshness gate: a source must not be flagged for reverification,
+  must carry a registry index version matching its pack manifest, must have no product-source commits
+  since it was last verified, and must sit at or above the instance confidence floor. A source that
+  fails emits STALE_SKILL so the skill-refresh lane runs first; an unresolved decision flag emits
+  NEEDS_DECISION. A clean pass stamps the docs_agent provenance block on every changed page, opens the
+  PR, and emits PAGES_READY. The three tokens are the workflow's declared gate vocabulary
+  (metadata.verdicts), so a portal playbook step content-routes on them — PAGES_READY forward to
+  verification, the other two to a pause. On a verification loopback the agent pushes to the existing
+  PR branch instead of opening a second PR.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: writer
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # step's ticket comment; declaring it here is what makes this workflow content-routable.
+  verdicts: [PAGES_READY, STALE_SKILL, NEEDS_DECISION]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  ticket_url:
+    type: string
+    description: "Jira ticket URL — the Docs page ticket carrying the page-contract block (site, mode, routes, sources, elements, decisions) that agent_pm_breakdown writes into its description"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent; carries QA findings on a verify loopback"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: Docs Write"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read ticket with attachments and all comments - {{ticket_url}}. if it fails, stop and report the error.
+
+      EXECUTION RULES (read first — they override any habit):
+      - Do ALL of the work in THIS session, in the FOREGROUND, and finish before your turn ends. You MAY spawn subagents (the Agent / Task tool) or run parallel searches to work faster — but you MUST wait for every subagent and any background task to return and fold their results in YOURSELF before ending the turn. Never move the work (or the comment) into the background — no run_in_background, no background workflows, no trailing & — and then end the turn expecting to be resumed. Ending your turn is FINAL here: nothing wakes you to "resume", so a turn that ends while any spawned or background work is still pending is reported as a FAILED step, not a pause.
+      - Post the ticket comment YOURSELF, in the foreground, as the LAST thing you do — after every subagent and background task has returned. Never delegate it, and never end the turn "holding" or planning to "resume later".
+
+      CONTINUATION / LOOPBACK: if the hint below carries verification findings, or the ticket already has a write comment naming a work branch, this page is already mid-delivery. Fetch that branch, read the existing diff and the findings, and push fixes to THAT branch — do NOT start over, do NOT redo finished pages, and do NOT open a second PR. The existing PR is the deliverable; re-report it. If the prior branch is unusable, say why in your comment and restart cleanly.
+
+      CONTRACT: read the ticket's contract block and resolve every field — site (target site id), mode (audit / skill-refresh / drift-fix / page-refresh / new-page / post-deploy-verify), routes[] (the pages to write), sources[] (pack/module content sources to load), elements[] (element numbers, on drift-fix), decisions[] (open decision flags this ticket depends on). If a field the mode needs is missing or unresolvable from the ticket thread, stop with the decision verdict below — say which field, and do not guess it.
+
+      INSTRUCTION: locate the site instruction instance for `site` (the DOCS-INSTRUCTION.md for that site, in the site's source-of-truth repo in this workspace) and read it IN FULL before writing. It is normative and it overrides your habits: it declares the page tree, the sitemap and per-page audit module, the allowlisted source packs, the build command, the authoring constraints, the publication boundary, and the provenance stamp. If you cannot find it, stop with the decision verdict below, naming the paths you searched.
+
+      SOURCES: resolve the mapped skill modules for every entry in sources[] (pack/module form). Read each module's FRONTMATTER first and run the freshness gate below on it — every gate check reads frontmatter, two manifest version strings and a repo log, none of them the module body — then load the bodies (the module _skill.md plus anything it points at) only for the sources that passed. A gate failure ends the pass, so loading bodies first spends the whole content read on a run that writes nothing. Content precedence is: live product and product source FIRST, then the skill packs, then the existing docs pages. Write pages from the skills and the product source ONLY — never from your own memory of the product. If a claim is not backed by a loaded source or a check against the product, do not write it.
+
+      FRESHNESS GATE (run BEFORE loading bodies and BEFORE writing, per source module — a failure here ends the pass):
+        1. The module must not be flagged for reverification (needs_reverification true => stale).
+        2. The registry index version for the pack must EQUAL the pack's own manifest version — an unreconciled pack is not fresh.
+        3. No product-source commits may touch the module's mapped paths since its last_verified date. Where the module pins a commit anchor, diff that commit to HEAD over the mapped paths instead. Where neither repo diff nor a pin is available, fall back to age: older than the instance's staleness threshold (default 30 days) is stale.
+        4. The module's confidence must be at or above the instance confidence floor (default 0.70). Below the floor is fresh-but-too-shallow — it needs the improve lane, not a page pass.
+        5. Never regress a page: if the page's last change post-dates the source module's last_verified, do not overwrite it — convert the pass into a skill-refresh prerequisite. Changes made by THIS delivery do not count: commits on this ticket's own work branch are your own earlier pass, not a human edit that is ahead of the skill, so on a loopback ignore them entirely and fix the findings. Only a change from outside this branch can regress a page.
+      Any source failing any check, or check 5 firing on any route, => write NOTHING and stop with the stale-source verdict, naming the pack/module and which check failed (check 5 fires with every source fresh, and it takes that same verdict — the route it names needs the skill-refresh lane before a page pass). Do not "work around" a stale source with your own product knowledge — that is the exact failure this gate exists to prevent.
+
+      WRITE: transform the loaded module knowledge into the page(s) at routes[]. Follow the instruction's authoring constraints exactly — they are verified production behaviour, not style preferences. For a VitePress site that means at minimum: no Mermaid fences on doc pages (no plugin is installed, they render as raw text); Vue moustache interpolation may appear ONLY inside code fences (fences are wrapped in v-pre; inline moustaches break the build); images live at the instruction's screenshot path with absolute refs, cropped tight with browser chrome off; and screenshots are redacted per the instruction (crop chrome, pixelate tracker hosts, never show panels carrying customer codenames). Respect the publication boundary: no internal ticket keys, no private repo paths, no internal hosts, no customer identifiers, no agent or VM identifiers, no credentials — all product references point at the public mirror. On drift-fix, change ONLY the elements[] named, across every page that carries them.
+
+      PROVENANCE: stamp the frontmatter provenance block on every page you create or update, one sources[] entry per module you actually drew from, using the pack's current manifest version and the module's last_verified date, plus today's date as `updated`. Copy the exact key shape from the instruction instance:
+        docs_agent:
+          sources:
+            - pack: <pack>
+              module: <module>
+              version: <pack manifest version>
+              verified: "<module last_verified>"
+          updated: "<today>"
+      This block is what the next audit diffs against pack manifest versions to detect staleness, so an inaccurate stamp is worse than no page.
+
+      PR: create the PR to the site's source-of-truth repo. if PR creation fails (rate limit, host error), retry it in this session; if it still cannot be created, the pass is not ready — never claim ready without a real PR. Report what failed and stop with the decision verdict, naming the branch you left the work on so the next pass resumes there rather than restarting. Link the ticket. Do not merge it — a separate verify step and a merge step follow.
+
+      REPORTING DISCIPLINE — the portal gate string-matches your WHOLE comment, not just its last line, and it tests your verdicts in routing order, so the forward verdict wins over the two stop verdicts wherever it appears. One stray mention anywhere in the body therefore advances a run that wrote nothing. Name none of the three tokens in the body: say "freshness gate: 6 of 6 sources fresh" or "freshness gate: docs.sidebutton.com/mcp failed check 3 (source drift)", never the upper-case token, and never quote this instruction back. The token appears exactly once in the entire comment, on the last line, and nowhere else.
+
+      {{hint}}
+      As your FINAL action, write ONE comment to the ticket, in exactly one of these three shapes, ending with its verdict line:
+        - pages written, provenance-stamped, PR open => the routes written, the source modules loaded with the pack version and last_verified used for each, the freshness-gate result, the PR link, the work branch name. Last line: "Verdict: PAGES_READY".
+        - a source failed the freshness gate, or check 5 fired => the source modules checked with the pack version and last_verified for each, which pack/module failed which check, and the route(s) it blocks. No PR and no branch — nothing was written. Last line: "Verdict: STALE_SKILL".
+        - the contract or the instruction cannot be resolved, or the PR cannot be created => which field, file or step could not be resolved and what you need to proceed, plus the branch holding any work in progress. Last line: "Verdict: NEEDS_DECISION".
+      write the upper-case token verbatim exactly once in the whole comment - it is machine-matched by the portal gate, and a second occurrence anywhere in the body can route the run wrongly.
+      SB_PROMPT
+      )"

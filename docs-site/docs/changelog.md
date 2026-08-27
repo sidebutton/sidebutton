@@ -2,15 +2,7 @@
 
 All notable changes to SideButton.
 
-## [1.5.5] - Unreleased
-
-> **Note on 1.5.4:** the 1.5.4 npm packages shipped with a stale server build that did not contain the changes below, despite reporting version 1.5.4 at runtime. 1.5.5 is the corrected release — if you installed 1.5.4, update.
-
-### Agent Server
-
-- **Preview passthrough** — `ANY /api/preview/:port/*` proxies HTTP and WebSocket to a dev server on the agent machine's loopback, so a live app (including hot module reload) can be viewed through the portal. Guarded by the same bearer token as the rest of `/api/*`; `SIDEBUTTON_PREVIEW_PORTS` narrows which ports are reachable.
-- **Trustworthy reboots** — `POST /api/system/reboot` now runs the privileged reboot wrapper first, awaits the result, and reports what actually happened instead of replying ok before attempting anything.
-- **Build verification on publish** — the npm packages now rebuild themselves at publish time (`prepublishOnly`), so a release can no longer ship a stale compiled output.
+## [1.5.6] - Unreleased
 
 ### Workflows & MCP
 
@@ -21,7 +13,31 @@ All notable changes to SideButton.
 - Output paths for both writers are contained to the home directory — `..` traversal and escaping symlinks are rejected, and nothing is created on disk until the path is cleared — matching the rule `publish_artifact` already applies, so a captured shot can be published directly. `publish_artifact` now expands `~/…` too, so the path the screenshot tool hands back can be published verbatim.
 - **A step whose `{{param}}` was never passed fails loudly** — `browser.screenshot` and `browser.injectCSS` refuse an unresolved placeholder instead of treating it as a value. Previously a missing `redact_css` injected the literal text as a stylesheet, which styles nothing: the run reported success and the screenshot that followed was unredacted. Pass an empty string to mean "no redaction".
 - **Browser pre-flight gate is recursive** — `run_workflow` now detects browser steps nested inside `control.foreach` / `control.if`. Previously only top-level steps were checked, so a nested browser step skipped the friendly "browser not connected" error and failed mid-run instead.
-- Running an unrecognised step type on an older server still fails fast at parse time with `PARSE_ERROR: Unknown step type`, so a workflow using `browser.screenshot` against a pre-1.5.5 server reports a clear error rather than silently skipping the capture.
+- Running an unrecognised step type on an older server still fails fast at parse time with `PARSE_ERROR: Unknown step type`, so a workflow using `browser.screenshot` against a pre-1.5.6 server reports a clear error rather than silently skipping the capture.
+
+### Agent Server
+
+- **Close the window, end the job** — closing a dispatched job's terminal window now kills its Claude session and resolves the job, instead of leaving a headless session running behind a closed window.
+- **Live chat streaming** — an app-session chat turn streams into the portal as the agent writes it, rather than arriving as one block at the end.
+- **Scripted app-session boot** — the dev-session boots via script before Claude launches, cutting session start-up time and making the ready report deterministic.
+- **Notion for agents** — `NOTION_TOKEN` is delivered into the agent environment with an agent-facing connector doc, and the first (gated) Notion browser-webhook lane shipped.
+- **GitLab** — a `glab`-based git provider with a host-aware push-PR workflow, a stateless gitlab.com credential helper in both manual lanes, and the workspace attach lane's gaps closed.
+- **Claude Code plugin install report** — `/health` and the agent detail page now report each plugin's install outcome, and a malformed report can no longer wipe a real one.
+- Fleet honesty fixes: "no evidence" now means exactly that everywhere, and the dispatch stability age keeps its own clock.
+
+### Default skills
+
+- **Agents pack 1.25.0** — the documentation lane ships in the default catalog: six `agent_docs_*` workflows (scope, decisions, write, verify, post-deploy, release-scan) plus the `writer` role, powering the Documentation Page playbook end-to-end; also adds `agent_se_review` (review + fix without merging) and the review-state channel refinements.
+
+## [1.5.5] - 2026-08-11
+
+> **Note on 1.5.4:** the 1.5.4 npm packages shipped with a stale server build that did not contain the changes below, despite reporting version 1.5.4 at runtime. 1.5.5 is the corrected release — if you installed 1.5.4, update.
+
+### Agent Server
+
+- **Preview passthrough** — `ANY /api/preview/:port/*` proxies HTTP and WebSocket to a dev server on the agent machine's loopback, so a live app (including hot module reload) can be viewed through the portal. Guarded by the same bearer token as the rest of `/api/*`; `SIDEBUTTON_PREVIEW_PORTS` narrows which ports are reachable.
+- **Trustworthy reboots** — `POST /api/system/reboot` now runs the privileged reboot wrapper first, awaits the result, and reports what actually happened instead of replying ok before attempting anything.
+- **Build verification on publish** — the npm packages now rebuild themselves at publish time (`prepublishOnly`), so a release can no longer ship a stale compiled output.
 
 ### Default skills
 

@@ -77,8 +77,7 @@ domain: sidebutton.com
 confidence: 0.90
 workspaces: ["main"]          # slug(s) of the portal workspace(s) targeting this host
 repos:
-  - repo: owner/name          # the git project's full path after the host, as in its repo URL
-                              # (GitLab groups nest: group/subgroup/name)
+  - repo: owner/name          # owner/repo of a git project in that workspace
     subpath: the-assistant    # that project's subpath as registered in the workspace
 ---
 ```
@@ -86,7 +85,7 @@ repos:
 Per-page module `{host}/{page}/_skill.md`: same `confidence`, plus `repos:` for the repo(s) implementing *that page* (omit to inherit the host's repos).
 
 - `workspaces` resolves by **slug** — use the slug of the workspace this discovery job runs for (operator-provided via the job's workspace / `entry_path` context).
-- `repos[].repo` is matched against the workspace's git projects on the repo URL's **whole path after the host** — `owner/name` on GitHub and Bitbucket, but `group/subgroup/name` for a GitLab project nested in subgroups, which is what its URL says. Writing only the last two segments of a nested path matches nothing. `repos[].subpath` must equal the project's registered subpath. Unresolved refs are skipped silently — after publishing, confirm the host shows its workspace + repo in the portal's **Account Domains** table.
+- `repos[].repo` is matched as `owner/name` against the workspace's git projects; `repos[].subpath` must equal the project's registered subpath. Unresolved refs are skipped silently — after publishing, confirm the host shows its workspace + repo in the portal's **Account Domains** table.
 
 ## Environment
 
@@ -361,8 +360,8 @@ When 80% of all modules reach their current-phase targets:
 
 Your discoveries go to **your account's configured pack registry — nowhere else.**
 
-- Resolve the target with `sidebutton registry list`: it shows each registry's **name** and **git URL** — the registry SideButton configured from the `SIDEBUTTON_DEFAULT_REGISTRY` env var. That URL is your account's pack repo — a portal-hosted `git.sidebutton.com/<account>.git`, or your own GitHub/GitLab/Bitbucket repo. Edit the clone under `~/.sidebutton/registries/<name>/`, then `sidebutton registry update` to activate.
-- Publish so your work reaches **`main`** — the portal's skill-completeness recompute and every consuming agent's `sidebutton registry update` read **only `main`**, so anything not on `main` is invisible to all of them. The clone's `origin` is your account's pack repo and auth is already on the VM (the per-account token for the portal repo, your `GH_TOKEN`/`GITLAB_TOKEN`/Bitbucket token for own repos), so commit and push straight to `main` — no PR or review step, nothing merges for you. **Never force-push `main`;** if a push is rejected because `main` moved, rebase onto the latest `main` and push again.
+- Resolve the target with `sidebutton registry list`: it shows each registry's **name** and **git URL** — the registry SideButton configured from the `SIDEBUTTON_DEFAULT_REGISTRY` env var. That URL is your account's pack repo — a portal-hosted `git.sidebutton.com/<account>.git`, or your own GitHub/Bitbucket repo. Edit the clone under `~/.sidebutton/registries/<name>/`, then `sidebutton registry update` to activate.
+- Publish so your work reaches **`main`** — the portal's skill-completeness recompute and every consuming agent's `sidebutton registry update` read **only `main`**, so anything not on `main` is invisible to all of them. The clone's `origin` is your account's pack repo and auth is already on the VM (the per-account token for the portal repo, your `GH_TOKEN`/Bitbucket token for own repos), so commit and push straight to `main` — no PR or review step, nothing merges for you. **Never force-push `main`;** if a push is rejected because `main` moved, rebase onto the latest `main` and push again.
 - **Never** clone, commit to, or open a PR against a repo that isn't your account's configured registry — in particular the shared `sidebutton/sidebutton-skill-packs` OSS catalog, unless `sidebutton registry list` shows it as yours. If `sidebutton registry list` shows no writable account registry, **STOP and report** — do not improvise a target or create a new repo.
 
 ## Publishing

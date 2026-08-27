@@ -79,9 +79,9 @@ steps:
 
       CI: after fixes, run the build, tests, lint, and type-check to completion IN THE FOREGROUND and WAIT for the results (do not background them and move on). fix any CI failures.
 
-      MERGE: once review is clean, CI passes, and no conflicts remain — merge the PR from the CLI (merge commit, not squash, unless repo convention says otherwise), then delete the remote branch. This works the same whether the repo is on GitHub, GitLab, or Bitbucket — use whichever host this repo lives on (`gh pr merge` / `glab mr merge --auto-merge=false -d`; GitLab calls it a merge request, numbered per project as an iid, and a bare `glab mr merge` only SCHEDULES the merge when a pipeline is running — it exits 0 with the MR still open).
+      MERGE: once review is clean, CI passes, and no conflicts remain — merge the PR from the CLI (merge commit, not squash, unless repo convention says otherwise), then delete the remote branch. This works the same whether the repo is on GitHub or Bitbucket — use whichever host this repo lives on.
 
-      VERIFY: before reporting success, confirm FROM THE HOST that the PR's state is actually MERGED (GitHub: `gh pr view`; GitLab: `glab mr view` — state must be `merged`; Bitbucket: the pull-request REST API or page). If it is not merged, you are NOT done — resolve the blocker or report CONFLICT/CI_FAIL.
+      VERIFY: before reporting success, confirm FROM THE HOST that the PR's state is actually MERGED (GitHub: `gh pr view`; Bitbucket: the pull-request REST API or page). If it is not merged, you are NOT done — resolve the blocker or report CONFLICT/CI_FAIL.
 
       {{hint}}
       As your FINAL action (after the merge is confirmed), write ONE comment to the ticket. Its LAST line must be an explicit verdict on its own line — exactly one of: MERGED, CONFLICT, or CI_FAIL. Include: review summary (what was checked), conflicts resolved (if any), issues fixed (file refs), CI status, and — for MERGED — the PR link + merge commit SHA and how to verify on the target branch; for CONFLICT or CI_FAIL, the specific blocker.

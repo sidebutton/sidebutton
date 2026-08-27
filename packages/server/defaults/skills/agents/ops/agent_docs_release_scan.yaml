@@ -1,0 +1,123 @@
+schema_version: 1
+id: agent_docs_release_scan
+title: "Scan Week & Maintain Release Post"
+description: "Idempotent weekly release-post pass — derives the target week's shipped list from release data, then creates, updates or no-ops the week's post so any re-run converges; opens the PR, never merges"
+overview: |
+  The release-post half of docs maintenance. Release posts are the one page family whose source is
+  release data, not skill modules (instance decision D6), so this job runs no freshness gate and no
+  provenance stamp — it derives "what shipped" from the repo's merged PRs, the release ledger, the
+  package releases and the public changelog, projects that through the site's publication boundary,
+  and maintains exactly one post per week.
+
+  The pass is idempotent by construction. The target week resolves deterministically (an explicit
+  week param, else the ISO week containing yesterday — a weekend run reports the closing week and a
+  Monday re-run converges on the same one), and the week's slug is the idempotency key: post absent
+  means create (behind an enough-to-say threshold), post present means diff-and-extend, an empty
+  diff means change nothing at all. The work branch is named by the same key and reused, so a re-run
+  before merge continues the open PR instead of opening a second one, and the home page's inline
+  latest-release section is replaced in lockstep, never appended. Five verdicts close the pass:
+  POST_PUBLISHED, POST_UPDATED, NO_CHANGE, NOT_ENOUGH, BLOCKED — declared as gate vocabulary so a
+  portal playbook step can content-route on them; a scheduled standalone run just reports the same
+  line as its final message.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: writer
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — declared even though the
+  # v1 dispatch is a standalone scheduled job, so the workflow is content-routable when composed.
+  verdicts: [POST_PUBLISHED, POST_UPDATED, NO_CHANGE, NOT_ENOUGH, BLOCKED]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  week:
+    type: string
+    default: ""
+    description: "Optional ISO week override (e.g. 2026-W34) pinning the target week for re-runs and backfills; empty = derive from the run date (the week containing yesterday)"
+  ticket_url:
+    type: string
+    default: ""
+    description: "Optional tracker ticket URL — when set, the final report is also posted as a ticket comment (manual or playbook-composed runs); empty on scheduled standalone runs"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent (e.g. an item the scan must not miss, or a correction to apply)"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: Docs Release Scan"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      maintain the weekly release post for the sidebutton-docs site. this pass must be IDEMPOTENT: running it twice for the same week must end in the same state, with the second run changing nothing.
+
+      EXECUTION RULES (read first — they override any habit):
+      - Do ALL of the work in THIS session, in the FOREGROUND, and finish before your turn ends. You MAY spawn subagents (the Agent / Task tool) or run parallel searches to work faster — but you MUST wait for every subagent and any background task to return and fold their results in YOURSELF before ending the turn. Never move the work (or the report) into the background — no run_in_background, no background workflows, no trailing & — and then end the turn expecting to be resumed. Ending your turn is FINAL here: nothing wakes you to "resume", so a turn that ends while any spawned or background work is still pending is reported as a FAILED step, not a pause.
+      - Deliver the final report YOURSELF, in the foreground, as the LAST thing you do — after every subagent and background task has returned. Never delegate it, and never end the turn "holding" or planning to "resume later".
+
+      TARGET WEEK: if "{{week}}" is non-empty, that ISO week (YYYY-Www form) is the target — use it verbatim. Otherwise derive it: take today's date minus one day, in Europe/Berlin, and use that date's ISO week. (A Saturday or Sunday run reports the week that is closing; a Monday re-run resolves to that same, just-finished week — the two must converge on one target.) The window is that week's Monday 00:00 through Sunday 23:59, Europe/Berlin.
+
+      INSTRUCTION: locate the product monorepo in this workspace (the repo carrying docs-site/) and read docs-site/DOCS-INSTRUCTION.md IN FULL before touching anything. It is normative: the authoring constraints, the publication boundary, the build and leak-lint commands, and the sitemap all bind this pass. If its §7 defines a release-post pass mode, that section overrides this baseline wherever the two disagree. If the instruction cannot be found, stop with the blocked verdict, naming the paths you searched.
+
+      GATHER (release data, not skills — release posts are the D6 exemption: no freshness gate, no provenance stamp): collect what shipped inside the window, from
+        - merged PRs into the monorepo's main branch (gh pr list --state merged, or git log --merges on origin/main, bounded by the window)
+        - entries dated in-window in docs/RELEASES.md
+        - npm releases of the product package inside the window (npm view <package> time --json)
+        - the public changelog page in docs-site, for anything the above missed
+      Classify every item USER-FACING (portal/product behaviour a customer can see or use) or INTERNAL (refactors, tests, mocks, plans, internal docs, fleet infrastructure). Only user-facing items can appear in a post. Verify each user-facing claim against its merged PR before writing it; where a cheap live check of the deployed product is possible, prefer it — a claim backed by neither is dropped, not softened. PUBLICATION BOUNDARY (non-negotiable, leak-lint enforces the machine half): product language only — no internal ticket keys, no private repo paths, no internal hosts, no customer identifiers, no agent/VM identifiers, no credentials; product references point at the public mirror.
+
+      MODE — the idempotency key. The target week's post lives at docs-site/docs/releases/<YYYY>-<MM>-week<NN>.md, where MM is the month of that week's Monday and NN the two-digit ISO week number. The work branch for the week is docs/releases_<YYYY>-<MM>-week<NN>. First fetch and check BOTH places: the file on the main branch, and any existing work branch (or open PR) of that name — a post that exists only on the branch means a prior pass already wrote it, so continue ON that branch and treat the post as existing. Then:
+        - POST EXISTS => UPDATE: diff your derived user-facing list against what the post already covers — match by feature, not by wording. Add only what is genuinely missing (extend the matching section where the feature already has one; a new H3 where it does not), and correct any claim the release data contradicts. Never duplicate a section, never restate a covered item, never rewrite covered prose for style, and keep the title, structure and existing screenshots unless they are factually wrong. If the diff is EMPTY: change NOTHING — no file writes, no branch, no PR — and stop with the no-change verdict.
+        - POST ABSENT => CREATE, behind the threshold: at least 2 distinct user-facing items, or 1 flagship (a feature the post can lead with). Below threshold: write NOTHING and stop with the not-enough verdict, listing what the scan did find. At or above: write the post modeled on the newest existing file under docs-site/docs/releases/ — feature-led title (name the features, no "Week NN" title), intro paragraph, one H3 per feature, closing pointer to the changelog. Screenshots come only from the site's shots registry when the instruction defines one; without a registry the post ships text-first and the PR body lists capture candidates instead. Register the page exactly where the existing posts are registered: the releases index list and every nav/sidebar array carrying the sibling posts (they are separate hard-coded lists — missing one leaves the page half-reachable).
+
+      HOME LOCKSTEP: the home page (docs-site/docs/index.md) embeds the LATEST release post inline and teases it near the top. After this pass the home must mirror the latest post exactly: on CREATE, replace the inline release section's content with the new post's content and repoint the tease — replacement is by section boundary, from the inline release heading to the next same-level heading, never an append; the previous post's content already lives at its own /releases/ page, so replacing home loses nothing. On UPDATE of the latest post, apply the same delta to the inline copy so the two never drift. On UPDATE of an older week, home is untouched.
+
+      CONVERGENCE CHECK (run before the gates, always): with your edits in the working tree, re-derive the diff exactly as the MODE step does — post content vs the window's user-facing list, and home vs the latest post. Both must now come out empty. If either does not, the pass has not converged: fix it and re-check before proceeding. This is the same check the NEXT run will open with, so a non-empty result here means the next run would edit again — the definition of non-idempotent.
+
+      GATES (only when something changed; run in docs-site/): npm run build must exit green, and node scripts/leak-lint.mjs over the changed files must report 0 findings. Fix and re-run on failure; if a gate cannot pass, stop with the blocked verdict, naming the failing gate and finding.
+
+      PR: commit only the files this pass changed, on the week's branch (reuse it if it exists — the open PR for this week is the deliverable; never open a second one for the same week). Push and open the PR to the monorepo when none exists; link {{ticket_url}} when it is non-empty. Do not merge — review and merge follow separately, and the site deploys on its own schedule, which is not this job's concern: never wait for, trigger, or report on deployment. If the PR cannot be created after an in-session retry, stop with the blocked verdict, naming the branch holding the work.
+
+      REPORTING DISCIPLINE — a portal gate string-matches the WHOLE report when this workflow runs as a playbook step, and it tests verdicts in routing order, so one stray token anywhere in the body mis-routes the run. Name none of the five tokens in the body: write "the diff was empty" or "two user-facing items, below nothing-to-say", never the upper-case token. The token appears exactly once, on the last line, and nowhere else.
+
+      {{hint}}
+      As your FINAL action, deliver ONE report — the final message of this session, and additionally a comment on the ticket when "{{ticket_url}}" is non-empty — in exactly one of these five shapes, ending with its verdict line:
+        - new post written, registered, home replaced, PR open => the target week and slug, the items covered, the threshold call, the gate results, the PR link and branch. Last line: "Verdict: POST_PUBLISHED".
+        - existing post extended/corrected, home in lockstep, PR open => the target week, the delta items (added and corrected), the gate results, the PR link and branch. Last line: "Verdict: POST_UPDATED".
+        - post exists and already covers the window => the target week, what was scanned (source counts) and how many covered items matched; state that nothing was written. Last line: "Verdict: NO_CHANGE".
+        - no post exists and the window is below threshold => the target week and what the scan found (the user-facing items with why they fall short, plus the internal count); state that nothing was written. Last line: "Verdict: NOT_ENOUGH".
+        - the instruction, a gate, or the PR could not be resolved => what failed, what is needed, and the branch holding any work in progress. Last line: "Verdict: BLOCKED".
+      write the upper-case token verbatim exactly once in the whole report - it is machine-matched when composed into a playbook, and a second occurrence anywhere in the body can route the run wrongly.
+      SB_PROMPT
+      )"

@@ -19,7 +19,7 @@ repos:
 
 # Autonomous Agents
 
-Universal methodology for autonomous agents — four role playbooks (SE, QA, SD, PM) plus operational workflows for running agent fleets. App-agnostic: works with any web application or codebase.
+Universal methodology for autonomous agents — role playbooks (SE, QA, SD, PM, Writer) plus operational workflows for running agent fleets. App-agnostic: works with any web application or codebase.
 
 | Role | Focus | Purpose |
 |------|-------|---------|
@@ -27,8 +27,9 @@ Universal methodology for autonomous agents — four role playbooks (SE, QA, SD,
 | **QA** | Quality Assurance | Test web applications, collect evidence, document bugs |
 | **SD** | Skill Discovery | Explore product surfaces (web, API, mobile), document modules, generate knowledge packs |
 | **PM** | Product Management | Epic analysis, breakdown into issues, research |
+| **Writer** | Documentation | Turn verified module knowledge into product docs pages, gated on source freshness |
 
-Each role file (`_roles/se.md`, `_roles/qa.md`, `_roles/sd.md`, `_roles/pm.md`) contains the complete methodology for that role type. Domain-specific knowledge packs extend these universal roles with app-specific context.
+Each role file (`_roles/se.md`, `_roles/qa.md`, `_roles/sd.md`, `_roles/pm.md`, `_roles/writer.md`) contains the complete methodology for that role type. Domain-specific knowledge packs extend these universal roles with app-specific context.
 
 The `ops/` module contains the shared workflow catalog for dispatching and operating agent fleets at scale.
 

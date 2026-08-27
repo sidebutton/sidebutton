@@ -1,0 +1,91 @@
+schema_version: 1
+id: agent_se_review
+title: "Review + Fix PR (no merge)"
+description: "Review PR, resolve conflicts, fix issues, run CI — then report state to the ticket instead of merging"
+overview: |
+  The senior-style review chain for PRs that a human (or a separate merge lane) will land. Like agent_se_review_merge, the agent reviews the diff for correctness, style, and acceptance-criteria coverage, fixes issues it finds with its own commits, resolves merge conflicts against the target branch, and runs build, tests, lint, and type-check — but it stops short of the merge. The run's last action is a state report on the source ticket instead of a landed PR.
+
+  The final comment carries an explicit verdict token: READY_TO_MERGE when review is clean, conflicts are resolved, and CI passes — or NEEDS_CHANGES with the remaining blockers listed. The tokens are the workflow's declared gate vocabulary (metadata.verdicts), so a portal playbook step can content-route on them. Use agent_se_review_merge instead when the agent should also land the PR.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: se
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # step's ticket comment; declaring it here is what makes this workflow content-routable.
+  verdicts: [READY_TO_MERGE, NEEDS_CHANGES]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  ticket_url:
+    type: string
+    description: "Jira ticket URL"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: SE Review + Fix (no merge)"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read ticket with attachments and all comments - {{ticket_url}}. if it fails, stop and report the error.
+      find the linked PR in ticket comments. learn how to SE relevant parts.
+      check out the PR branch locally and review the diff against ticket requirements.
+      enable code-review skill(s).
+
+      EXECUTION RULES (read first — they override any habit):
+      - Do ALL of the work in THIS session, in the FOREGROUND. Never move review, tests, type-check, code-review, or conflict resolution into the background (no run_in_background, no background workflows, no trailing &) and then wait for it. Run each long task and WAIT for it to finish before the next step. Ending your turn is FINAL here — nothing wakes you to "resume", so a turn that ends with work still pending is reported as a FAILED step, not a pause.
+      - Never end your turn "holding", "pausing", or planning to "resume/continue later". If you truly cannot finish (unresolvable conflicts, or CI you cannot fix), that is a NEEDS_CHANGES result — report it and stop.
+
+      NO-MERGE RULE: this workflow prepares the PR but never lands it. do not merge, close, approve, or decline the PR, do not delete branches, and do not transition the ticket. committing and pushing fixes and conflict resolutions to the PR branch IS the job — the merge is someone else's.
+
+      REVIEW: review the code.
+
+      CONFLICTS: if the PR has merge conflicts with the target branch, resolve them — prefer the PR intent, preserve target branch fixes — and push the resolution.
+
+      ISSUES: if you find bugs, missing logic, or acceptance criteria gaps — fix them in the PR branch and push.
+
+      DESIGN: if the PR touches front-end code (UI components, pages, styles) and a design-review skill is available in this workspace, run it on the changed surfaces and treat its findings as review issues; if it is not available, skip this and note it in the ticket comment.
+
+      CI: after fixes, run the build, tests, lint, and type-check to completion IN THE FOREGROUND and WAIT for the results (do not background them and move on). fix any CI failures.
+
+      VERIFY: before reporting, confirm FROM THE HOST that every fix and conflict resolution is actually pushed to the PR branch and the PR is mergeable (GitHub: `gh pr view`; Bitbucket: the pull-request REST API or page). unpushed local work does not count.
+
+      {{hint}}
+      As your FINAL action, write ONE comment to the ticket with: review summary (what was checked), conflicts resolved (if any), issues fixed (file refs), CI status, and a final verdict line carrying the exact token READY_TO_MERGE when review is clean, conflicts are resolved, and CI passes — or NEEDS_CHANGES followed by whatever still blocks, with enough detail to act on. the upper-case token must appear verbatim (e.g. "Verdict: READY_TO_MERGE") - it is machine-matched by the portal gate. do not merge the PR.
+      SB_PROMPT
+      )"

@@ -1,0 +1,123 @@
+schema_version: 1
+id: agent_docs_decisions
+title: "Prepare the Docs Calls"
+description: "Turn the fixed docs question class into calls with recommended defaults — published through the goal decisions API — and open the DOCS-INSTRUCTION instance as ONE PR on the site repo"
+overview: |
+  The decide phase of a docs-site goal. The agent reads the goal, the scope job's delivered gates and
+  the calls a human has already answered, then turns the fixed docs question class into ONE call
+  each: visibility · locale · canonical section naming · a retire/redirect call per stray page ·
+  the canonical demo tenant — every option in the open, a recommended default and a one-line why.
+  Defaults lean on what the account already runs — the installed skill packs, the site's existing
+  nav, generator and locale — before anything new is proposed. No call is ever omitted: a question
+  that does not apply is answered n/a in the open, because a call with no recommendation is what
+  blocks the decide lock.
+
+  The deliverable is two-sided. The calls are published through the goal decisions API — the only
+  channel the portal renders from; a call described in prose alone never reaches the goal page. And
+  the DOCS-INSTRUCTION instance is opened as ONE pull request on the site repo — the scope record,
+  materialized: authored from the aligned gates on a greenfield site, and merely validated against
+  the template schema (deltas only) on a site that already carries a hand-written instance.
+
+  The calls are the user's pause: this job creates no issues and dispatches nothing, because locking
+  the calls is what creates the site's epic. It is idempotent on re-run — a call a human has answered
+  stays theirs and steers the instruction file instead of being re-asked, and the same branch and PR
+  are refreshed rather than forked. Anchored on the portal goal URL, not a ticket: no issue exists at
+  this phase.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  # Scalar, never a list: the registry reads a single string role and drops anything else, and a
+  # workflow with no role is not a playbook step at all. The phase's pm half rides the goal type's
+  # phase roles, not this field.
+  role: sd
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # job's published result; declaring it here is what makes this workflow content-routable.
+  verdicts: [NEEDS_DECISIONS, NO_CHANGE]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  goal_url:
+    type: string
+    description: "Portal goal URL — the typed docs-site goal whose delivered gates this job turns into calls (no ticket exists at this phase)"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent (typically the scope job's summary, e.g. the stray pages it found)"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: Docs Decisions"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # Provider clear-set (AAP-C SCRUM-1506 + AAP-17 SCRUM-1653): identical to every agents/ops/*.yaml
+      # preamble; scripts/check-ops-clearset.mjs guards this list against AGENT_APP_ENV_KEYS drift.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read the goal, its intake and the scope job's delivered gates - {{goal_url}}. if it fails, stop and report the error.
+      EXECUTION RULES (read first - they override any habit):
+      - Do ALL of the work in THIS session, in the FOREGROUND, and finish before your turn ends. You MAY spawn subagents (the Agent / Task tool) or run parallel searches to investigate faster - but you MUST wait for every subagent and any background task to return and fold their results in YOURSELF before ending the turn. Never move the work (or the result) into the background - no run_in_background, no background workflows, no trailing & - and then end the turn expecting to be resumed. Ending your turn is FINAL here: nothing wakes you to "resume", so a turn that ends while a spawned subagent or any background work is still pending is reported as a FAILED step, not a pause.
+      - Publish the calls YOURSELF, in the foreground, as the LAST thing you do - after every subagent and background task has returned. Never delegate it to a subagent, and never end the turn "holding", "pausing", or planning to "resume/continue later". If you genuinely cannot finish, say so in the result and stop.
+      READ - the goal's own state comes from the portal, not from prose:
+        - your job identity is in ~/.sidebutton/job-context.json (the .session_id field); the portal base URL is $PORTAL_URL and your token is $SIDEBUTTON_AGENT_TOKEN, both already in ~/.agent-env.
+        - GET "$PORTAL_URL/api/agents/goal/read?session_id=<your session_id>" with the header "Authorization: Bearer $SIDEBUTTON_AGENT_TOKEN". it answers with the goal, the current phase, every phase's state, the aligned gates, the decisions already on record, the intake files and the intake links.
+        - fetch each intake file by name from "$PORTAL_URL/api/agents/goal/file?name=<name>&session_id=<your session_id>" with the same header - read returns names, never bytes.
+        - read the site's existing DOCS-INSTRUCTION instance if the repo carries one, and the DOCS-AGENT-INSTRUCTION-TEMPLATE it must satisfy - it ships as docs/DOCS-AGENT-INSTRUCTION-TEMPLATE.md in the portal repo and may also arrive as an intake file. take the section list, their order and the contract version from that file, never from memory: an invented schema churns the instance on every re-run. if you cannot find the template anywhere, say so in your result and change nothing structural rather than guessing.
+      ground yourself in the skills this job carries and the account context before recommending anything - the installed skill packs, the site's generator and nav, its existing locale and hosting.
+      THE CALLS - present this fixed class EVERY run, ONE call each, and never drop one; a question that does not apply is answered n/a in the open, never omitted:
+        - visibility - public / account-sso / basic-auth
+        - locale - the site's content language(s); single-locale unless the sources say otherwise
+        - canonical section naming - which section is canonical where two cover the same ground, and what the duplicate becomes (redirect stubs; content is never forked)
+        - retire / redirect - ONE call per stray page: retire (delete) / redirect stub / source-only (hidden)
+        - canonical demo tenant - the tenant slug that screenshots and examples use on a multi-tenant product; n/a on a single-tenant one
+        - and, only where the instance's volatile-elements section is non-empty, one maintenance-policy call per element class - maintained / derived at pass time / dropped
+      give every call the question, every option in the open, a recommended default and a one-line why. lean each default on what the account already runs before anything new.
+      give every call a STABLE id derived from what it decides - the per-page ones carry the page path, so they stay unique inside one publish and stay the SAME id on the next run. an id that drifts between runs orphans the human's answer and re-asks a settled question.
+      EVERY call carries a non-empty recommendation, the n/a ones included: a call with no answer and no recommendation refuses the decide lock as unanswerable, and the whole phase stalls.
+      THE INSTRUCTION INSTANCE - the scope record, materialized:
+        - no instance yet: author DOCS-INSTRUCTION.md in the site repo from the aligned gates plus your recommendations - every section the template schema requires, in its order, plus the decisions section carrying this run's calls and an out-of-scope section.
+        - an instance already exists: VALIDATE it against the template schema instead of authoring one, and change ONLY the deltas - a missing section, a stale contract version, a field the gates now contradict. everything else stays byte-identical.
+        - write each decision as its own record: an id, the subject, the decided outcome and its consequence, plus a re-open condition where one exists. keep an explicit still-open line even when nothing is open.
+      THE PR - your deliverable, and it is not done without one:
+        - branch docs/<goal slug>_instruction-instance on the SITE repo - the repo the goal's gates and workspace name. never the pack repo, never a repo this goal does not own.
+        - take <goal slug> from the read endpoint's goal.slug verbatim - never from the goal's display name, the site's title or the directory you happen to be in. it is the one identifier that is stable across runs; a branch name derived from anything else drifts and forks a second PR on the very next run.
+        - open or update exactly ONE pull request carrying the instance. a re-run refreshes that same branch and PR - it never forks a second one. before opening one, look for an open PR from that branch and update it instead.
+        - if PR creation fails (rate limit, host error), retry it in this session; never report the deliverable without a real PR. carry the PR URL into your published result.
+        - the ONE case that legitimately has no PR: validation found zero deltas, so the branch has nothing to commit and the host refuses an empty PR. then carry the existing instance's URL instead, say plainly that it already conforms, and let that be your nothing-material-changed outcome - never manufacture a no-op edit just to have a PR to report.
+      PUBLISH - your final foreground action, and the ONLY channel the portal renders calls from:
+        - POST "$PORTAL_URL/api/agents/goal/decisions?session_id=<your session_id>" with the headers "Authorization: Bearer $SIDEBUTTON_AGENT_TOKEN" and "Content-Type: application/json", and this body shape:
+      {"verdict":"<the same token you end on>","decisions":[{"id":"visibility","question":"Who can read the docs site?","options":["public","account-sso","basic-auth"],"recommended":"public","why":"the product's own docs are already public and no source pack is internal"}]}
+        - id and question are required and non-empty, ids are unique across the array (duplicates are refused), options is an array of strings, recommended and why are strings. keep the whole body under 256 KB and the verdict under 64 characters.
+        - check the status, because a refused publish looks exactly like a delivered one from inside your session: 2xx is the only delivered outcome. 409 means your job is no longer the goal's live decide job, 403 that the session id resolved no phase, 400 that the body was refused (a duplicate id, a missing question), 413 that it is over 256 KB. on anything else than 2xx the phase has recorded NO verdict and will never lock - fix the body and retry here, and if it still will not land, say so in your result and do NOT end on a success token.
+        - read the response: published are the calls now open carrying your recommendation; kept are the ones already ANSWERED, left exactly as they stand - a call you re-state under a human's answer comes back kept, and that is success, not a rejection; dropped are the ids you omitted that nobody had answered, and only those are deleted. an answered call you omit is NOT retracted this way - it comes back kept. so publish the WHOLE set every run, and never send an empty decisions list unless you truly mean "retract every open call".
+        - prose is not the channel. a call that only appears in your written result never renders on the goal page and never locks - POST first, then write the result.
+        - then publish the calls, the instruction PR URL and the deltas you changed as this job's result.
+      act idempotently, and use answered_by to tell WHOSE answer it is - the read endpoint returns it per decision, and getting this backwards is what makes a re-run destructive:
+        - a human's answer (any answered_by that is not "auto") is an INPUT - it steers the instruction file, it is never re-asked and never overwritten, and you re-publish it unchanged so it is not dropped.
+        - answered_by "auto" is NOT a human: it is the decide lock having applied your own previous recommendation. treat it as an open call and re-derive it like any other - re-stating it re-opens it, which is exactly what a rework run is for. reading auto rows as settled makes a rework a silent no-op.
+      create no issues and dispatch nothing: the calls are the user's pause, and locking them is what creates the site's epic.
+      {{hint}}
+      end with one line - "VERDICT:" followed by exactly one of NEEDS_DECISIONS (calls published, waiting on the user or on auto-apply) / NO_CHANGE (a re-run found nothing material to change) - and use these uppercase tokens nowhere else.
+      SB_PROMPT
+      )"

@@ -82,12 +82,9 @@ steps:
       - discover: explore the product surface for pages, screens, endpoints, and flows NOT yet covered by a module; scaffold a new _skill.md (and _roles/qa.md / se.md where it reaches the thresholds) for each, following the discovery methodology.
       - align: for each target repository, find the commits made AFTER the pack was last updated (inspect the pack repo git history), then update the affected modules so they match the current code — changed selectors and flows, new or removed pages, and data-model changes.
 
-      In every mode, keep each module's portal-linking frontmatter current — the workspaces:/repos: fields per the SD Frontmatter Contract. Install changes with sidebutton registry update, then publish ONLY to the registry SideButton configured from the SIDEBUTTON_DEFAULT_REGISTRY env var (find it with sidebutton registry list): edit and commit on a branch in the registry clone at ~/.sidebutton/registries/<name> (auth is already on the VM). Then PUBLISH SO YOUR WORK REACHES THE main BRANCH — every consumer (the SideButton portal and the other agents on their VMs) reads ONLY main, so a branch that never lands on main is invisible to all of them. Publish per the origin host:
-      - GitHub origin: push your branch and open a gh PR (a human merges it).
-      - GitLab origin: push your branch and open a merge request with glab mr create (a human merges it); check it with glab mr view.
-      - Portal-hosted origin (host git.sidebutton.com): it has NO pull-request or review UI and nothing else merges for you, so YOU publish to main with a fast-forward — run: git fetch origin main; git checkout main; git merge --ff-only <your-branch>; git push origin main — then also push <your-branch> as a record. Never force-push main; if the push is rejected because main moved, re-run git fetch origin main, rebase your branch onto origin/main, and retry the ff-only merge and push.
-      - Any other origin (for example Bitbucket): push your branch; a reviewer merges it through that host's pull-request UI.
-      Do NOT commit, push, or PR to any repo other than that one — in particular not the shared sidebutton/sidebutton-skill-packs OSS catalog, unless it is what SIDEBUTTON_DEFAULT_REGISTRY points to. If sidebutton registry list shows no writable account registry, STOP and report.
+      In every mode, keep each module's portal-linking frontmatter current — the workspaces:/repos: fields per the SD Frontmatter Contract. 
+      Install changes with sidebutton registry update, then publish ONLY to the registry SideButton configured from the SIDEBUTTON_DEFAULT_REGISTRY env var (find it with sidebutton registry list): edit and commit on a branch in the registry clone at ~/.sidebutton/registries/<name> (auth is already on the VM). Then PUBLISH SO YOUR WORK REACHES THE MAIN BRANCH (main might be "master").
+      Do NOT commit, push, or PR to any repo other than that one. If sidebutton registry list shows no writable account registry, STOP and report.
       {{hint}}
       Report which modules were created or improved and what was added.
       SB_PROMPT

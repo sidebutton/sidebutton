@@ -7,6 +7,8 @@ overview: |
 
   The workflow is scoped strictly to the PR under review — it does not open new PRs or take on adjacent work. Run it whenever a human or QA agent has left feedback that needs developer action and the PR is still open.
 
+  The final ticket comment carries an explicit verdict token — FEEDBACK_APPLIED once every thread is addressed and pushed, or BLOCKED when a missing decision, credential, or access stops the work — so a portal playbook step can content-route on the outcome (metadata.verdicts).
+
 category:
   level: pipeline
   domain: engineering
@@ -14,6 +16,9 @@ category:
 metadata:
   agent: true
   role: se
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # step's ticket comment; declaring it here is what makes this workflow content-routable.
+  verdicts: [FEEDBACK_APPLIED, BLOCKED]
 
 params:
   agentic_app:
@@ -64,6 +69,6 @@ steps:
       learn how to SE relevant parts, check out the existing branch, and apply the requested changes.
       push updates to the PR.
       {{hint}}
-      write one comment to the ticket with: each review item addressed (file refs) and confirmation that changes are pushed.
+      As your FINAL action, write ONE comment to the ticket with: each review item addressed (file refs), confirmation that changes are pushed, and a final verdict line carrying the exact token FEEDBACK_APPLIED. if a missing decision, credential, or access stops the work entirely, state what blocks you and end with the token BLOCKED instead. the upper-case token must appear verbatim - it is machine-matched by the portal gate.
       SB_PROMPT
       )"

@@ -7,29 +7,11 @@ id: app_edit_session
 title: "Open App Editing Session"
 description: "Boot a project's dev server on this VM, verify it serves, submit the ready report, then ride the live session"
 overview: |
-  Opens a live editing session on a workspace project. A deterministic boot script does the mechanical
-  work first — sync the checkout, install dependencies when they moved, start or reuse the dev server,
-  verify it actually answers — and hands its findings to the agent as a one-line JSON report. The agent
-  then starts with the boot already done: it composes the ready report from that data and ends the
-  turn. That report IS the readiness signal: the boot turn completing is what tells the portal the
-  session is connected (SCRUM-1965), so the boot carries no screenshot step and depends on no chrome
-  binary. That first turn is the whole job — it completes as soon as the ready report is posted, and
-  the user's chat then continues on the same still-alive Claude session, one turn per message. When the
-  script could not bring the server up, the report names the failed stage and the agent spends its
-  turn fixing exactly that instead of re-deriving the boot (PLAN-app-session-boot-script).
+  Opens a live editing session on a workspace project. The agent syncs the project, starts its own dev server on the VM, verifies the server actually answers, and submits the ready report. That report IS the readiness signal: the boot turn completing is what tells the portal the session is connected (SCRUM-1965), so the boot turn carries no screenshot step and depends on no chrome binary. That first turn is the whole job — it completes as soon as the ready report is posted, and the user's chat then continues on the same still-alive Claude session, one turn per message.
 
-  The dev server is the live lane. It is started detached and bound to the loopback interface, so it
-  survives the end of every turn and is reachable only through the agent daemon's authenticated preview
-  passthrough (SP-B/SP-C) — never as an open port on the VM. Reconnecting onto the same workspace
-  reuses a server that is still healthy instead of booting a second one, so a session can be resumed
-  without tripping over its own port.
+  The dev server is the live lane. It is started detached and bound to the loopback interface, so it survives the end of every turn and is reachable only through the agent daemon's authenticated preview passthrough (SP-B/SP-C) — never as an open port on the VM. Reconnecting onto the same workspace reuses a server that is still healthy instead of booting a second one, so a session can be resumed without tripping over its own port.
 
-  Durability is git, uniformly for every repo: each turn ends with a real commit pushed to the
-  project's branch, so a reclaimed spot VM costs at most the current turn. A rejected push is rebased
-  once and retried once; if it still will not land, the reply says so and the commit rides into the
-  next turn rather than being forced over someone else's work. That is also why the session rules
-  below insist the working tree stays publishable at all times — nothing secret may ever be written
-  into the project, and evidence files belong in the artifacts directory outside it.
+  Durability is git, uniformly for every repo: each turn ends with a real commit pushed to the project's branch, so a reclaimed spot VM costs at most the current turn. A rejected push is rebased once and retried once; if it still will not land, the reply says so and the commit rides into the next turn rather than being forced over someone else's work. That is also why the session rules below insist the working tree stays publishable at all times — nothing secret may ever be written into the project, and evidence files belong in the artifacts directory outside it.
 
 category:
   level: pipeline
@@ -98,177 +80,6 @@ steps:
     # purpose: "{{project_path}}/{{app_dir}}" would resolve to a bare "/" on any run that carries
     # no project, and terminal.open would open the session at the filesystem root.
     cwd: "{{app_path}}"
-  # Deterministic boot (PLAN-app-session-boot-script): everything the old prompt asked the agent to
-  # do conversationally — sync, install, start/reuse the server, verify, resolve the entry — runs
-  # here as one blocking script, with no LLM in the loop. Its stdout is captured into
-  # `boot_report` and embedded into the claude prompt below, so the agent starts with the boot
-  # already done and its single turn is the report. Three contracts keep this safe:
-  #   - stdout is EXACTLY ONE line of compact JSON (fd3; all trace goes to ~/boot-script.log).
-  #     Single-line + control-char-free is what makes the heredoc embedding below injection-safe.
-  #   - the script ALWAYS exits 0: the executor auto-retries a non-zero step and then fails the
-  #     whole workflow (boot_failed, claude never launched). Failure is DATA — ok:false plus
-  #     fail_stage — and the agent is the recovery lane.
-  #   - every phase carries its own timeout, so a hung remote or install records its stage
-  #     instead of hanging the run.
-  # No `cwd:` on this step on purpose — executeShellRun does not tilde-expand it; the script cds
-  # itself (tilde expands in shell assignments; every interpolated value is charset-validated at
-  # the REST door, lib/workspace-projects.ts, before it may reach this file).
-  - type: shell.run
-    as: boot_report
-    cmd: |
-      bash -s <<'SB_BOOT'
-      LOG="$HOME/boot-script.log"
-      exec 3>&1 1>"$LOG" 2>&1
-      set +e
-      export GIT_TERMINAL_PROMPT=0
-      START_MS=$(date +%s%3N 2>/dev/null || echo 0)
-
-      # Same env the terminal lane gets: git credentials ride ~/.agent-env, and the daemon's own
-      # (systemd) PATH may lack an nvm-installed node/npm the interactive shell has.
-      [ -f "$HOME/.agent-env" ] && . "$HOME/.agent-env"
-      if ! command -v npm >/dev/null 2>&1; then
-        for d in "$HOME"/.nvm/versions/node/*/bin /usr/local/bin /usr/bin; do
-          if [ -x "$d/npm" ]; then PATH="$d:$PATH"; export PATH; break; fi
-        done
-      fi
-
-      PROJECT_PATH={{project_path}}
-      APP_PATH={{app_path}}
-      DEV_CMD='{{dev_cmd}}'
-      DEV_PORT='{{dev_port}}'
-      DEV_ENV='{{dev_env}}'
-      PREVIEW_PATH='{{preview_path}}'
-
-      OK=true; FAIL_STAGE=""; SYNC="no-repo"; BRANCH=""; REUSED=false; INSTALLED=false
-      ENTRY_STATUS="000"; PKG_NAME=""; DEPS=""; ROUTES=""; CMD="$DEV_CMD"
-      fail() { OK=false; FAIL_STAGE="$1"; echo "FAIL at stage: $1"; }
-
-      # --- sync: fetch + ff-only pull; NEVER reset/checkout/clean (autosave commits are sacred) ---
-      cd "$PROJECT_PATH" 2>/dev/null || fail sync
-      if [ -z "$FAIL_STAGE" ] && [ ! -d .git ]; then
-        # A contract-less dispatch can hand the workspace ROOT — enter the single checkout inside it.
-        SUB=$(find . -mindepth 2 -maxdepth 2 -name .git 2>/dev/null | head -1)
-        if [ -n "$SUB" ]; then
-          SUB=${SUB#./}; PROJECT_PATH="$PROJECT_PATH/${SUB%/.git}"; APP_PATH="$PROJECT_PATH"
-          cd "$PROJECT_PATH" 2>/dev/null || fail sync
-        else
-          fail sync
-        fi
-      fi
-      if [ -z "$FAIL_STAGE" ]; then
-        BRANCH=$(git branch --show-current 2>/dev/null)
-        if timeout 60 git fetch; then
-          if PULL_OUT=$(timeout 60 git pull --ff-only 2>&1); then
-            case "$PULL_OUT" in
-              *"Already up to date"*|*"Already up-to-date"*) SYNC="up-to-date" ;;
-              *) SYNC="fast-forwarded" ;;
-            esac
-          else
-            SYNC="diverged"
-          fi
-          echo "$PULL_OUT"
-        else
-          SYNC="fetch-failed"
-        fi
-      fi
-
-      # --- install: only when node_modules is missing or the npm lockfile moved since ---
-      if [ -z "$FAIL_STAGE" ] && cd "$APP_PATH" 2>/dev/null && [ -f package.json ]; then
-        NEED=""
-        [ ! -d node_modules ] && NEED=1
-        [ -f package-lock.json ] && [ package-lock.json -nt node_modules/.package-lock.json ] && NEED=1
-        if [ -n "$NEED" ]; then
-          if [ -f package-lock.json ]; then
-            timeout 300 npm ci || timeout 300 npm install || fail install
-          else
-            timeout 300 npm install || fail install
-          fi
-          [ -z "$FAIL_STAGE" ] && INSTALLED=true
-        fi
-        PKG_NAME=$(node -e "console.log(require('./package.json').name||'')" 2>/dev/null)
-        DEPS=$(node -e "const p=require('./package.json');console.log(Object.keys({...p.dependencies,...p.devDependencies}).slice(0,15).join(','))" 2>/dev/null)
-      fi
-
-      # --- port: contract wins; else the framework convention off package.json ---
-      PORT="$DEV_PORT"
-      if [ -z "$PORT" ] && [ -f "$APP_PATH/package.json" ]; then
-        if grep -q '"astro"' "$APP_PATH/package.json"; then PORT=4321
-        elif grep -q '"next"' "$APP_PATH/package.json"; then PORT=3000
-        else PORT=5173; fi
-      fi
-      [ -z "$PORT" ] && PORT=5173
-      probe() { curl -sS -o /dev/null -w '%{http_code}' --max-time 2 "http://127.0.0.1:$PORT$1" 2>/dev/null || echo 000; }
-
-      # --- server: REUSE a healthy one (reconnect lane); else start detached on the IPv4 loopback.
-      # Astro/Vite left alone bind [::1] only and the preview passthrough dials 127.0.0.1, so the
-      # host flag is explicit; never 0.0.0.0 — the VM opens no new ports.
-      if [ -z "$FAIL_STAGE" ]; then
-        CODE=$(probe /)
-        if [ "$CODE" != "000" ]; then
-          REUSED=true
-        elif cd "$APP_PATH" 2>/dev/null; then
-          if [ -z "$CMD" ]; then
-            if grep -q '"dev"[[:space:]]*:' package.json 2>/dev/null; then
-              if grep -q '"next"' package.json; then CMD="npm run dev -- -H 127.0.0.1 -p $PORT"
-              else CMD="npm run dev -- --host 127.0.0.1 --port $PORT"; fi
-            else
-              fail server
-            fi
-          fi
-          if [ -z "$FAIL_STAGE" ]; then
-            [ -n "$DEV_ENV" ] && export $DEV_ENV
-            echo "starting: $CMD (port $PORT)"
-            setsid nohup sh -c "$CMD" >"$HOME/dev-server.log" 2>&1 &
-          fi
-        else
-          fail server
-        fi
-      fi
-
-      # --- verify: ANY http status proves it serves (000 = nothing listening; 404 on / is healthy) ---
-      if [ -z "$FAIL_STAGE" ] && [ "$REUSED" != "true" ]; then
-        i=0; CODE=000
-        while [ $i -lt 45 ]; do
-          sleep 2
-          CODE=$(probe /)
-          [ "$CODE" != "000" ] && break
-          i=$((i+1))
-        done
-        [ "$CODE" = "000" ] && fail verify
-      fi
-
-      # --- entry route + router inventory for the report ---
-      ENTRY="/"
-      [ -n "$PREVIEW_PATH" ] && ENTRY="$PREVIEW_PATH"
-      [ -z "$FAIL_STAGE" ] && ENTRY_STATUS=$(probe "$ENTRY")
-      if [ -z "$FAIL_STAGE" ] && cd "$APP_PATH" 2>/dev/null; then
-        if [ -d src/pages ]; then
-          ROUTES=$(find src/pages -type f 2>/dev/null | head -40)
-        elif [ -d app ] || [ -d src/app ]; then
-          ROUTES=$(find app src/app -maxdepth 6 -type f -name 'page.*' 2>/dev/null | head -40)
-        fi
-      fi
-
-      # --- emit: the ONE stdout line. clean() strips control chars, quotes and backslashes, so the
-      # report is single-line and JSON-safe by construction — never truncate the JSON itself.
-      clean() { printf '%s' "$1" | tr -d '\000-\037\177"\\' | head -c 240; }
-      RLIST=""
-      for p in $ROUTES; do
-        c=$(clean "$p"); [ -z "$c" ] && continue
-        if [ -z "$RLIST" ]; then RLIST="\"$c\""; else RLIST="$RLIST,\"$c\""; fi
-      done
-      DLIST=""; OLDIFS=$IFS; IFS=,
-      for d in $DEPS; do
-        c=$(clean "$d"); [ -z "$c" ] && continue
-        if [ -z "$DLIST" ]; then DLIST="\"$c\""; else DLIST="$DLIST,\"$c\""; fi
-      done
-      IFS=$OLDIFS
-      FS_JSON=null; [ -n "$FAIL_STAGE" ] && FS_JSON="\"$(clean "$FAIL_STAGE")\""
-      NOW_MS=$(date +%s%3N 2>/dev/null || echo 0)
-      printf '{"ok":%s,"fail_stage":%s,"reused":%s,"installed":%s,"branch":"%s","sync":"%s","dev_cmd":"%s","port":"%s","entry_route":"%s","entry_status":"%s","pkg":"%s","deps":[%s],"routes_hint":[%s],"boot_ms":%s,"log":"~/boot-script.log","server_log":"~/dev-server.log"}' \
-        "$OK" "$FS_JSON" "$REUSED" "$INSTALLED" "$(clean "$BRANCH")" "$(clean "$SYNC")" "$(clean "$CMD")" "$(clean "$PORT")" "$(clean "$ENTRY")" "$(clean "$ENTRY_STATUS")" "$(clean "$PKG_NAME")" "$DLIST" "$RLIST" "$((NOW_MS-START_MS))" >&3
-      exit 0
-      SB_BOOT
   - type: terminal.run
     cmd: |
       source ~/.agent-env
@@ -293,20 +104,20 @@ steps:
       fi
       claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
       you are opening a LIVE EDITING SESSION on the app in the current directory ({{app_path}}). the project checkout — the git root you commit and push from — is {{project_path}}, and the app itself lives in {{app_dir}} inside it (empty means the app IS the checkout root). load the dev-session knowledge module (skill://agents/dev-session/_skill.md) before you touch anything — it carries the port conventions, the HMR-behind-two-proxies config, and the autosave rules this session runs on.
-      BOOT — a deterministic script already did the boot before you started: sync, install-when-needed, dev-server start-or-reuse, and the serve check. its report is this turn's ground truth:
-      BOOT_REPORT: {{boot_report}}
-      trust it — do NOT redo sync or install, and never restart a server it verified or reused; its full trace is in the log files it names. this turn posts the ready report and ends. its end COMPLETES the job, and that completion is exactly what flips the window to connected — so do not hold the turn open, do not tail logs, and never wait on the dev server.
-      IF ok IS true: compose the report from the boot data alone — the pkg/deps/routes_hint fields exist so you need no exploratory reads (at most one quick look if something essential is missing) — and finish with, in this order and nothing more: (a) one status line — project and branch, the dev command (say "reused running server" when dev_cmd is blank and reused is true), the PORT, the ENTRY ROUTE, and the local URL http://127.0.0.1:<port><entry route>; use the report's entry_route unless its entry_status is 404 and the router clearly has a real first page — then name that page instead, and only after a curl to it answered. (b) a SHORT kickoff analysis the user reads first — what this project already is (stack from pkg/deps, the handful of things the routes say exist), then the next steps worth taking ordered by value, closing with one question back to them; a few sentences, no headings, no file dumps. (c) the site's ROUTES — a `ROUTES:` line followed by one `- /path Label` per line, mapped from routes_hint (those are router FILES: turn file paths into url routes, dynamic segments as their template, e.g. `/blog/:slug`), about 30 at most; when routes_hint is empty read the router yourself (src/pages or the route table, NOT the nav bar) — this is what the portal's page switcher offers, so a route you leave out is a page the user cannot open. (d) a final block of 3-4 suggestion chips, each a short imperative the user could send back as-is (≤60 chars), formatted exactly as a `SUGGESTIONS:` line followed by one `- chip text` per line — the portal renders these as one-click chips, so nothing may follow the block except the verdict line. (e) the final line exactly SESSION_READY.
-      IF ok IS false: the script stopped at fail_stage and touched nothing after it. read the tail of ~/boot-script.log (plus ~/dev-server.log for server/verify failures), fix ONLY what it names, then verify yourself: poll `curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:<port>/` until curl reports ANY http status (000 means nothing is listening; a 404 on `/` is a healthy server with its entry elsewhere), for at most ~90 seconds. the same rules the script obeys bind you: NEVER `git reset --hard`, `git checkout -- .` or `git clean` — on a reconnect the local branch carries autosave commits that exist nowhere else; REUSE a healthy server already on the port rather than boot a second one (a double boot dies on EADDRINUSE or lands on a port the preview cannot reach); start it DETACHED so it outlives this turn — `setsid nohup <dev command> >"$HOME/dev-server.log" 2>&1 &` — with the IPv4 host flag explicit (`--host 127.0.0.1` for Astro and Vite, `-H 127.0.0.1` for Next; never 0.0.0.0 — the preview arrives only through the agent daemon's authenticated passthrough). fixed → post the full (a)-(e) report ending SESSION_READY. truly will not serve → report what you saw with the last ~40 lines of ~/dev-server.log and finish the turn with BOOT_FAILED as the final line.
+      BOOT — this turn does the boot and nothing else. do every step in the FOREGROUND, then end the turn.
+      1. SYNC: git commands belong at the checkout root, so `cd {{project_path}}` for this step and come back to {{app_path}} after. if that is not a git repo either, the dispatch handed you a workspace root — `cd` into the project checkout inside it (the single repo directory, or the one the hint names) and say which you picked. then `git fetch` and `git pull --ff-only`. NEVER `git reset --hard`, `git checkout -- .` or `git clean` — on a reconnect the local branch carries autosave commits that exist nowhere else, and destroying them destroys the user's work. if the pull cannot fast-forward, keep the local tree, say so, and continue.
+      2. INSTALL: install dependencies only when they are missing or the lockfile moved since the last install (node_modules absent, or the lockfile is newer). an already-installed tree is a no-op — do not reinstall for its own sake.
+      3. START THE DEV SERVER: the project may declare a contract — USE IT WHEN IT IS SET, it is the operator telling you what this repo actually needs, and only fall back to guessing when a field is empty. the dev command is `{{dev_cmd}}` when that is non-empty, otherwise read package.json and pick the dev script. export `{{dev_env}}` first when that is non-empty (space-separated KEY=VALUE flags — `export {{dev_env}}` works as written, and they are non-secret by construction). the port is {{dev_port}} when that is set, otherwise the project's framework convention (Astro 4321, Vite 5173, Next 3000). FIRST check whether a healthy server already answers on that port: on a reconnect it usually does, and you must REUSE it rather than boot a second one (a double boot either dies on EADDRINUSE or silently lands on another port the preview cannot reach). otherwise start it DETACHED so it outlives this turn and the 60-minute session tidy — `setsid nohup <dev command> >"$HOME/dev-server.log" 2>&1 &`. PASS THE IPv4 HOST FLAG EXPLICITLY: `--host 127.0.0.1` for Astro and Vite, `-H 127.0.0.1` for Next. left to itself Astro/Vite binds the IPv6 loopback `[::1]` ONLY, and the preview passthrough dials `127.0.0.1` — the server looks perfectly healthy in its log and is unreachable. never bind 0.0.0.0 either: the VM opens no new ports, the preview arrives through the agent daemon's authenticated passthrough.
+      4. VERIFY IT SERVES: poll `curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:<port>/` until curl reports ANY http status (curl prints 000 while nothing is listening), for at most ~90 seconds. any status proves the server is up — a project with no route at `/` legitimately answers 404 while being perfectly healthy, so do NOT require 200 on `/`. do not declare readiness off a PID or a log line either. if nothing ever answers, report the failure with the last ~40 lines of ~/dev-server.log and finish the turn with BOOT_FAILED as the final line.
+      5. RESOLVE THE ENTRY ROUTE: pick the route the preview should open on — `{{preview_path}}` when that is non-empty, otherwise `/`, or the actual first page when `/` 404s (check src/pages or the router). it must be a route you have seen answer, so `curl` it the same way as step 4 before you name it. no screenshot: this turn takes no picture and needs no chrome binary — the report you post next IS the readiness signal the portal keys on.
+      6. REPORT AND STOP: finish immediately with the boot report, in this order and nothing more: (a) one status line — project and branch, the dev command, the PORT, the ENTRY ROUTE from step 5, and the local URL; (b) a SHORT kickoff analysis the user reads first — what this project already is (stack, entry route, the handful of things that exist), then the next steps worth taking ordered by value, closing with one question back to them; (c) a final block of 3-4 suggestion chips, each a short imperative the user could send back as-is (≤60 chars), formatted exactly as a `SUGGESTIONS:` line followed by one `- chip text` per line — the portal renders these as one-click chips, so nothing may follow the block except the verdict line; (d) the final line exactly SESSION_READY. keep (b) tight — a few sentences, no headings, no file dumps. this turn's end COMPLETES the job, and that completion is exactly what flips the window to connected; so do not hold the turn open, do not tail the log, and never wait on the dev server.
       SESSION RULES — every later turn. each user message is one turn: do what it asks, then end the turn promptly so the reply reaches the user.
       - TURN END = COMMIT + PUSH, uniformly, in every repo. commit with a real message describing the change (never "wip"/"autosave"), then `git push` the branch you are on — for a project session that is main. a commit you did not push exists only on a VM that can be reclaimed. include any commit an earlier turn had to leave local. treat every turn end as a publish: leave the tree building and coherent.
       - IF THE PUSH IS REJECTED (someone else advanced the branch): `git pull --rebase` ONCE and push ONCE more. if it is still rejected, STOP retrying — say so plainly in your reply, keep the commit local, and push it again at the end of the next turn. never `git push --force`, never reset to origin: a rejected push means someone else's work is on that branch.
       - never destroy your own autosave commits — no `git reset --hard`, no force-push over the session branch. if you must undo, revert forward with a new commit.
       - NEVER PARK CREDENTIALS: nothing secret goes into the project worktree — no .env with real values, no tokens in config or committed fixtures. the only credential this VM holds is the sb_token already in ~/.agent-env, and every turn publishes the tree.
       - keep evidence (screenshots, reports, datasets) in ~/workspace/artifacts/ — the directory the artifacts lane actually uploads from — never inside the project.
-      - a user message may arrive with a leading `[viewing /some/path]` line: that is the page they have open in the live preview, so read the rest of the message as being about THAT page.
-      - RE-EMIT `ROUTES:` in the reply of any turn that adds, removes or renames a route — same shape as the boot report's, before the suggestions if you send any. the portal's page switcher shows the latest block it has seen, so a page you just created stays invisible until you report it.
-      - the dev server stays UP across turns: never stop or restart it at the end of a turn. if a change needs a restart, or the server died, restart it exactly as the boot rules above describe and say so in your reply.
+      - the dev server stays UP across turns: never stop or restart it at the end of a turn. if a change needs a restart, or the server died, restart it exactly as in steps 3-4 and say so in your reply.
       - report honestly: if a change did not work, say what you saw. the user is watching the live preview and will see it too.
       {{hint}}
       SB_PROMPT

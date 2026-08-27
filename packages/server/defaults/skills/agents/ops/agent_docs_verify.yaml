@@ -1,0 +1,110 @@
+schema_version: 1
+id: agent_docs_verify
+title: "Verify Docs vs Product"
+description: "Check a docs PR's claims against the live product using the audit pack's QA playbooks, plus generator build, anchor check and leak scan"
+overview: |
+  The verification half of per-page documentation delivery. It runs against the PR a write pass opened
+  and answers one question: does the page tell the truth about the product as shipped. The agent loads
+  the site's audit pack — the per-module QA playbook for each changed route — and walks the page's
+  claims against the running product, rather than re-reading the same skill modules the page was
+  written from, which would only confirm the writer's own assumptions.
+
+  Four deterministic checks run alongside that walk. The generator build is the dead-link gate; a
+  separate anchor pass covers heading fragments, which the build does not check; the leak scan
+  enforces the instance publication boundary against internal ticket keys, private repo paths, internal
+  hosts, customer identifiers and credentials; and a provenance check confirms every changed page
+  carries an accurate docs_agent stamp, since the next audit's staleness detection runs off it. A
+  clean run emits PASS, findings emit FAIL so the playbook loops back to the write step, and a check
+  that cannot be run at all — a missing leak scan, an unreachable product, a build that cannot
+  install — emits BLOCKED rather than a silent pass. Those three tokens are the workflow's declared
+  gate vocabulary (metadata.verdicts), so a portal playbook step content-routes on them. The two
+  cannot-run checks are sequenced ahead of the claims walk, so a pass that can only end in BLOCKED
+  does not first pay for a cold install and a full product walk.
+
+category:
+  level: pipeline
+  domain: engineering
+
+metadata:
+  agent: true
+  role: qa
+  # Gate-verdict vocabulary for portal playbook steps (PLAYBOOKS.md §5) — matched from the
+  # step's ticket comment; declaring it here is what makes this workflow content-routable.
+  verdicts: [PASS, FAIL, BLOCKED]
+
+params:
+  agentic_app:
+    type: string
+    default: "cc"
+    description: "Agent-app slug selecting the per-run env file ~/.agent-env.d/<slug> (AAP-C); 'cc'/subscription clears provider vars"
+  ticket_url:
+    type: string
+    description: "Jira ticket URL — the Docs page ticket whose write pass opened the PR under verification"
+  hint:
+    type: string
+    default: ""
+    description: "Optional extra instructions for the agent"
+  entry_path:
+    type: string
+    default: "~/workspace"
+    description: "Working directory for the agent"
+
+steps:
+  - type: terminal.open
+    title: "Agent: Docs Verify"
+    cwd: "{{entry_path}}"
+  - type: terminal.run
+    cmd: |
+      source ~/.agent-env
+      # AAP-C (SCRUM-1506) + AAP-17 (SCRUM-1653): clear EVERY provider var an agent-app can deliver so
+      # none hijacks/poisons a subscription run. A stray global ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL
+      # needs no CLAUDE_CODE_USE_* flag, so the old ${!CLAUDE_CODE_USE_@} glob never caught it — it survived
+      # into the run and 404-ed aux/small-fast calls against api.anthropic.com. This explicit list mirrors
+      # AGENT_APP_ENV_KEYS 1:1 (the-assistant website/src/lib/cloud/agent-app-env.ts — the single source of
+      # truth; a parity test in each repo guards the two from drifting). Explicit over a glob: the union has
+      # non-ANTHROPIC_ members (AWS_REGION, AWS_PROFILE, CLOUD_ML_REGION, CLAUDE_CODE_MAX_OUTPUT_TOKENS) and
+      # a ${!AWS_@} glob would over-clear unrelated creds. Then source the per-run app env by slug when it
+      # exists; no file => subscription/default. base/19-secrets stages ~/.agent-env.d/<slug>.
+      unset \
+        ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN CCR_CONFIG_B64 \
+        CLAUDE_CODE_USE_BEDROCK AWS_REGION AWS_PROFILE ANTHROPIC_MODEL \
+        ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_MAX_OUTPUT_TOKENS \
+        CLAUDE_CODE_USE_VERTEX CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID ANTHROPIC_VERTEX_BASE_URL \
+        CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL
+      if [ -f "$HOME/.agent-env.d/{{agentic_app}}" ]; then
+        source "$HOME/.agent-env.d/{{agentic_app}}"
+      fi
+      claude --dangerously-skip-permissions "$(cat <<'SB_PROMPT'
+      read ticket with attachments and all comments - {{ticket_url}}. if it fails, stop and report the error.
+      find the docs PR the write pass opened (its comment names the PR and the work branch) and check out that branch locally. if there is no PR to verify, stop and report that - it takes the cannot-run verdict below, never a passing one.
+
+      EXECUTION RULES (read first — they override any habit):
+      - Do ALL of the work in THIS session, in the FOREGROUND, and finish before your turn ends. You MAY spawn subagents (the Agent / Task tool) or run parallel searches to work faster — but you MUST wait for every subagent and any background task to return and fold their results in YOURSELF before ending the turn. Never move the work (or the comment) into the background — no run_in_background, no background workflows, no trailing & — and then end the turn expecting to be resumed. Ending your turn is FINAL here: nothing wakes you to "resume", so a turn that ends while any spawned or background work is still pending is reported as a FAILED step, not a pause.
+      - Post the ticket comment YOURSELF, in the foreground, as the LAST thing you do — after every subagent and background task has returned. Never delegate it, and never end the turn "holding" or planning to "resume later".
+
+      READ-ONLY RULE: this workflow judges the PR, it does not repair it. do not edit pages, do not commit, do not push, do not merge, close or approve the PR, and do not transition the ticket. findings go in the comment — the write step fixes them on the loopback.
+
+      SETUP: read the site instruction instance for this site (the DOCS-INSTRUCTION.md in the site's source-of-truth repo) — it declares the page tree, the build command, the authoring constraints, the publication boundary and the per-page audit module. Identify the changed routes from the PR diff.
+
+      PRECHECK (cheap, run FIRST): before loading any playbook or walking any claim, confirm the two things that can end this pass without a judgement — that the leak-lint script exists at the path below, and that the site package's build command can install and run at all. Both are seconds of work; the claims walk and a cold install are the most expensive part of the run, and doing them ahead of these checks throws that cost away on every cannot-run result and pays it again on the re-run. If either precheck fails, stop there and take the cannot-run verdict.
+
+      AUDIT PLAYBOOKS: for each changed route, load the site AUDIT pack's QA playbook for that page's module — resource skill://<audit-pack>/<module>/qa.md (the skill:// URI elides the on-disk _roles/ segment). The audit pack is a different pack from the content sources the page was written from; verifying against the content pack would only re-confirm the writer's own assumptions. Run that playbook's link-and-anchor-integrity and accuracy-versus-product phases. Gate on the PLAYBOOK FILE's own confidence and last_verified — a role playbook usually carries lower confidence than its module _skill.md, so do not inherit the module's freshness. Where the playbook is missing, below the instance confidence floor, or stale, say so explicitly and verify the claims directly against the product instead of trusting it.
+
+      CLAIMS VS LIVE PRODUCT: this is the substance of the pass. Walk the page's factual claims — UI labels, menu paths, field and parameter names, defaults, commands and their flags, outputs, prices, limits, version numbers — against the product as it actually runs. A claim that cannot be checked is reported as unverified, never as verified.
+
+      BUILD (dead links): run the instruction's build command in the site package — for a VitePress site that is `npm ci` then `npm run build`, run in the site directory. The generator build IS the dead-link validation. Run it in the FOREGROUND and WAIT for it. A build that fails to install or run at all is BLOCKED; a build that runs and reports broken links is a finding.
+
+      ANCHORS: the build checks links but NOT heading fragments, so check every in-page and cross-page anchor separately. Resolve each fragment against the target page's actual headings using the instruction's slug rules — for the VitePress instance: "." becomes "-", "_" becomes "-", a leading digit gets a "_" prefix, and "'" becomes "-". Include anchors baked into the generator config, not just the ones in page bodies. Every unresolved fragment is a finding.
+
+      LEAK SCAN: run the repository's leak-lint script — the deterministic forbidden-token scan under the site package's scripts directory — over the changed files; a non-zero exit is a finding. If that script does not exist yet in this checkout, the boundary is unverifiable and the pass takes the cannot-run verdict below — say which path you looked for. Never substitute your own judgement for the scan and never report the boundary as clean because you eyeballed it: the whole point of the scan is that it is deterministic. Nothing published may carry internal ticket keys, private repo paths, internal hosts, customer identifiers, agent or VM identifiers, or credentials.
+
+      PROVENANCE: confirm every changed page carries the docs_agent frontmatter block, that its listed pack versions match those packs' current manifest versions, and that the modules listed are the ones the ticket mapped as sources. A missing or inaccurate stamp is a finding — the next audit's staleness detection runs off it.
+
+      REPORTING DISCIPLINE — the gate string-matches your WHOLE comment, not just its last line, and it tests your verdicts in routing order, so a stray FAIL anywhere in the body outranks a genuine PASS on the last line. Report every check NEUTRALLY, as a count or an exit code, never as a word: "dead links: 0", "anchors unresolved: 0", "leak scan: exit 0", "provenance: 3 of 3 pages stamped, versions match" — never the bare words pass/fail/passed/failed, in any case, and never the word blocked. Findings are described, not labelled: "line 42 states the flag is --dry-run; the CLI accepts --dry only". Keep the verdict token itself out of the body entirely; it appears once, on the last line, and nowhere else.
+
+      {{hint}}
+      publish your evidence — build output, screenshots of the walked pages, the scan output — via the publish_artifact tool and cite the returned download links in your comment; if the tool is unavailable, save under ~/workspace/artifacts/ for post-run collection.
+      As your FINAL action, write ONE comment to the ticket with: the routes verified, the audit playbooks used with their own confidence and last_verified, the claims checked against the product and any that could not be checked, the four deterministic check results — build/dead links, anchors, leak scan, provenance — each reported as a neutral count or exit code, the findings (file and line, what is wrong, what it should say), the evidence links, and as the LAST line a verdict line carrying exactly one of the tokens PASS when every check is clean and every claim holds, FAIL when there are findings for the write step to fix, or BLOCKED when a check could not be run at all (no PR to verify, leak-lint script absent, build cannot install or run, product unreachable). write that upper-case token verbatim exactly once in the whole comment (e.g. "Verdict: FAIL") - it is machine-matched by the portal gate, and a second occurrence anywhere in the body can route the run wrongly.
+      SB_PROMPT
+      )"
