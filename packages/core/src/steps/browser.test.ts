@@ -59,7 +59,10 @@ describe('browser.screenshot', () => {
     await executeStep(shot({ path: out, selector: '#app' }), ctx);
 
     expect(fs.readFileSync(out)).toEqual(PNG_BYTES);
-    expect(fs.statSync(out).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') {
+      // chmod is a no-op on Windows (mode reads 0o666) — POSIX-only assertion.
+      expect(fs.statSync(out).mode & 0o777).toBe(0o600);
+    }
   });
 
   it('records the path — never the base64 — as the step result', async () => {
@@ -173,7 +176,8 @@ describe('browser.screenshot', () => {
     expect(fs.existsSync(path.join(fakeHome, 'workspace', 'undefined'))).toBe(false);
   });
 
-  it('tightens the mode to 0600 when overwriting a looser existing file', async () => {
+  // chmod is a no-op on Windows — the tightened mode is a POSIX-only behavior.
+  it.skipIf(process.platform === 'win32')('tightens the mode to 0600 when overwriting a looser existing file', async () => {
     const ctx = makeCtx();
     const out = path.join(fakeHome, 'preexisting.png');
     fs.writeFileSync(out, 'stale', { mode: 0o644 });
@@ -183,7 +187,8 @@ describe('browser.screenshot', () => {
     expect(fs.statSync(out).mode & 0o777).toBe(0o600);
   });
 
-  it('creates no directories outside home when the escape is through a symlink', async () => {
+  // symlink creation on Windows requires elevation/developer mode — POSIX-only scenario.
+  it.skipIf(process.platform === 'win32')('creates no directories outside home when the escape is through a symlink', async () => {
     const ctx = makeCtx();
     const outsideDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'sb-core-mk-')));
     fs.symlinkSync(outsideDir, path.join(fakeHome, 'link'));

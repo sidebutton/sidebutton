@@ -108,7 +108,8 @@ describe('screenshot tool — path option', () => {
     expect(fs.readFileSync(out)).toEqual(PNG_BYTES);
   });
 
-  it('writes the file 0600 — a shot may hold pre-redaction pixels', async () => {
+  // chmod is a no-op on Windows (mode reads 0o666) — POSIX-only behavior.
+  it.skipIf(process.platform === 'win32')('writes the file 0600 — a shot may hold pre-redaction pixels', async () => {
     const handler = makeHandler();
     const out = path.join(fakeHome, 'perms.png');
 
@@ -117,7 +118,7 @@ describe('screenshot tool — path option', () => {
     expect(fs.statSync(out).mode & 0o777).toBe(0o600);
   });
 
-  it('tightens the mode to 0600 even when overwriting a looser existing file', async () => {
+  it.skipIf(process.platform === 'win32')('tightens the mode to 0600 even when overwriting a looser existing file', async () => {
     const handler = makeHandler();
     const out = path.join(fakeHome, 'preexisting.png');
     // writeFileSync's `mode` applies only on create, so an existing 0644 file would silently
@@ -130,7 +131,8 @@ describe('screenshot tool — path option', () => {
     expect(fs.readFileSync(out)).toEqual(PNG_BYTES);
   });
 
-  it('creates no directories outside home when the escape is through a symlink', async () => {
+  // symlink creation on Windows requires elevation/developer mode — POSIX-only scenarios.
+  it.skipIf(process.platform === 'win32')('creates no directories outside home when the escape is through a symlink', async () => {
     const handler = makeHandler();
     const outsideDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'sb-shot-mk-')));
     fs.symlinkSync(outsideDir, path.join(fakeHome, 'link'));
@@ -175,7 +177,7 @@ describe('screenshot tool — path option', () => {
     expect(fs.existsSync(path.join(path.dirname(fakeHome), 'escaped'))).toBe(false);
   });
 
-  it('rejects an escape through a symlinked directory', async () => {
+  it.skipIf(process.platform === 'win32')('rejects an escape through a symlinked directory', async () => {
     const handler = makeHandler();
     const outsideDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'sb-shot-out-')));
     fs.symlinkSync(outsideDir, path.join(fakeHome, 'link'));
@@ -187,7 +189,7 @@ describe('screenshot tool — path option', () => {
     fs.rmSync(outsideDir, { recursive: true, force: true });
   });
 
-  it('rejects writing through a symlinked target file', async () => {
+  it.skipIf(process.platform === 'win32')('rejects writing through a symlinked target file', async () => {
     const handler = makeHandler();
     const outsideDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'sb-shot-tgt-')));
     const victim = path.join(outsideDir, 'victim.png');

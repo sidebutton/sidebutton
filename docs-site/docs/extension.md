@@ -4,7 +4,7 @@ The Chrome extension enables browser automation — clicking, typing, scrolling,
 
 ## Installation
 
-**[Install from Chrome Web Store](https://chromewebstore.google.com/detail/sidebutton/TODO)**
+**[Install from Chrome Web Store](https://chromewebstore.google.com/detail/sidebutton/odaefhmdmgijnhdbkfagnlnmobphgkij)**
 
 After installing, pin the extension:
 

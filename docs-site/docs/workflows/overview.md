@@ -46,7 +46,7 @@ steps:                       # Required: what to do
 
 ## Step Types
 
-SideButton supports 27 step types in 5 categories:
+SideButton supports 46 step types ([complete reference](/workflows/steps)). The most-used, by category:
 
 | Category | Steps | Use For |
 |----------|-------|---------|

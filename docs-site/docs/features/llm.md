@@ -1,39 +1,49 @@
+---
+docs_agent:
+  sources:
+    - pack: sidebutton.local
+      module: workflow-engine
+      version: 1.4.15
+      verified: "2026-08-25"
+  updated: "2026-08-25"
+---
+
 # LLM Integration
 
-Use AI for text classification and generation within your workflows.
+Use AI for text classification, generation, and decision-making within your workflows.
 
 ## Overview
 
-SideButton integrates with OpenAI (and Anthropic) APIs to enable:
+SideButton's workflow engine ships three LLM steps, backed by your choice of provider:
 
-- **Classification** — Categorize text into predefined buckets
-- **Generation** — Create text based on prompts
+- **Classification** (`llm.classify`) — Categorize text into predefined buckets
+- **Generation** (`llm.generate`) — Create text based on prompts
+- **Decision** (`llm.decide`) — Pick one action from a list, for branching workflows
 
 ## Setup
 
-### API Key
+### Supported Providers
 
-Set your OpenAI API key:
+| Provider | Configuration | Notes |
+|----------|---------------|-------|
+| OpenAI | `OPENAI_API_KEY` | Default provider |
+| Anthropic | `ANTHROPIC_API_KEY` | Claude models |
+| Ollama | none — local | No API key. Defaults to `http://localhost:11434/api/generate` and model `llama2`; override both in the LLM settings |
+
+### Configuration
+
+The LLM configuration has four fields — `provider`, `model`, `api_key`, and `base_url` — settable in the dashboard or via environment:
 
 **Option 1: Environment Variable**
 ```bash
-export OPENAI_API_KEY=sk-your-key-here
+export OPENAI_API_KEY=sk-your-key-here     # or ANTHROPIC_API_KEY for Anthropic
 npx sidebutton
 ```
 
 **Option 2: Settings (Dashboard)**
 1. Open [localhost:9876](http://localhost:9876)
 2. Go to **Settings**
-3. Add an env context:
-   - Name: `OPENAI_API_KEY`
-   - Value: `sk-your-key-here`
-
-### Supported Providers
-
-| Provider | Environment Variable | Status |
-|----------|---------------------|--------|
-| OpenAI | `OPENAI_API_KEY` | ✅ Supported |
-| Anthropic | `ANTHROPIC_API_KEY` | ✅ Supported |
+3. Configure the LLM provider, model, and key (Ollama needs no key — just point `base_url` at your Ollama instance if it isn't on the default port)
 
 ## LLM Steps
 
@@ -96,6 +106,46 @@ Generate text based on a prompt:
 - Content creation
 - Code explanation
 
+### llm.decide
+
+Choose one action from a list — the branching primitive for agent-style workflows:
+
+```yaml
+- type: llm.decide
+  input: "{{ticket_content}}"
+  actions:
+    - id: escalate
+      description: "Severe or customer-blocking — route to an engineer now"
+    - id: reply
+      description: "Answerable from documentation — draft a response"
+    - id: archive
+      description: "Spam or duplicate — close without action"
+  as: next_action
+
+- type: control.if
+  condition: "{{next_action}} == 'escalate'"
+  then:
+    - type: issues.transition
+      status: "Urgent"
+```
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `input` | string | Yes | The situation to decide on |
+| `actions` | array | Yes | Available actions, each with an `id` and a `description` |
+| `as` | string | Yes | Variable for the chosen action `id` |
+
+**Output:** Exactly one of the action `id` strings.
+
+The step is defensive about model output: if the reply is not exactly an action id, the closest id contained in the reply is used, and if nothing matches, the **first** action in the list is chosen — so order your actions with the safest default first.
+
+**Use cases:**
+- Ticket routing with different follow-up steps per outcome
+- Choosing between reply / escalate / ignore in inbox automations
+- Letting a role-scoped workflow pick its next move
+
 ## User Contexts
 
 Customize AI behavior for specific workflows using LLM Contexts in Settings.
@@ -128,6 +178,8 @@ When an LLM step runs:
 1. The system checks workflow's `category.domain` and `policies.allowed_domains`
 2. Matching contexts are prepended to the prompt
 3. The combined prompt is sent to the API
+
+This applies to all three LLM steps — `llm.decide` includes the matched contexts ahead of its decision prompt.
 
 ## Examples
 
@@ -300,9 +352,9 @@ prompt: |
 
 ## Troubleshooting
 
-### "OpenAI API key not configured"
+### "API key not configured"
 
-Set the `OPENAI_API_KEY` environment variable before starting the server.
+Set the provider's environment variable (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`) before starting the server, or configure the key in Settings. Ollama needs no key — check the `base_url` instead.
 
 ### Rate limiting errors
 
@@ -315,23 +367,26 @@ Set the `OPENAI_API_KEY` environment variable before starting the server.
 - Check your prompt is clear
 - Use few-shot examples
 - Add output format instructions
+- For `llm.decide`, remember the fallback order: exact id → closest match → first action
 
 ### High latency
 
 - Keep prompts concise
 - Extract only needed content
 - Cache results if appropriate
+- For Ollama, latency depends on your local hardware and model size
 
 ## API Usage & Costs
 
-LLM steps make API calls that may incur costs:
+LLM steps make API calls that may incur costs (Ollama runs locally and is free):
 
 | Step Type | Typical Usage |
 |-----------|---------------|
 | `llm.classify` | ~100-500 tokens |
 | `llm.generate` | ~500-2000 tokens |
+| `llm.decide` | ~100-500 tokens |
 
-Monitor your API usage at [OpenAI Dashboard](https://platform.openai.com/usage).
+Token usage is tracked per run across all providers. Monitor provider-side usage in your provider's dashboard.
 
 ## Next Steps
 
