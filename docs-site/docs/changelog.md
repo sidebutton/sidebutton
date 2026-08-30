@@ -2,6 +2,12 @@
 
 All notable changes to SideButton.
 
+## [1.5.8] - 2026-08-30
+
+### Agent Server
+
+- **New workspaces no longer stall on the "Allow external CLAUDE.md file imports?" dialog** — Claude Code added a second interactive gate past folder trust, triggered by the portal-written workspace pointer (`CLAUDE.md` → `@AGENTS.md`) when a session launches inside a project checkout. The pre-launch trust seeding now approves external includes for every portal-provisioned workspace directory, and also repairs a previously recorded decline (which silently stripped the workspace AGENTS.md from every later session in that directory).
+
 ## [1.5.7] - 2026-08-30
 
 ### Agent Server

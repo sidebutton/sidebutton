@@ -89,8 +89,26 @@ export function ensureClaudeFolderTrust(
         typeof raw === 'object' && raw !== null && !Array.isArray(raw)
           ? (raw as Record<string, unknown>)
           : {};
-      if (entry.hasTrustDialogAccepted !== true || entry.hasCompletedProjectOnboarding !== true) {
-        projects[dir] = { ...entry, hasTrustDialogAccepted: true, hasCompletedProjectOnboarding: true };
+      if (
+        entry.hasTrustDialogAccepted !== true ||
+        entry.hasCompletedProjectOnboarding !== true ||
+        entry.hasClaudeMdExternalIncludesApproved !== true
+      ) {
+        projects[dir] = {
+          ...entry,
+          hasTrustDialogAccepted: true,
+          hasCompletedProjectOnboarding: true,
+          // Claude Code ≥2.x added a SECOND interactive gate past folder trust: a CLAUDE.md that
+          // imports a file outside the session's cwd blocks on "Allow external CLAUDE.md file
+          // imports?" — which is exactly our own workspace-root pointer (`CLAUDE.md` →
+          // `@AGENTS.md`) as read from a project checkout one level down. Every dir seeded here
+          // is portal-provisioned and its imports are the portal's own written files, so approval
+          // IS the provisioning intent. This deliberately overrides a recorded "No" too: the
+          // dialog defaults to No, one stray Enter records it, and from then on every session in
+          // that dir silently runs with the workspace AGENTS.md stripped.
+          hasClaudeMdExternalIncludesApproved: true,
+          hasClaudeMdExternalIncludesWarningShown: true,
+        };
         changed = true;
       }
     }

@@ -28,7 +28,28 @@ describe('ensureClaudeFolderTrust', () => {
     expect(cfg.projects[resolve('/home/agent/demo')]).toEqual({
       hasTrustDialogAccepted: true,
       hasCompletedProjectOnboarding: true,
+      hasClaudeMdExternalIncludesApproved: true,
+      hasClaudeMdExternalIncludesWarningShown: true,
     });
+  });
+
+  it('overrides a recorded external-includes "No" — a declined dialog must not strip AGENTS.md forever', () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        hasCompletedOnboarding: true,
+        projects: {
+          [resolve('/home/agent/ws/checkout')]: {
+            hasTrustDialogAccepted: true,
+            hasCompletedProjectOnboarding: true,
+            hasClaudeMdExternalIncludesApproved: false,
+            hasClaudeMdExternalIncludesWarningShown: true,
+          },
+        },
+      }),
+    );
+    expect(ensureClaudeFolderTrust('/home/agent/ws/checkout', configPath)).toBe('seeded');
+    expect(read().projects[resolve('/home/agent/ws/checkout')].hasClaudeMdExternalIncludesApproved).toBe(true);
   });
 
   it('merges into an existing config, preserving global keys and other projects', () => {
