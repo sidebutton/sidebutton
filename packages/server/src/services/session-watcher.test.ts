@@ -219,3 +219,66 @@ describe('SessionWatcher.tick', () => {
     await expect(w.stop()).resolves.toBeUndefined();
   });
 });
+
+describe('activity fallback — claude ignores --session-id (2.1.x)', () => {
+  // The dispatcher's argv uuid and the transcript's own uuid diverge on Claude Code ≥ 2.1.x: the
+  // JSONL is born under claude's uuid, so the argv-keyed lookup misses forever. These pin the
+  // fallback: bind by activity only when unambiguous, and keep posting under the ARGV id.
+  const ARGV_SID = '7d3f2a10-1111-4222-8333-444455556666';
+  const foreignFile = (name: string): string => {
+    const p = path.join(projectsDir, '-home-agent-workspace', `${name}.jsonl`);
+    fs.writeFileSync(p, '');
+    return p;
+  };
+  const foreignWatcher = (): SessionWatcher =>
+    new SessionWatcher({ listSessions: () => [{ pid: 2, cmd: `claude --session-id ${ARGV_SID}` }], projectsDir });
+
+  it('binds the single active foreign transcript and posts under the ARGV session id', async () => {
+    fs.rmSync(file); // no <argv-id>.jsonl anywhere — the 2.1.x world
+    const foreign = foreignFile('1d7eeb51-bee4-4b97-b737-ca8437eb7bba');
+    const w = foreignWatcher();
+    await w.tick(); // discovery tick — cursor lands at the file's current end
+    fs.appendFileSync(foreign, rec('streamed via fallback'));
+    await w.tick();
+    expect(posted()).toHaveLength(1);
+    expect(posted()[0].session_id).toBe(ARGV_SID);
+    expect(posted()[0].events.map((e) => e.text)).toEqual(['streamed via fallback']);
+  });
+
+  it('tracks nothing when TWO foreign transcripts are active — never a guess', async () => {
+    fs.rmSync(file);
+    const a = foreignFile('aaaa1111-2222-4333-8444-555566667777');
+    const b = foreignFile('bbbb1111-2222-4333-8444-555566667777');
+    const w = foreignWatcher();
+    await w.tick();
+    fs.appendFileSync(a, rec('a'));
+    fs.appendFileSync(b, rec('b'));
+    await w.tick();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('never claims a file named after another LIVE session (old-semantics claude)', async () => {
+    // SID's own file exists and belongs to SID; ARGV_SID has no file. The fallback must not steal
+    // SID's transcript for ARGV_SID.
+    const w = new SessionWatcher({
+      listSessions: () => [
+        { pid: 1, cmd: `claude --session-id ${SID}` },
+        { pid: 2, cmd: `claude --session-id ${ARGV_SID}` },
+      ],
+      projectsDir,
+    });
+    await w.tick();
+    fs.appendFileSync(file, rec('belongs to SID'));
+    await w.tick();
+    expect(posted()).toHaveLength(1);
+    expect(posted()[0].session_id).toBe(SID);
+  });
+
+  it('the direct argv-named lookup still wins when the file exists (pre-2.1 claude unchanged)', async () => {
+    const w = watcher();
+    await w.tick();
+    fs.appendFileSync(file, rec('direct path'));
+    await w.tick();
+    expect(posted()[0].session_id).toBe(SID);
+  });
+});

@@ -38,6 +38,8 @@ const MAX_READ_BYTES = 512 * 1024;
 const POST_TIMEOUT_MS = 8_000;
 /** After the portal answers 404 (a deployment without the route) the watcher stops posting for this long. */
 const UNSUPPORTED_BACKOFF_MS = 10 * 60 * 1000;
+/** How recently a transcript must have been written to count as the activity-fallback candidate. */
+const FALLBACK_ACTIVE_MS = 30_000;
 
 /** A live Claude process, as the server's `pgrep -a claude` enumeration reports it. */
 export interface ClaudeProcess {
@@ -187,21 +189,26 @@ export class SessionWatcher {
       const sessionId = extractSessionId(proc.cmd);
       if (sessionId) live.add(sessionId);
     }
+    const missing: string[] = [];
     for (const sessionId of live) {
       if (this.tracked.has(sessionId)) continue;
       const file = findSessionFile(sessionId, this.projectsDir);
-      if (!file) continue;
-      let ino = 0;
-      let size = 0;
-      try {
-        const stat = fs.statSync(file);
-        ino = Number(stat.ino);
-        size = stat.size;
-      } catch { continue; }
-      // Start at the END of what already exists. The history is the transcript's job — replaying a
-      // three-hour session into the rail the moment the daemon restarts would flood the ring with
-      // turns the operator already read, and evict the live one to do it.
-      this.tracked.set(sessionId, { sessionId, file, cursor: size, ino, reset: true, seenAt: this.now() });
+      if (file) this.trackFile(sessionId, file);
+      else missing.push(sessionId);
+    }
+    // Claude Code ≥ 2.1.x IGNORES a pre-set `--session-id` when creating the transcript: the JSONL
+    // is born under claude's own fresh uuid (verified live on 2.1.251 — argv said one uuid, the
+    // file and every record's `sessionId` carried another, and the argv uuid appeared nowhere on
+    // disk). The argv-keyed lookup above therefore can never find such a session's file. Fall back
+    // by ACTIVITY, and only when it is unambiguous: exactly ONE untracked live session and exactly
+    // ONE actively-written, unclaimed transcript. The entry keeps the ARGV id as its session key —
+    // that id is what the portal registered at dispatch and what every other lane (liveness probe,
+    // session-input pane match, the ring's readers) speaks, so the deltas must post under it.
+    // Ambiguity (two new sessions, two active files) tracks nothing rather than risking pairing a
+    // transcript with the wrong thread — the next enumerate retries once one of them resolves.
+    if (missing.length === 1) {
+      const file = this.activeUnclaimedFile(live);
+      if (file) this.trackFile(missing[0], file);
     }
     // A session whose process is gone gets one grace period — the Stop hook and the process exit race,
     // and the last records of a turn are written right at that boundary.
@@ -209,6 +216,51 @@ export class SessionWatcher {
       if (live.has(sessionId)) { entry.seenAt = this.now(); continue; }
       if (this.now() - entry.seenAt > 30_000) this.tracked.delete(sessionId);
     }
+  }
+
+  /** Start tailing one session's file from its current end (see the comment inside). */
+  private trackFile(sessionId: string, file: string): void {
+    let ino = 0;
+    let size = 0;
+    try {
+      const stat = fs.statSync(file);
+      ino = Number(stat.ino);
+      size = stat.size;
+    } catch { return; }
+    // Start at the END of what already exists. The history is the transcript's job — replaying a
+    // three-hour session into the rail the moment the daemon restarts would flood the ring with
+    // turns the operator already read, and evict the live one to do it.
+    this.tracked.set(sessionId, { sessionId, file, cursor: size, ino, reset: true, seenAt: this.now() });
+  }
+
+  /**
+   * The single transcript being written RIGHT NOW that no session claims — the activity-fallback
+   * candidate for a claude that ignored its `--session-id` (above). A file named after any LIVE
+   * session belongs to that session (a claude that honoured the flag) and is never the fallback's
+   * to claim; a file another tracked entry already tails is taken. More or fewer than one
+   * candidate answers null — never a guess.
+   */
+  private activeUnclaimedFile(live: Set<string>): string | null {
+    const claimed = new Set([...this.tracked.values()].map((t) => t.file));
+    let dirs: string[];
+    try { dirs = fs.readdirSync(this.projectsDir); } catch { return null; }
+    const cutoff = Date.now() - FALLBACK_ACTIVE_MS;
+    const candidates: string[] = [];
+    for (const dir of dirs) {
+      const full = path.join(this.projectsDir, dir);
+      let names: string[];
+      try { names = fs.readdirSync(full); } catch { continue; }
+      for (const name of names) {
+        if (!name.endsWith('.jsonl')) continue;
+        if (live.has(name.slice(0, -'.jsonl'.length))) continue;
+        const candidate = path.join(full, name);
+        if (claimed.has(candidate)) continue;
+        try {
+          if (fs.statSync(candidate).mtimeMs >= cutoff) candidates.push(candidate);
+        } catch { /* deleted between readdir and stat */ }
+      }
+    }
+    return candidates.length === 1 ? candidates[0] : null;
   }
 
   /** Read and project whatever is new in one session's file. */

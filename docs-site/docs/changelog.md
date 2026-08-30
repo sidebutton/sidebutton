@@ -2,7 +2,13 @@
 
 All notable changes to SideButton.
 
-## [1.5.6] - Unreleased
+## [1.5.7] - 2026-08-30
+
+### Agent Server
+
+- **Live app-chat streaming finds the transcript again** — Claude Code ≥ 2.1.x creates the session transcript under its own uuid, ignoring the pre-set `--session-id` the dispatcher passes, so the 1.5.6 session watcher could never locate the file and the live stream stayed dark. The watcher now falls back to the single actively-written transcript when the direct lookup misses (only when unambiguous — two candidates track nothing), and keeps reporting under the dispatcher's session id so every portal surface keys as before.
+
+## [1.5.6] - 2026-08-30
 
 ### Workflows & MCP
 
