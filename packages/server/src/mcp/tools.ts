@@ -116,8 +116,8 @@ export const MCP_TOOLS: McpTool[] = [
       'download link — the snippet contains that link plus the Jira inline-attachment reference. Use this the ' +
       'moment you have evidence worth showing, instead of waiting for the end of the session (nothing you save ' +
       'after your comment is written can be cited in it). ' +
-      'Only works on a dispatched job (it needs the on-box job context); on a ticketless/chat job it returns a ' +
-      'download link only. Files must be ≤ 25 MB and live under your home directory. On any failure the file is ' +
+      'Works on a dispatched job and for every turn of a live app editing session; on a ticketless/chat job ' +
+      'it returns a download link only. Files must be ≤ 25 MB and live under your home directory. On any failure the file is ' +
       'left on disk and still uploads at session end, so save deliverables under artifacts/ as a fallback.',
     inputSchema: {
       type: 'object',

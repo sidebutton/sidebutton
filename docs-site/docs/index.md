@@ -20,45 +20,25 @@ SideButton is an **open-source platform that packages domain knowledge for AI ag
 - **Connect AI agents via MCP** — Claude Code, Cursor, or any MCP client gets real browser control
 - **Extend with plugins** — add custom MCP tools in any language (bash, Node.js, Python)
 
-## Latest release — Notion Support, Pack-Driven Roles & Guided Workspace Setup
+## Latest release — Screenshot Capture Comes to Workflows and MCP
 
-*2026-08-23 · portal & platform release · [all release posts](/releases/)*
+*2026-08-27 · workflow & MCP release · [all release posts](/releases/)*
 
-### Notion joins the issue trackers
+A workflow or an MCP client can now write a screenshot straight to a file — cropped, redacted, and never seen by the agent's own context.
 
-SideButton now speaks **Notion** alongside Jira and Linear. Connect a Notion workspace and a board database becomes a tracker: new pages route into your Tasks pool by type, agents work them, and status flows back using the board's **own status groups** — your columns stay yours. Automations gain a Notion trigger:
+### Screenshots straight from a workflow or MCP call
 
-![New Automation form with the trigger type set to Notion; a hint explains that a Notion workspace connection is required to enable filters](/releases/01-notion-automation-trigger.png)
+The new `browser.screenshot` step captures the page — or a `selector` / `ref` / `region` crop of it — and writes a PNG to a file on the machine running SideButton, returning only the path it wrote. The `screenshot` MCP tool gained the same `path` option: pass it and the tool writes the file instead of returning image bytes; leave it out and nothing changes for existing callers. A bundled `docs_screenshot` workflow wires the whole sequence together as a ready-made recipe. Step types now number 46 (43 implemented).
 
-The portal is honest about prerequisites — pick the Notion trigger before a workspace is connected and it says exactly what is missing and where to fix it. Workspaces bind a specific Notion **data source**, with a property map that adapts to the fields your board actually has. A step-by-step [setup guide](/notion-setup) covers connecting the workspace, sharing your board, and the capability toggles that matter.
+### Redact before the pixel is captured
 
-### GitLab joins the code hosts
+The new `inject_css` MCP tool injects a CSS rule into the page — the main use is blurring or hiding sensitive elements right before a screenshot, so no unredacted image ever exists. Both tools are batchable, so a single `browser_batch` call can navigate, blur the sensitive selectors, wait, and screenshot-to-file in one round trip. A `{{param}}` that never got a value now fails the step loudly instead of being treated as a literal string — previously a missing redaction value silently styled nothing, and the run reported success over an unredacted shot.
 
-SideButton agents now work GitLab end to end. Connect **gitlab.com** with a personal access token, attach projects to your workspaces — including ones nested in subgroups — and agents branch, push and open **merge requests** the same way they open pull requests, with the delivery gate verifying the merge request's real state. Agent VMs ship with `glab` preinstalled, and the connection card warns ahead of your token's expiry.
+### Nothing escapes the sandbox
 
-![GitLab connect dialog on the Integrations page: personal access token field, required scopes hint, Test and Save actions](/releases/03-gitlab-connect.png)
+Every path either tool writes is contained to the home directory of the user running SideButton — `..` traversal and symlinks that escape it are rejected, matching the rule `publish_artifact` already enforces. `publish_artifact` now also expands a leading `~/`, so a path a screenshot step just wrote can be published verbatim.
 
-### Workspace setup that tells the truth
-
-The workspace edit page now walks new workspaces through setup — assign agents, connect code, route tracker work — with a state ledger that reflects what is actually configured. The apply flow reports all three of its states honestly: idle shows what would change, in-flight shows progress, done collapses to a result you can check.
-
-![Workspace edit page with the guided setup panel, tab bar, and the workspace state ledger on the right](/releases/02-workspace-setup-apply.png)
-
-### Roles come from your pack
-
-The role registry is now **pack-driven end to end**: besides the built-ins, any role your skill pack ships registers automatically — with friendly labels, and the ability for a pack to mark a role as always eligible for dispatch. Granting a new role to your fleet is a pack change, not a per-agent settings tour.
-
-### Claude Code plugins, picked and verified
-
-Creating a cloud agent now offers a typed **Claude Code plugin picker**, kept separate from SideButton's own plugin catalog. Picked plugins install at first boot, and each agent reports the install result on its health endpoint and detail page — a failed plugin is visible state, not a silent gap.
-
-![Claude Code plugins block in the create-agent wizard: marketplace picker and a plugin combobox, up to 20 installed at provision](/releases/04-claude-code-plugins.png)
-
-### Jira app: working from the first handover
-
-Connecting the SideButton app to a Jira site now seeds issue-type routing and binds the first project to a workspace **at handover** — the first assigned ticket can dispatch without manual routing setup. Upgrades from token-based connections verify they are talking to the same site before switching, and installing from the Atlassian Marketplace before you have an account carries the install through signup.
-
-→ [Read the full post](/releases/2026-08-week34) · self-hosted releases: [SideButton 1.5.5](/releases/1-5-5) · [Changelog](/changelog)
+→ [Read the full post](/releases/2026-08-week35) · self-hosted releases: [SideButton 1.5.5](/releases/1-5-5) · [Changelog](/changelog)
 
 ## Next Steps
 

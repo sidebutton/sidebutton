@@ -76,6 +76,22 @@ function writeJobContext(ctx: Record<string, unknown>): void {
   fs.writeFileSync(path.join(tmpHome, '.sidebutton', 'job-context.json'), JSON.stringify(ctx));
 }
 
+/** Write the sticky app-session marker sb-app-autosave.sh maintains. */
+function writeAppSessionMarker(fields: Record<string, unknown> = {}): void {
+  const now = Math.floor(Date.now() / 1000);
+  fs.writeFileSync(
+    path.join(tmpHome, '.sidebutton', 'app-session.json'),
+    JSON.stringify({
+      session_id: 'app-sess-1',
+      entry_path: '/home/agent/workspace',
+      workflow_id: 'app_edit_session',
+      started_at_epoch: now,
+      updated_at_epoch: now,
+      ...fields,
+    }),
+  );
+}
+
 /** Write a workspace file under artifacts/ and return its bytes. */
 function writeArtifact(name: string, contents = 'PNGDATA'): Buffer {
   const p = path.join(tmpHome, 'workspace', 'artifacts', name);
@@ -326,5 +342,96 @@ describe('publish_artifact — input validation', () => {
     expect(isError(res)).toBe(true);
     expect(textOf(res)).toContain('No active job');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// The session-open job for `app_edit_session` completes on its BOOT turn, and executePipeline clears
+// job-context.json when it does — so every later chat turn has no job context. Without the marker
+// fallback publish_artifact refused for the whole post-boot life of every app editing session.
+describe('publish_artifact — app-session marker fallback (no job context)', () => {
+  const okBody = {
+    ok: true,
+    id: 9,
+    artifact_id: 9,
+    kind: 'screenshot',
+    filename: 'shot.png',
+    size: 7,
+    download_url: 'https://portal.test/api/artifacts/shared/tok9',
+    attachment: { id: 'att-9', filename: 'shot.png' },
+    warnings: [],
+  };
+
+  it('attributes by session_id alone when job-context is gone but the marker is live', async () => {
+    const handler = makeHandler(tmpHome);
+    writeAppSessionMarker(); // no job-context written
+    writeArtifact('shot.png');
+    fetchMock.mockResolvedValue(mockResponse(200, okBody));
+
+    const res = await callPublish(handler, { path: 'artifacts/shot.png' });
+
+    expect(isError(res)).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const u = new URL((fetchMock.mock.calls[0] as [string, RequestInit])[0]);
+    expect(u.searchParams.get('session_id')).toBe('app-sess-1');
+    // The portal resolves the step from session_id; unknown ids must not be sent as "undefined".
+    expect(u.searchParams.has('job_id')).toBe(false);
+    expect(u.searchParams.has('step_index')).toBe(false);
+    expect(textOf(res)).toContain('https://portal.test/api/artifacts/shared/tok9');
+  });
+
+  it('prefers a present job-context over the marker', async () => {
+    const handler = makeHandler(tmpHome);
+    writeJobContext({ job_id: 42, step_index: 3, session_id: 'job-sess' });
+    writeAppSessionMarker();
+    writeArtifact('shot.png');
+    fetchMock.mockResolvedValue(mockResponse(200, okBody));
+
+    await callPublish(handler, { path: 'artifacts/shot.png' });
+
+    const u = new URL((fetchMock.mock.calls[0] as [string, RequestInit])[0]);
+    expect(u.searchParams.get('session_id')).toBe('job-sess');
+    expect(u.searchParams.get('job_id')).toBe('42');
+    expect(u.searchParams.get('step_index')).toBe('3');
+  });
+
+  it('ignores a marker left by a different workflow', async () => {
+    const handler = makeHandler(tmpHome);
+    writeAppSessionMarker({ workflow_id: 'agent_qa_run' });
+    writeArtifact('shot.png');
+    const res = await callPublish(handler, { path: 'artifacts/shot.png' });
+    expect(isError(res)).toBe(true);
+    expect(textOf(res)).toContain('No active job');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('ignores a marker older than the 24h TTL (a reclaimed session, not a live one)', async () => {
+    const handler = makeHandler(tmpHome);
+    const stale = Math.floor(Date.now() / 1000) - 25 * 60 * 60;
+    writeAppSessionMarker({ started_at_epoch: stale, updated_at_epoch: stale });
+    writeArtifact('shot.png');
+    const res = await callPublish(handler, { path: 'artifacts/shot.png' });
+    expect(isError(res)).toBe(true);
+    expect(textOf(res)).toContain('No active job');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('ignores a marker carrying no session id', async () => {
+    const handler = makeHandler(tmpHome);
+    writeAppSessionMarker({ session_id: undefined });
+    writeArtifact('shot.png');
+    const res = await callPublish(handler, { path: 'artifacts/shot.png' });
+    expect(isError(res)).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back on a freshness stamp from started_at_epoch when updated_at_epoch is absent', async () => {
+    const handler = makeHandler(tmpHome);
+    writeAppSessionMarker({ updated_at_epoch: undefined });
+    writeArtifact('shot.png');
+    fetchMock.mockResolvedValue(mockResponse(200, okBody));
+    const res = await callPublish(handler, { path: 'artifacts/shot.png' });
+    expect(isError(res)).toBe(false);
+    const u = new URL((fetchMock.mock.calls[0] as [string, RequestInit])[0]);
+    expect(u.searchParams.get('session_id')).toBe('app-sess-1');
   });
 });

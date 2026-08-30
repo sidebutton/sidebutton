@@ -9,6 +9,37 @@ function toNum(v: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/**
+ * The live app-editing session's id, from the sticky marker, or undefined.
+ *
+ * `~/.sidebutton/app-session.json` is written by agent-runners `sb-app-autosave.sh` at SessionStart
+ * (while job-context is still readable) and refreshed on every turn. It exists precisely because
+ * executePipeline clears `job-context.json` when the session-open job completes — the BOOT turn for
+ * `app_edit_session` — leaving every later chat turn with no job context at all.
+ *
+ * Gated the same way that hook gates it: the marker must name `app_edit_session`, carry a string
+ * session id, and be fresher than MARKER_TTL (24h) — an older one is a leftover from a reclaimed
+ * session, not a live one. Unlike the hook this cannot also compare the CALLING session's id (an MCP
+ * request carries none), which is safe here: the portal parks a session's agent for its duration, so
+ * a box runs one app session at a time and the marker names it.
+ */
+const APP_SESSION_MARKER_TTL_MS = 24 * 60 * 60 * 1000;
+
+function appSessionMarkerId(sbDir: string): string | undefined {
+  let marker: { workflow_id?: unknown; session_id?: unknown; updated_at_epoch?: unknown; started_at_epoch?: unknown };
+  try {
+    marker = JSON.parse(fs.readFileSync(path.join(sbDir, 'app-session.json'), 'utf8'));
+  } catch {
+    return undefined;
+  }
+  if (marker.workflow_id !== 'app_edit_session') return undefined;
+  if (typeof marker.session_id !== 'string' || !marker.session_id) return undefined;
+  const stamp = toNum(marker.updated_at_epoch) ?? toNum(marker.started_at_epoch);
+  if (stamp === undefined) return undefined;
+  if (Date.now() - stamp * 1000 > APP_SESSION_MARKER_TTL_MS) return undefined;
+  return marker.session_id;
+}
+
 /** Coerce a value to boolean (LLMs often send "true" instead of true). */
 function toBool(v: unknown): boolean | undefined {
   if (v === undefined || v === null) return undefined;
@@ -926,19 +957,32 @@ export class McpHandler {
       return err(`"${rawPath}" is ${(stat.size / (1024 * 1024)).toFixed(1)} MB, over the 25 MB per-file limit.`);
     }
 
-    // 2. Job attribution from ~/.sidebutton/job-context.json (the dispatch-assigned session_id wins
-    //    server-side; job_id/step_index are the fallback). No context → not a dispatched job.
-    let jobCtx: { job_id?: unknown; step_index?: unknown; session_id?: unknown };
+    // 2. Job attribution. ~/.sidebutton/job-context.json is the primary source (its dispatch-assigned
+    //    session_id wins server-side; job_id/step_index are the fallback), but executePipeline CLEARS
+    //    that file when the job completes — and for `app_edit_session` the job completes on the BOOT
+    //    turn, so every later turn of a live editing session has no job context at all. The Stop
+    //    hook's own uploads survive that teardown by resolving server-side on the session id
+    //    (agent-runners base/14-claude-stop-hook.sh v3); this tool did not, which made
+    //    publish_artifact refuse for the whole post-boot life of every app session. Same escape
+    //    hatch, same sticky marker.
+    const sbDir = path.join(home, '.sidebutton');
+    let jobId: number | undefined;
+    let stepIndex: number | undefined;
+    let sessionId: string | undefined;
     try {
-      jobCtx = JSON.parse(fs.readFileSync(path.join(home, '.sidebutton', 'job-context.json'), 'utf8'));
+      const jobCtx = JSON.parse(fs.readFileSync(path.join(sbDir, 'job-context.json'), 'utf8')) as
+        { job_id?: unknown; step_index?: unknown; session_id?: unknown };
+      jobId = toNum(jobCtx.job_id);
+      stepIndex = toNum(jobCtx.step_index);
+      sessionId = typeof jobCtx.session_id === 'string' ? jobCtx.session_id : undefined;
     } catch {
-      return err('No active job on this machine (~/.sidebutton/job-context.json is missing). publish_artifact only works on a dispatched job — save the file under artifacts/ and it will upload at session end.');
+      sessionId = appSessionMarkerId(sbDir);
     }
-    const jobId = toNum(jobCtx.job_id);
-    const stepIndex = toNum(jobCtx.step_index);
-    const sessionId = typeof jobCtx.session_id === 'string' ? jobCtx.session_id : undefined;
-    if (jobId === undefined || stepIndex === undefined) {
-      return err('The job context on this machine has no job_id / step_index — cannot attribute the upload. Save the file under artifacts/ and it will upload at session end.');
+    // A session id is COMPLETE attribution on its own: /api/jobs/artifacts selects the step by
+    // session_id and only falls back to the (job_id, step_index) pair when that misses. So the pair
+    // is required only when there is no session id to send.
+    if (sessionId === undefined && (jobId === undefined || stepIndex === undefined)) {
+      return err('No active job on this machine (no ~/.sidebutton/job-context.json, and no live app-session marker) — nothing to attribute the upload to. Save the file under artifacts/ and it will upload at session end.');
     }
 
     // 3. Creds from env — the same AGENT_TOKEN / AGENT_NAME / PORTAL_URL the transcript + artifact
@@ -959,14 +1003,11 @@ export class McpHandler {
     const caption = typeof args.caption === 'string' && args.caption.trim() ? args.caption.trim() : undefined;
 
     // 5. POST the raw bytes with attach=1&share=1 — the only delta from the Stop hook's call.
-    const qs = new URLSearchParams({
-      job_id: String(jobId),
-      step_index: String(stepIndex),
-      kind,
-      filename,
-      attach: '1',
-      share: '1',
-    });
+    const qs = new URLSearchParams({ kind, filename, attach: '1', share: '1' });
+    // Only send ids we actually have — a marker-attributed upload has the session id and nothing else,
+    // and `job_id=undefined` would reach the endpoint as the literal string and fail its Number() check.
+    if (jobId !== undefined) qs.set('job_id', String(jobId));
+    if (stepIndex !== undefined) qs.set('step_index', String(stepIndex));
     if (sessionId) qs.set('session_id', sessionId);
     const uploadUrl = `${portalUrl}/api/jobs/artifacts?${qs.toString()}`;
 

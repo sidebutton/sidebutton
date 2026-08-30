@@ -184,7 +184,7 @@ export default defineConfig({
           text: 'Releases & Reference',
           items: [
             { text: 'Release Posts', link: '/releases/' },
-            { text: 'Notion, Roles & Workspace Setup', link: '/releases/2026-08-week34' },
+            { text: 'Screenshot Capture for Workflows & MCP', link: '/releases/2026-08-week35' },
             { text: 'Changelog', link: '/changelog' },
             { text: 'Contributing', link: '/contributing' }
           ]
