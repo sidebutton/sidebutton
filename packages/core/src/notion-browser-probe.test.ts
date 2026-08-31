@@ -101,7 +101,11 @@ const readerStep = (wf: Workflow) =>
   wf.steps.find((s): s is Extract<Step, { type: 'shell.run' }> => s.type === 'shell.run');
 
 describe.skipIf(!hasWorkflow)('notion_browser_probe_subscription_ui gates (SCRUM-2022 / N11)', () => {
-  const workflow = parseWorkflow(source);
+  // skipIf marks the tests, but this factory still RUNS during collection — so in a checkout
+  // without the workflow the parse must not touch the empty placeholder, or collection throws the
+  // very error the skip exists to prevent. Every test below is skipped there, so the undefined is
+  // never dereferenced.
+  const workflow = hasWorkflow ? parseWorkflow(source) : (undefined as unknown as Workflow);
 
   it('parses through the shipped parser — every step type is one the engine implements', () => {
     // `parseWorkflow` walks nested control bodies too, so this also lints the steps inside each

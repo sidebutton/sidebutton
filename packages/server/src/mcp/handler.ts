@@ -158,6 +158,29 @@ interface JsonRpcResponse {
   };
 }
 
+/** MCP spec code for `resources/read` against a URI the server does not serve. */
+export const RESOURCE_NOT_FOUND = -32002;
+
+/**
+ * A dispatch error that carries its own JSON-RPC code and `data` payload (KAN-32).
+ *
+ * `processRequest` used to flatten every throw to a generic -32000 with no data, so a
+ * client could not tell "this resource does not exist" from "the server failed". Throw
+ * this instead of a bare Error wherever the spec names a code; plain Errors keep the
+ * -32000 default.
+ */
+export class JsonRpcError extends Error {
+  readonly code: number;
+  readonly data?: unknown;
+
+  constructor(message: string, code: number, data?: unknown) {
+    super(message);
+    this.name = 'JsonRpcError';
+    this.code = code;
+    this.data = data;
+  }
+}
+
 // Type for the broadcaster passed from server
 export interface DashboardBroadcaster {
   broadcastRunningWorkflowsChanged(workflows: { run_id: string; workflow_id: string; workflow_title: string; started_at: string; params: Record<string, string> }[]): void;
@@ -392,10 +415,14 @@ export class McpHandler {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // Preserve a structured code/data when the thrower supplied one (KAN-32/D3);
+      // anything else stays on the historical generic -32000.
+      const code = error instanceof JsonRpcError ? error.code : -32000;
+      const data = error instanceof JsonRpcError ? error.data : undefined;
       return {
         jsonrpc: '2.0',
         id: request.id,
-        error: { code: -32000, message },
+        error: data === undefined ? { code, message } : { code, message, data },
       };
     }
   }
@@ -1827,7 +1854,7 @@ export class McpHandler {
         };
       }
 
-      throw new Error(`Skill resource not found: ${uri}`);
+      throw new JsonRpcError(`Skill resource not found: ${uri}`, RESOURCE_NOT_FOUND, { uri });
     }
 
     // Handle workflow:// resources
@@ -1835,7 +1862,7 @@ export class McpHandler {
 
     const workflow = this.findWorkflow(workflowId);
     if (!workflow) {
-      throw new Error(`Workflow not found: ${workflowId}`);
+      throw new JsonRpcError(`Workflow not found: ${workflowId}`, RESOURCE_NOT_FOUND, { uri });
     }
 
     const yamlStr = yaml.dump(workflow);

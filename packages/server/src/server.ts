@@ -2,7 +2,7 @@
  * Fastify HTTP + WebSocket server
  */
 
-import Fastify, { type FastifyReply, type FastifyError } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyError } from 'fastify';
 import { Sentry } from './sentry.js';
 import fastifyWebsocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
@@ -590,7 +590,14 @@ export interface ServerConfig {
   dashboardDir?: string;
 }
 
-export async function startServer(config: ServerConfig): Promise<void> {
+/**
+ * Boot the HTTP/MCP server and start listening.
+ *
+ * Returns the Fastify instance so a caller (the transport regression tests) can bind an
+ * ephemeral port and shut it down again; `sidebutton serve` ignores the value and runs
+ * until a signal arrives.
+ */
+export async function startServer(config: ServerConfig): Promise<FastifyInstance> {
   const fastify = Fastify({
     logger: false,
   });
@@ -768,6 +775,9 @@ export async function startServer(config: ServerConfig): Promise<void> {
     pendingMessages: Array<{ id: string; data: string }>;  // Buffered with IDs for replay
     messageBuffer: Map<string, string>;  // Event ID -> data for Last-Event-ID replay
     lastEventId: number;  // Sequence counter for event IDs
+    replayedThrough: number;  // Highest sequence already re-sent on a reconnect (KAN-32)
+    deliveredThrough: number;  // Highest sequence written to a live stream (KAN-32)
+    disconnectedAt: number | null;  // When the SSE stream dropped, for bare-URL resume (KAN-32)
     expiryTimer: ReturnType<typeof setTimeout> | null;
     isNewTransport: boolean;
     createdAt: number;  // For cleanup tracking
@@ -782,6 +792,10 @@ export async function startServer(config: ServerConfig): Promise<void> {
   const MESSAGE_BUFFER_SIZE = 50;  // Max messages to buffer for replay
   const CLEANUP_INTERVAL_MS = 60 * 1000;  // Run cleanup every 60s
   const IDLE_SESSION_TIMEOUT_MS = 10 * 60 * 1000;  // 10 minutes idle timeout
+  // How long after its stream dropped an old-transport session may still be claimed by a
+  // reconnect that cannot name it (KAN-32). Kept short: a bare URL carries no identity, so
+  // a wider window risks handing a fresh client the previous one's undelivered replies.
+  const OLD_TRANSPORT_RESUME_WINDOW_MS = 15 * 1000;
 
   // Helper: Create a new session with proper initialization
   function createMcpSession(isNewTransport: boolean): McpSession {
@@ -791,6 +805,9 @@ export async function startServer(config: ServerConfig): Promise<void> {
       pendingMessages: [],
       messageBuffer: new Map(),
       lastEventId: 0,
+      replayedThrough: 0,
+      deliveredThrough: 0,
+      disconnectedAt: null,
       expiryTimer: null,
       isNewTransport,
       createdAt: now,
@@ -802,6 +819,24 @@ export async function startServer(config: ServerConfig): Promise<void> {
   function generateEventId(sessionId: string, session: McpSession): string {
     session.lastEventId++;
     return `${sessionId.slice(0, 8)}_${session.lastEventId}`;
+  }
+
+  // Helper: Queue a message for a client with no live stream. Bounded oldest-first like
+  // messageBuffer: the per-POST `pendingMessages = []` that used to bound this queue is
+  // gone (it destroyed replies a briefly disconnected client had not received yet), so
+  // without a cap a session could hold an unbounded number of full responses for the
+  // whole 5-minute reconnect window (KAN-32).
+  function queuePendingMessage(session: McpSession, eventId: string, data: string): void {
+    session.pendingMessages.push({ id: eventId, data });
+    if (session.pendingMessages.length > MESSAGE_BUFFER_SIZE) {
+      const dropped = session.pendingMessages.shift();
+      // messageBuffer trims oldest-first at the same rate, so a dropped reply is gone
+      // from the replay path too: the request it answers will hang until the client's
+      // own timeout. Say so, rather than losing it silently.
+      if (dropped) {
+        console.log(`[MCP] Dropped undelivered message ${dropped.id} — more than ${MESSAGE_BUFFER_SIZE} replies queued for a disconnected client`);
+      }
+    }
   }
 
   // Helper: Send SSE message with event ID and retry hint (MCP 2025-11-25 compliant)
@@ -828,7 +863,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
     // For OLD transport: Always queue first, then try to send
     // This ensures message isn't lost if client disconnects right after write
     if (!session.isNewTransport) {
-      session.pendingMessages.push({ id: eventId, data });
+      queuePendingMessage(session, eventId, data);
 
       // Try to drain immediately if SSE is available
       if (session.sseReply && !session.sseReply.raw.writableEnded) {
@@ -844,6 +879,9 @@ export async function startServer(config: ServerConfig): Promise<void> {
               const sseEvent = `id: ${msg.id}\nretry: 5000\nevent: ${eventType}\ndata: ${msg.data}\n\n`;
               session.sseReply.raw.write(sseEvent);
               sent++;
+              // KAN-32: remember what actually reached a live stream, so a later request
+              // from this client can retire it instead of it being replayed forever.
+              session.deliveredThrough = Math.max(session.deliveredThrough, parseEventIdSequence(msg.id));
             } catch (e) {
               // Re-queue failed messages
               session.pendingMessages.push(msg);
@@ -879,7 +917,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
 
     // Queue for later delivery if no active connection
-    session.pendingMessages.push({ id: eventId, data });
+    queuePendingMessage(session, eventId, data);
     console.log(`[MCP] Queued message ${eventId} for later delivery (pending: ${session.pendingMessages.length})`);
     return false;
   }
@@ -926,6 +964,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
       try {
         reply.raw.write(`id: ${msg.id}\nretry: 5000\nevent: message\ndata: ${msg.data}\n\n`);
         sent++;
+        session.deliveredThrough = Math.max(session.deliveredThrough, parseEventIdSequence(msg.id));
       } catch (e) {
         console.log(`[MCP] Failed to drain pending message ${msg.id}:`, e);
         break;
@@ -936,6 +975,144 @@ export async function startServer(config: ServerConfig): Promise<void> {
       console.log(`[MCP] Drained ${sent} pending messages`);
     }
     return sent;
+  }
+
+  // Helper: Decide which old-transport session an incoming SSE connection belongs to.
+  //
+  // Old-transport sessions now carry an id the client learns from the `endpoint` event
+  // (`?sessionId=…`), so a connection can say which one it is (KAN-32/D1):
+  //   • an explicit `?sessionId=` resumes that session, buffered replies and all;
+  //   • a bare URL from a legacy client (Claude Code reconnects to the configured URL,
+  //     not to the endpoint it was handed) resumes the most recently dropped session that
+  //     still owes it a reply, so a reconnect recovers that reply instead of orphaning it
+  //     in a session nothing can reach again (KAN-32/D2). Deliberately narrow: it claims
+  //     only a session with a reply that was never written anywhere, because a bare URL
+  //     carries no identity and a wider test would hand a fresh client someone else's
+  //     replies. A reply written into a socket that turned out to be dead is therefore
+  //     recoverable only by a reconnect that names its session;
+  //   • anything else returns null and the caller mints a fresh session.
+  // A session whose stream is still LIVE is never handed to a different connection —
+  // that takeover is what silently ended the first client's stream and delivered its
+  // replies to whoever connected second.
+  function resolveOldTransportSession(requestedSessionId?: string): string | null {
+    // A socket can die without its close handler having run yet; normalise those to
+    // "disconnected" so they stay resumable instead of looking live.
+    for (const session of mcpSessions.values()) {
+      if (session.isNewTransport || !session.sseReply) continue;
+      const socket = session.sseReply.raw.socket;
+      if (session.sseReply.raw.writableEnded || !socket || socket.destroyed || !socket.writable) {
+        session.sseReply = null;
+        session.disconnectedAt = Date.now();
+      }
+    }
+
+    if (requestedSessionId) {
+      const requested = mcpSessions.get(requestedSessionId);
+      return requested && !requested.isNewTransport ? requestedSessionId : null;
+    }
+
+    const cutoff = Date.now() - OLD_TRANSPORT_RESUME_WINDOW_MS;
+    let best: string | null = null;
+    let bestAt = -Infinity;
+    for (const [id, session] of mcpSessions) {
+      if (session.isNewTransport || session.sseReply) continue;
+      // Only a session that still owes its client something is worth claiming blind —
+      // inheriting an idle session's buffer is how a fresh client used to be handed
+      // someone else's replies.
+      if (session.pendingMessages.length === 0) continue;
+      const droppedAt = session.disconnectedAt ?? 0;
+      if (droppedAt < cutoff) continue;
+      if (droppedAt > bestAt) {
+        bestAt = droppedAt;
+        best = id;
+      }
+    }
+    return best;
+  }
+
+  // Helper: Re-deliver whatever an old-transport session still owes its client after a
+  // reconnect (KAN-32/D2). Each buffered event is re-sent at most once — `replayedThrough`
+  // advances only here — which recovers a reply written just as the socket died without
+  // the endless re-delivery that the old blanket replay caused (and that the POST-time
+  // buffer wipe was added to paper over).
+  function resumeOldTransportStream(
+    session: McpSession,
+    sessionId: string,
+    reply: FastifyReply,
+    lastEventId?: string
+  ): number {
+    const fromSeq = lastEventId
+      ? Math.max(parseEventIdSequence(lastEventId), session.replayedThrough)
+      : session.replayedThrough;
+    let resent = 0;
+
+    for (const [eventId, data] of session.messageBuffer) {
+      const seq = parseEventIdSequence(eventId);
+      if (seq <= fromSeq) continue;
+      try {
+        reply.raw.write(`id: ${eventId}\nretry: 5000\nevent: message\ndata: ${data}\n\n`);
+        session.replayedThrough = Math.max(session.replayedThrough, seq);
+        resent++;
+      } catch (e) {
+        console.log(`[MCP] Failed to resend event ${eventId}:`, e);
+        break;
+      }
+    }
+
+    // Whatever was just re-sent is no longer outstanding; the drain then covers any
+    // pending message the capped buffer had already trimmed away.
+    session.pendingMessages = session.pendingMessages.filter(
+      (msg) => parseEventIdSequence(msg.id) > session.replayedThrough
+    );
+    session.deliveredThrough = Math.max(session.deliveredThrough, session.replayedThrough);
+    if (resent > 0) {
+      console.log(`[MCP] Resent ${resent} buffered message(s) to session ${sessionId.slice(0, 8)} on reconnect`);
+    }
+    return resent + drainPendingMessages(session, reply);
+  }
+
+  // Helper: Decide which old-transport session an incoming POST belongs to (KAN-32/D1).
+  //
+  // A client that names a session gets that session or nothing. Falling back to the
+  // "first live stream" scan when the named session has expired would write the reply
+  // into an unrelated client's stream — the very leak D1 is about, reached through a
+  // stale id instead of a bare URL. Only a POST that names nothing takes the scan, for
+  // legacy clients still using the bare URL advertised before this fix.
+  function resolveOldTransportTarget(
+    requestedSessionId?: string
+  ): { id: string; session: McpSession; addressed: boolean } | null {
+    if (requestedSessionId) {
+      const requested = mcpSessions.get(requestedSessionId);
+      if (!requested || requested.isNewTransport) return null;
+      // An addressed session is used even while its stream is momentarily down — the
+      // reply is buffered and drained on reconnect (KAN-32/D2).
+      return { id: requestedSessionId, session: requested, addressed: true };
+    }
+
+    for (const [id, session] of mcpSessions) {
+      if (session.isNewTransport) continue;
+      // Only a genuinely live stream: a dead one means the caller gets synchronous JSON,
+      // which is what the extension's direct POSTs rely on.
+      if (!session.sseReply || session.sseReply.raw.writableEnded) continue;
+      const socket = session.sseReply.raw.socket;
+      if (!socket || socket.destroyed || !socket.writable) continue;
+      // Best-effort only: several old-transport sessions may now coexist, and a POST
+      // that names none of them carries nothing to tell them apart. A client that uses
+      // the endpoint event it was handed — every MCP SDK client does — never lands here.
+      return { id, session, addressed: false };
+    }
+    return null;
+  }
+
+  // Helper: A request arriving on a session proves its client is alive and has moved past
+  // every reply already written to its stream, so those stop being re-sent on the next
+  // reconnect (KAN-32/D2). This is the sound half of the `messageBuffer.clear()` this fix
+  // removed — replies still pending, never written to any stream, are left untouched.
+  // Only ever called for a POST that named the session: an unidentified POST picked by
+  // the fallback scan is a stranger's request and says nothing about what this session's
+  // own client has seen.
+  function retireDeliveredMessages(session: McpSession): void {
+    session.replayedThrough = Math.max(session.replayedThrough, session.deliveredThrough);
   }
 
   // Periodic session cleanup (MCP spec: server MAY terminate sessions)
@@ -997,22 +1174,36 @@ export async function startServer(config: ServerConfig): Promise<void> {
       return;
     }
 
-    // Close all existing SSE sessions (old transport only allows one)
-    for (const [existingId, existingSession] of mcpSessions) {
-      if (existingSession.sseReply) {
-        try {
-          if (!existingSession.sseReply.raw.writableEnded) {
-            existingSession.sseReply.raw.end();
-          }
-        } catch { /* ignore */ }
-        mcpSessions.delete(existingId);
-      }
+    // KAN-32/D1: this used to force-close and delete EVERY session holding a live
+    // stream — including unrelated Streamable-HTTP ones — so a second client silently
+    // killed the first. Resume our own session when the client names it, mint a fresh
+    // one otherwise, and never touch another client's stream.
+    const requestedSessionId = (request.query as { sessionId?: string } | undefined)?.sessionId;
+    const lastEventId = request.headers['last-event-id'] as string | undefined;
+    const resumedId = resolveOldTransportSession(requestedSessionId);
+
+    let sessionId: string;
+    if (resumedId) {
+      sessionId = resumedId;
+      console.log(`[MCP] /sse: session ${sessionId.slice(0, 8)} resumed`);
+    } else {
+      sessionId = crypto.randomUUID();
+      mcpSessions.set(sessionId, createMcpSession(false));
+      console.log(`[MCP] /sse: new session ${sessionId.slice(0, 8)}`);
     }
 
-    const sessionId = crypto.randomUUID();
-    const session = createMcpSession(false);
+    const session = mcpSessions.get(sessionId)!;
+    // Same client reconnecting onto its own id: retire the stale stream it replaces.
+    if (session.sseReply && session.sseReply !== reply && !session.sseReply.raw.writableEnded) {
+      try { session.sseReply.raw.end(); } catch { /* ignore */ }
+    }
+    if (session.expiryTimer) {
+      clearTimeout(session.expiryTimer);
+      session.expiryTimer = null;
+    }
     session.sseReply = reply;
-    mcpSessions.set(sessionId, session);
+    session.disconnectedAt = null;
+    session.lastActivityAt = Date.now();
 
     // Tell Fastify we're taking over the response (required for SSE)
     reply.hijack();
@@ -1024,10 +1215,13 @@ export async function startServer(config: ServerConfig): Promise<void> {
       'Access-Control-Allow-Origin': '*',
     });
 
-    // Send endpoint event with event ID (MCP spec compliant)
+    // Send endpoint event with event ID (MCP spec compliant). The session id rides in
+    // the POST URL so /message can route each reply back to the client that asked.
     const endpointEventId = generateEventId(sessionId, session);
-    reply.raw.write(`id: ${endpointEventId}\nretry: 5000\nevent: endpoint\ndata: /message\n\n`);
-    console.log(`[MCP] /sse: new session ${sessionId.slice(0, 8)}`);
+    reply.raw.write(`id: ${endpointEventId}\nretry: 5000\nevent: endpoint\ndata: /message?sessionId=${sessionId}\n\n`);
+
+    // Re-deliver anything queued while this session had no stream.
+    resumeOldTransportStream(session, sessionId, reply, lastEventId);
 
     // Keep alive with pings - 5s to stay under client idle timeout
     const pingInterval = setInterval(() => {
@@ -1042,8 +1236,21 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
     request.raw.on('close', () => {
       clearInterval(pingInterval);
-      mcpSessions.delete(sessionId);
-      console.log(`[MCP] /sse: session ${sessionId.slice(0, 8)} closed`);
+      const s = mcpSessions.get(sessionId);
+      if (!s || s.sseReply !== reply) return;  // already replaced by a reconnect
+
+      // Keep the session (and its undelivered replies) alive for the reconnect window
+      // instead of deleting it outright, which used to drop any in-flight response.
+      s.sseReply = null;
+      s.disconnectedAt = Date.now();
+      console.log(`[MCP] /sse: session ${sessionId.slice(0, 8)} disconnected`);
+      s.expiryTimer = setTimeout(() => {
+        const current = mcpSessions.get(sessionId);
+        if (current && current.sseReply === null) {
+          mcpSessions.delete(sessionId);
+          console.log(`[MCP] /sse: session ${sessionId.slice(0, 8)} expired`);
+        }
+      }, SESSION_EXPIRY_MS);
     });
   });
 
@@ -1059,27 +1266,37 @@ export async function startServer(config: ServerConfig): Promise<void> {
     } catch { /* handler will deal with it */ }
 
     const isNotification = parsedBody.method && parsedBody.id === undefined;
+
+    // Route the reply to the session named in the query string (KAN-32/D1). The legacy
+    // first-live-stream scan stays as a fallback only for clients still POSTing to the
+    // bare `/message` we used to advertise, and it no longer picks up Streamable-HTTP
+    // sessions — it had no isNewTransport filter at all, so a /message POST could land
+    // in an unrelated new-transport client's stream.
+    //
+    // Resolved before dispatch so that a reply delivered to this client while its own
+    // request is still running is not mistaken for one it has acknowledged.
+    const requestedSessionId = (request.query as { sessionId?: string } | undefined)?.sessionId;
+    const target = resolveOldTransportTarget(requestedSessionId);
+    if (target?.addressed) retireDeliveredMessages(target.session);
+
     const response = await mcpHandler.handleRequest(body);
 
-    // Find active SSE session (old transport ensures only one)
-    let activeSession: McpSession | null = null;
-    let activeSessionId: string | null = null;
-    for (const [sessionId, session] of mcpSessions) {
-      if (session.sseReply && !session.sseReply.raw.writableEnded) {
-        activeSession = session;
-        activeSessionId = sessionId;
-        break;
-      }
-    }
+    // Re-check by id rather than trusting the object captured before dispatch: a long
+    // request can outlive its session's expiry, and writing the reply into a session no
+    // longer in the map would discard it after the caller was already promised a 202.
+    const stillLive = target && mcpSessions.get(target.id) === target.session;
 
-    if (activeSession && activeSessionId) {
+    if (target && stillLive) {
       if (!isNotification) {
         // Use new sendSSEMessage for proper event IDs and buffering
-        sendSSEMessage(activeSession, activeSessionId, response);
+        sendSSEMessage(target.session, target.id, response);
       }
       reply.code(202).send();
     } else {
-      // No SSE stream, return direct response
+      // No SSE stream (or the session went away while we worked): direct response
+      if (target) {
+        console.log(`[MCP] /message: session ${target.id.slice(0, 8)} expired during the request — answering synchronously`);
+      }
       reply.header('Content-Type', 'application/json').send(response);
     }
   });
@@ -1146,35 +1363,24 @@ export async function startServer(config: ServerConfig): Promise<void> {
     // If no session ID, this is the old HTTP+SSE transport (2024-11-05)
     // Send the endpoint event to tell client where to POST messages
     if (!sessionId) {
-      // Old transport only allows one active SSE session at a time.
-      // Check if there's already an active session - if so, REUSE it instead of creating a new one.
-      // This prevents reconnection loops where closing old session triggers immediate reconnect.
-      let existingActiveSession: string | null = null;
-      for (const [existingId, existingSession] of mcpSessions) {
-        if (!existingSession.isNewTransport && existingSession.sseReply) {
-          const socket = existingSession.sseReply.raw.socket;
-          if (socket && !socket.destroyed && socket.writable) {
-            existingActiveSession = existingId;
-            break;
-          } else {
-            // Clean up dead session
-            mcpSessions.delete(existingId);
-          }
-        }
-      }
+      // KAN-32/D1: the old transport had no per-client identity. Every bare connect
+      // "transferred" whichever session was live — ending the first client's stream
+      // with no error event and handing over its message buffer, so the newcomer was
+      // replayed someone else's replies. Sessions are now addressed by the id we put
+      // in the endpoint event, and a live stream is never taken over.
+      const requestedSessionId = (request.query as { sessionId?: string } | undefined)?.sessionId;
+      const resumedId = resolveOldTransportSession(requestedSessionId);
 
-      if (existingActiveSession) {
-        // Already have an active SSE session - transfer to new connection
-        // Close old reply gracefully and use the same session ID
-        sessionId = existingActiveSession;
-        const oldSession = mcpSessions.get(sessionId)!;
-        if (oldSession.sseReply && !oldSession.sseReply.raw.writableEnded) {
-          try {
-            oldSession.sseReply.raw.end();
-          } catch { /* ignore */ }
+      if (resumedId) {
+        sessionId = resumedId;
+        const resumed = mcpSessions.get(sessionId)!;
+        // Same client reconnecting onto its own id: retire the stream it replaces.
+        if (resumed.sseReply && resumed.sseReply !== reply && !resumed.sseReply.raw.writableEnded) {
+          try { resumed.sseReply.raw.end(); } catch { /* ignore */ }
+          resumed.sseReply = null;
+          resumed.disconnectedAt = Date.now();
         }
-        oldSession.sseReply = null;  // Will be set to new reply below
-        console.log(`[MCP] SSE session ${sessionId.slice(0, 8)} transferred to new connection`);
+        console.log(`[MCP] SSE session ${sessionId.slice(0, 8)} resumed (old transport)`);
       } else {
         sessionId = crypto.randomUUID();
         const newSession = createMcpSession(false);
@@ -1183,11 +1389,13 @@ export async function startServer(config: ServerConfig): Promise<void> {
         console.log(`[MCP] SSE connection established (old transport, session ${sessionId.slice(0, 8)})`);
       }
 
-      // Send endpoint event with event ID (MCP spec compliant)
+      // Send endpoint event with event ID (MCP spec compliant). The session id rides
+      // in the POST URL so replies can be routed back to the client that asked, and a
+      // reconnect can name the session it is resuming.
       const session = mcpSessions.get(sessionId)!;
       const endpointEventId = generateEventId(sessionId, session);
       const host = request.headers.host || 'localhost:9876';
-      reply.raw.write(`id: ${endpointEventId}\nretry: 5000\nevent: endpoint\ndata: http://${host}/mcp\n\n`);
+      reply.raw.write(`id: ${endpointEventId}\nretry: 5000\nevent: endpoint\ndata: http://${host}/mcp?sessionId=${sessionId}\n\n`);
     }
 
     const session = mcpSessions.get(sessionId);
@@ -1204,32 +1412,23 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
       // Store SSE reply for this session
       session.sseReply = reply;
+      session.disconnectedAt = null;
 
-      // MCP spec: Handle Last-Event-ID for resumability
-      // Replay any messages that were sent after the last event ID
-      if (lastEventId) {
-        replayMessagesAfter(session, sessionId, lastEventId, reply);
-      } else if (!session.isNewTransport && session.messageBuffer.size > 0) {
-        // Old transport without Last-Event-ID: Replay ALL recent messages from buffer
-        // Claude Code doesn't send Last-Event-ID, so we replay everything on reconnect
-        // This ensures messages sent right before disconnect are re-delivered
-        let replayed = 0;
-        for (const [eventId, data] of session.messageBuffer) {
-          try {
-            reply.raw.write(`id: ${eventId}\nretry: 5000\nevent: message\ndata: ${data}\n\n`);
-            replayed++;
-          } catch (e) {
-            console.log(`[MCP] Failed to replay event ${eventId}:`, e);
-            break;
-          }
+      // MCP spec: Handle Last-Event-ID for resumability.
+      // Old transport: Claude Code reconnects without a Last-Event-ID, so resume from
+      // whatever this session has not been re-sent yet — at most once per event, and
+      // never an event the client has already acknowledged with a later request. That
+      // recovers a reply queued while disconnected, and — for a reconnect that names its
+      // session — one written into a socket that had already died (KAN-32/D2).
+      if (!session.isNewTransport) {
+        resumeOldTransportStream(session, sessionId, reply, lastEventId);
+      } else {
+        if (lastEventId) {
+          replayMessagesAfter(session, sessionId, lastEventId, reply);
         }
-        if (replayed > 0) {
-          console.log(`[MCP] Replayed ${replayed} buffered messages on reconnect (old transport, no Last-Event-ID)`);
-        }
+        // Drain any pending messages that were queued while disconnected
+        drainPendingMessages(session, reply);
       }
-
-      // Drain any pending messages that were queued while disconnected
-      drainPendingMessages(session, reply);
     }
 
     // Keep alive with pings - 5s interval to stay under Claude Code's ~10s idle timeout
@@ -1269,6 +1468,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
 
       console.log(`[MCP] SSE connection closed for session ${sessionId?.slice(0, 8)}`);
       s.sseReply = null;
+      s.disconnectedAt = Date.now();
 
       if (isNewTransport) {
         // New transport: Keep session for reconnection window
@@ -1284,13 +1484,16 @@ export async function startServer(config: ServerConfig): Promise<void> {
       } else {
         // Old transport: Keep session briefly for message delivery
         // Don't delete immediately - allow pending async responses to be queued
+        // Same reconnect window as the new transport: a 30s grace was shorter than the
+        // client's own retry/backoff, so a queued reply could be deleted before the
+        // client came back for it (KAN-32/D2).
         s.expiryTimer = setTimeout(() => {
           const current = mcpSessions.get(sessionId!);
           if (current && current.sseReply === null) {
             mcpSessions.delete(sessionId!);
             console.log(`[MCP] Old transport session ${sessionId?.slice(0, 8)} cleaned up`);
           }
-        }, 30000);  // 30s grace period for reconnection
+        }, SESSION_EXPIRY_MS);
       }
     });
   });
@@ -1364,24 +1567,16 @@ export async function startServer(config: ServerConfig): Promise<void> {
     // We need to return 202 IMMEDIATELY and send response via SSE when done
     // IMPORTANT: Only use old transport if SSE is actually connected, otherwise return sync JSON
     if (!request.headers['mcp-session-id']) {
-      // Find active old transport SSE session (MUST be connected)
-      let oldTransportSession: McpSession | null = null;
-      let oldTransportSessionId: string | null = null;
-      for (const [sseSessionId, session] of mcpSessions) {
-        if (!session.isNewTransport) {
-          // Check if SSE is alive - only use if actually connected
-          if (session.sseReply && !session.sseReply.raw.writableEnded) {
-            const socket = session.sseReply.raw.socket;
-            if (socket && !socket.destroyed && socket.writable) {
-              oldTransportSession = session;
-              oldTransportSessionId = sseSessionId;
-              break;
-            }
-          }
-          // NOTE: Removed fallback to disconnected session - this caused 202 empty responses
-          // when no SSE was active, breaking direct POST calls from extension
-        }
-      }
+      // Route by the session id the client got in its endpoint event (KAN-32/D1).
+      // Without it every POST went to whichever old-transport stream happened to be
+      // alive first, so a second client received the first one's responses.
+      // NOTE: a POST that matches no old-transport session falls through to the
+      // synchronous JSON path below - the extension's direct POST calls depend on it.
+      const requestedSessionId = (request.query as { sessionId?: string } | undefined)?.sessionId;
+      const target = resolveOldTransportTarget(requestedSessionId);
+      if (target?.addressed) retireDeliveredMessages(target.session);
+      const oldTransportSession: McpSession | null = target?.session ?? null;
+      const oldTransportSessionId: string | null = target?.id ?? null;
 
       if (oldTransportSession && oldTransportSessionId) {
         // Old transport: Return 202 IMMEDIATELY, execute async, send response via SSE
@@ -1389,11 +1584,10 @@ export async function startServer(config: ServerConfig): Promise<void> {
         // delivered when they reconnect (MCP spec: resumability)
         console.log(`[MCP] Old transport: accepting request, will respond via SSE (session ${oldTransportSessionId.slice(0, 8)})`);
 
-        // Clear message buffer on new request - client must have received previous messages
-        // if they're sending a new request. This prevents endless replay of old messages.
-        oldTransportSession.messageBuffer.clear();
-        oldTransportSession.pendingMessages = [];
-
+        // KAN-32/D2: this used to clear messageBuffer and pendingMessages on every POST,
+        // destroying any reply still owed to a briefly disconnected client. The endless
+        // replay it guarded against is now handled by resumeOldTransportStream's
+        // re-send-once bookkeeping, and MESSAGE_BUFFER_SIZE still bounds the buffer.
         reply.code(202).send();
 
         // Execute request asynchronously and send response via SSE when done
@@ -4109,6 +4303,8 @@ steps:
     console.error('Failed to start server:', err);
     process.exit(1);
   }
+
+  return fastify;
 }
 
 // ============================================================================

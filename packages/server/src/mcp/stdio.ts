@@ -10,16 +10,37 @@ import {
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
+  McpError,
+  ErrorCode,
 } from '@modelcontextprotocol/sdk/types.js';
 import { MCP_TOOLS } from './tools.js';
 import type { McpHandler } from './handler.js';
 import { VERSION } from '../version.js';
 
 /**
- * Start MCP server with stdio transport
- * All communication happens via stdin/stdout - no console.log allowed
+ * Re-raise a JSON-RPC error from the shared handler without losing its shape (KAN-32/D3).
+ *
+ * `throw new Error(message)` made the SDK re-map every failure to -32603 (Internal error)
+ * and drop `data`, so stdio and HTTP+SSE disagreed on the code for the same miss. An
+ * McpError carries the handler's own code and data through to the client unchanged.
  */
-export async function startStdioTransport(handler: McpHandler): Promise<void> {
+function rethrowJsonRpcError(error: { code?: number; message?: string; data?: unknown }): never {
+  throw new McpError(
+    typeof error.code === 'number' ? error.code : ErrorCode.InternalError,
+    error.message ?? 'Unknown error',
+    error.data,
+  );
+}
+
+/**
+ * Build the MCP `Server` used by the stdio transport, with every request handler wired
+ * to the shared JSON-RPC handler.
+ *
+ * Split out from {@link startStdioTransport} so the transport regression tests can drive
+ * exactly these handlers over an in-memory transport pair — including the SDK's own error
+ * serialisation, which is where a bare `throw new Error` used to become -32603.
+ */
+export function createStdioMcpServer(handler: McpHandler): Server {
   const server = new Server(
     {
       name: 'sidebutton',
@@ -69,7 +90,7 @@ export async function startStdioTransport(handler: McpHandler): Promise<void> {
     const parsed = JSON.parse(response);
 
     if (parsed.error) {
-      throw new Error(parsed.error.message);
+      rethrowJsonRpcError(parsed.error);
     }
 
     return parsed.result;
@@ -103,11 +124,21 @@ export async function startStdioTransport(handler: McpHandler): Promise<void> {
     const parsed = JSON.parse(response);
 
     if (parsed.error) {
-      throw new Error(parsed.error.message);
+      rethrowJsonRpcError(parsed.error);
     }
 
     return parsed.result;
   });
+
+  return server;
+}
+
+/**
+ * Start MCP server with stdio transport
+ * All communication happens via stdin/stdout - no console.log allowed
+ */
+export async function startStdioTransport(handler: McpHandler): Promise<void> {
+  const server = createStdioMcpServer(handler);
 
   // Connect to stdio transport
   const transport = new StdioServerTransport();

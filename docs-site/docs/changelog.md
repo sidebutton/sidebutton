@@ -2,11 +2,12 @@
 
 All notable changes to SideButton.
 
-## [1.5.9] - 2026-08-30
+## [1.5.9] - 2026-08-31
 
 ### Agent Server
 
 - **`publish_artifact` works for the whole life of an app editing session** — the session-open job completes on its *boot* turn by design, and the dispatcher clears `job-context.json` when it does, so every later chat turn ran with no job context and the tool refused with "No active job" for the entire rest of the session. It now falls back to the sticky app-session marker the autosave lane already maintains, and attributes on the session id alone — which the artifacts endpoint has always accepted, resolving the step from it before ever looking at `job_id`/`step_index`.
+- **The legacy SSE transport gets per-client session identity** — concurrent MCP clients on the pre-streamable transport (`GET /mcp` stream + `POST /message`) shared one implicit session, so under load one client's reply could land in another client's stream, or be silently discarded after the server had already answered 202 — both surfacing as "Request timed out". Each stream now carries its own session id with a real `-32002` for unknown ids; replies survive brief disconnects via a bounded replay buffer that retires only what a live stream actually received; and a request whose session goes away mid-flight is answered synchronously instead of being dropped.
 
 ## [1.5.8] - 2026-08-30
 
